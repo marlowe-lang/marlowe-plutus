@@ -62,7 +62,7 @@ import Language.Marlowe.Plutus.Semantics.Types (
  )
 import Language.Marlowe.Plutus.FindInputs (getAllInputs)
 import PlutusLedgerApi.V2 (POSIXTime (..))
-import Spec.Marlowe.Semantics.Arbitrary (
+import Marlowe.Testing.Semantics.Arbitrary (
   SemiArbitrary (semiArbitrary),
   arbitraryAssocMap,
   arbitraryContractWeighted,
@@ -72,9 +72,9 @@ import Spec.Marlowe.Semantics.Arbitrary (
   choiceNotInBounds,
   whenContractWeights,
  )
-import Spec.Marlowe.Semantics.AssocMap (assocMapAdd, assocMapEq, assocMapInsert)
+import Marlowe.Testing.Semantics.AssocMap (assocMapAdd, assocMapEq, assocMapInsert)
 
-import Spec.Marlowe.Semantics.Util (stateEq, truncatedDivide)
+import Marlowe.Testing.Semantics.Util (stateEq, truncatedDivide)
 import Test.QuickCheck.Monadic (monadicIO, pick, run)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, testCase)

@@ -29,7 +29,7 @@ import Language.Marlowe.Plutus.Semantics.Types
       Value(..),
       ada, ValueId(..) )
 import Language.Marlowe.Analysis.FSSemantics (SlotLength (..), warningsTrace)
-import Spec.Marlowe.Common (alicePk)
+import Marlowe.Testing.Common (alicePk)
 import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
 import Language.Marlowe.Plutus.Semantics (TransactionWarning(..))
 

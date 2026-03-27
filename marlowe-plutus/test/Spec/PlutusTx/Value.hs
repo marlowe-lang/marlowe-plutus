@@ -24,7 +24,7 @@ import PlutusTx.Numeric (zero)
 import Test.QuickCheck (shuffle)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (Arbitrary (..), Property, forAll, property, testProperty, (===))
-import Spec.PlutusTx.Arbitrary (arbitraryAnyCurrencySymbol)
+import Marlowe.Testing.Contrib.PlutusTx.Arbitrary (arbitraryAnyCurrencySymbol)
 
 -- | Run tests.
 tests :: TestTree

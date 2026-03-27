@@ -38,7 +38,7 @@ import Language.Marlowe.Plutus.Semantics (
   evalValue,
   )
 import qualified PlutusLedgerApi.V2 as PV2
-import Spec.Integer.Arbitrary (arbitraryNonnegativeInteger)
+import Marlowe.Testing.Contrib.Integer.Arbitrary (arbitraryNonnegativeInteger)
 import Spec.Marlowe.Semantics.Next.Common.Isomorphism ()
 import Spec.Marlowe.Semantics.Next.Common.QuickCheck (forAllSuchThat)
 import Spec.Marlowe.Semantics.Next.Common.Tuple (uncurry3)

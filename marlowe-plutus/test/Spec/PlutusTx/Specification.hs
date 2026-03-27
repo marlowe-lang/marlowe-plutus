@@ -23,8 +23,8 @@ import PlutusLedgerApi.V2 (
   ToData (..),
   TokenName,
  )
-import Spec.PlutusTx.Arbitrary ()
-import Spec.Marlowe.Semantics.Arbitrary ()
+import Marlowe.Testing.Contrib.PlutusTx.Arbitrary ()
+import Marlowe.Testing.Semantics.Arbitrary ()
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (
   Arbitrary (..),

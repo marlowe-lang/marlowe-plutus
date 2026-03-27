@@ -10,8 +10,8 @@ module Spec.PlutusTx.AssocMap (
   tests,
 ) where
 
-import Spec.Marlowe.Semantics.Arbitrary (arbitraryAssocMap)
-import Spec.Marlowe.Semantics.AssocMap (assocMapDelete, assocMapEq, assocMapInsert, assocMapLookup, assocMapMember)
+import Marlowe.Testing.Semantics.Arbitrary (arbitraryAssocMap)
+import Marlowe.Testing.Semantics.AssocMap (assocMapDelete, assocMapEq, assocMapInsert, assocMapLookup, assocMapMember)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (Arbitrary (..), Gen, Property, elements, forAll, property, testProperty)
 

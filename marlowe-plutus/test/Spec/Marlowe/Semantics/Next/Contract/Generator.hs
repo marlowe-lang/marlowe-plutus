@@ -24,7 +24,7 @@ import Language.Marlowe.Plutus.Semantics.Types (
   Environment,
   State, mkRoleUtf8,
  )
-import Spec.Marlowe.Semantics.Arbitrary ()
+import Marlowe.Testing.Semantics.Arbitrary ()
 import Test.QuickCheck (Arbitrary (arbitrary), Gen, listOf, listOf1, shuffle, suchThat)
 
 import Data.List (nub)

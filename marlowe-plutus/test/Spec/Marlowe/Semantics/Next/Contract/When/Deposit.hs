@@ -23,7 +23,7 @@ import Language.Marlowe.Plutus.Semantics.Types (
   State,
   Token,
  )
-import Spec.Marlowe.Semantics.Arbitrary ()
+import Marlowe.Testing.Semantics.Arbitrary ()
 import Spec.Marlowe.Semantics.Next.Contract.When (indexedCaseActions)
 
 data EvaluatedDeposit

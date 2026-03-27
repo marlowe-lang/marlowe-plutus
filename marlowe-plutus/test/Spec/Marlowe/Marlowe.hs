@@ -83,8 +83,8 @@ import qualified PlutusLedgerApi.V1.Credential as Credential
 import PlutusLedgerApi.V2 (POSIXTime (POSIXTime))
 import qualified PlutusTx.Prelude as P
 import qualified PlutusTx.Ratio as P
-import Spec.Marlowe.Common (alicePk, amount, contractGen, pangramContract, shrinkContract, valueGen)
-import Spec.Marlowe.Semantics.Arbitrary ()
+import Marlowe.Testing.Common (alicePk, amount, contractGen, pangramContract, shrinkContract, valueGen)
+import Marlowe.Testing.Semantics.Arbitrary ()
 import System.Timeout (timeout)
 import Test.QuickCheck (
   arbitrary,

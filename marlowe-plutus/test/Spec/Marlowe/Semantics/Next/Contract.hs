@@ -8,7 +8,7 @@ module Spec.Marlowe.Semantics.Next.Contract (
 
 import Language.Marlowe.Plutus.Semantics (ReduceResult (ContractQuiescent), fixInterval, reduceContractUntilQuiescent)
 import Language.Marlowe.Plutus.Semantics.Types (Contract (Close), Environment (..), IntervalResult (..), State)
-import Spec.Marlowe.Semantics.Arbitrary ()
+import Marlowe.Testing.Semantics.Arbitrary ()
 
 isIrreducible :: Environment -> State -> Contract -> Bool
 isIrreducible environment' state contract =

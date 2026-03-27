@@ -67,11 +67,11 @@ import Language.Marlowe.Plutus.Semantics.Types (
  )
 import Language.Marlowe.Plutus.FindInputs (getAllInputs)
 import PlutusLedgerApi.V2 (CurrencySymbol, POSIXTime (..), TokenName, toBuiltinData)
-import Spec.Integer.Arbitrary (
+import Marlowe.Testing.Contrib.Integer.Arbitrary (
   arbitraryNonnegativeInteger,
   arbitraryPositiveInteger,
   )
-import Spec.Marlowe.Semantics.Arbitrary (
+import Marlowe.Testing.Semantics.Arbitrary (
   Context,
   SemiArbitrary (semiArbitrary),
   arbitraryContractWeighted,
@@ -84,7 +84,7 @@ import Spec.Marlowe.Semantics.Arbitrary (
   letContractWeights,
   whenContractWeights,
  )
-import Spec.Marlowe.Semantics.AssocMap (assocMapEq, assocMapInsert, assocMapLookup)
+import Marlowe.Testing.Semantics.AssocMap (assocMapEq, assocMapInsert, assocMapLookup)
 
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty (TestTree, testGroup)

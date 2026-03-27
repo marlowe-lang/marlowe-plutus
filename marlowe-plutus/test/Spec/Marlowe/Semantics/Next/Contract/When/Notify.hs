@@ -6,7 +6,7 @@ import Language.Marlowe.Plutus.Next.Indexed (CaseIndex, Indexed (..))
 import Language.Marlowe.Plutus.Next.IsMerkleizedContinuation (IsMerkleizedContinuation)
 import Language.Marlowe.Plutus.Semantics (evalObservation)
 import Language.Marlowe.Plutus.Semantics.Types (Action (Notify), Case, Contract, Environment, State)
-import Spec.Marlowe.Semantics.Arbitrary ()
+import Marlowe.Testing.Semantics.Arbitrary ()
 import Spec.Marlowe.Semantics.Next.Contract.When (indexedCaseActions)
 
 firstNotifyTrueIndex :: Environment -> State -> [Case Contract] -> Maybe CaseIndex

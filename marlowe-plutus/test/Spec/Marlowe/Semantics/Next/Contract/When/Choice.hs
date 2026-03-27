@@ -11,7 +11,7 @@ import qualified Language.Marlowe.Plutus.Next.Applicables.CanChoose as Semantics
 import Language.Marlowe.Plutus.Next.Indexed (Indexed (..), getIndexedValue)
 import Language.Marlowe.Plutus.Next.IsMerkleizedContinuation (IsMerkleizedContinuation)
 import Language.Marlowe.Plutus.Semantics.Types (Action (Choice), Bound, Case, ChoiceId, Contract, Environment, State)
-import Spec.Marlowe.Semantics.Arbitrary ()
+import Marlowe.Testing.Semantics.Arbitrary ()
 import Spec.Marlowe.Semantics.Next.Contract.When (indexedCaseActions)
 
 data Choice' = Choice'

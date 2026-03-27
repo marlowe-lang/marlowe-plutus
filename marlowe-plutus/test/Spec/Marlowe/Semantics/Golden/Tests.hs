@@ -23,13 +23,13 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
 
 import Language.Marlowe.Analysis.FSSemantics (SlotLength (..))
-import Spec.Marlowe.Semantics.Golden (GoldenCase)
-import qualified Spec.Marlowe.Semantics.Golden.Escrow as Escrow (contract, invalids, valids)
-import qualified Spec.Marlowe.Semantics.Golden.Negative as Negative (contract, invalids, valids)
-import qualified Spec.Marlowe.Semantics.Golden.Pangram as Pangram (contract, invalids, valids)
-import qualified Spec.Marlowe.Semantics.Golden.Swap as Swap (contract, invalids, valids)
-import qualified Spec.Marlowe.Semantics.Golden.Trivial as Trivial (contract, invalids, valids)
-import qualified Spec.Marlowe.Semantics.Golden.ZeroCouponBond as ZCB (contract, invalids, valids)
+import Marlowe.Testing.Semantics.Golden (GoldenCase)
+import qualified Marlowe.Testing.Semantics.Golden.Escrow as Escrow (contract, invalids, valids)
+import qualified Marlowe.Testing.Semantics.Golden.Negative as Negative (contract, invalids, valids)
+import qualified Marlowe.Testing.Semantics.Golden.Pangram as Pangram (contract, invalids, valids)
+import qualified Marlowe.Testing.Semantics.Golden.Swap as Swap (contract, invalids, valids)
+import qualified Marlowe.Testing.Semantics.Golden.Trivial as Trivial (contract, invalids, valids)
+import qualified Marlowe.Testing.Semantics.Golden.ZeroCouponBond as ZCB (contract, invalids, valids)
 
 -- | Set to `True` to print the paths through the golden contracts.
 _GENERATE_TEST_CASES_ :: Bool
