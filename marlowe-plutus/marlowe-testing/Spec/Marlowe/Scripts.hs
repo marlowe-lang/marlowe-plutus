@@ -133,7 +133,6 @@ import qualified Language.Marlowe.Plutus.Semantics.Types as M
   ( Party (Address)
   )
 import qualified PlutusLedgerApi.V1.Value as V (adaSymbol, adaToken, singleton)
--- import qualified Spec.Marlowe.Plutus.Types as PC
 import qualified PlutusTx.AssocMap as PlutusTxAM
 import qualified Language.Marlowe.Plutus.AssocMap as AM
 import qualified PlutusTx.Prelude as P

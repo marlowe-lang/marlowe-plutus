@@ -5,6 +5,15 @@ The main outputs are the marlowe semantics validator, which checks the spending
 of Marlowe script outputs, and the marlowe role payout validator, which checks
 the spending of role payouts.
 
+We are using some CPP macros so in general this option `-fforce-recomp` should be used BUT
+it slows down the devel cycle significantly.
+We should consider either using it from command line or in cabal.project with local override.
+
+```
+cabal build marlowe-plutus-spec --ghc-option=-fforce-recomp
+```
+
+
 ## Repo Structure
 
 The Haskell/Plinth code is structured as follows:

@@ -126,7 +126,7 @@ common lang
     ViewPatterns
 
   ghc-options:
-    -fforce-recomp -Wall -Wnoncanonical-monad-instances
+    -Wall -Wnoncanonical-monad-instances
     -Wincomplete-uni-patterns -Wincomplete-record-updates
     -Wredundant-constraints -Widentities -Werror
 
@@ -247,6 +247,7 @@ library marlowe-testing
     Spec.PlutusTx.Lens
     Spec.PlutusTx.PlutusTransaction
     Spec.Marlowe.Reference
+    Spec.Marlowe.Scripts
     Spec.Marlowe.Semantics.Arbitrary
     Spec.Marlowe.Semantics.AssocMap
     Spec.Marlowe.Semantics.Golden
@@ -307,7 +308,6 @@ test-suite marlowe-plutus-spec
     Spec.PlutusTx.Prelude
     Spec.PlutusTx.ScriptContext
     Spec.PlutusTx.Specification
-    Spec.PlutusTx.Types
     Spec.PlutusTx.Value
     Spec.Marlowe.Marlowe
     Spec.Marlowe.Plate
