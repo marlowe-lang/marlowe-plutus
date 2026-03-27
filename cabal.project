@@ -1,5 +1,5 @@
 repository cardano-haskell-packages
-  url: https://input-output-hk.github.io/cardano-haskell-packages
+  url: https://chap.intersectmbo.org/
   secure: True
   root-keys:
     3e0cce471cf09815f930210f7827266fd09045445d65923e6d0238a6cd15126f
@@ -14,13 +14,24 @@ repository cardano-haskell-packages
 -- We duplicate the hackage index-state first for haskell.nix, even though cabal ignores it.
 -- This must always match the hackage index-state on the next line.
 -- See https://github.com/input-output-hk/haskell.nix/issues/1869#issuecomment-1449272480
-index-state: 2023-11-14T00:00:00Z
 index-state:
-  , hackage.haskell.org      2023-11-14T00:00:00Z
-  , cardano-haskell-packages 2023-11-14T00:00:00Z
+  , hackage.haskell.org 2026-01-09T08:43:32Z
+  , cardano-haskell-packages 2026-01-08T17:40:53Z
+
+-- Package list of cardano-haskell-packages has been updated.
+-- The index-state is set to 2026-01-08T17:40:53Z.
+-- To revert to previous state run:
+--     cabal v2-update 'cardano-haskell-packages,2026-01-02T09:17:25Z'
+-- Package list of hackage.haskell.org has been updated.
+-- The index-state is set to 2026-01-09T08:43:32Z.
+-- To revert to previous state run:
+--     cabal v2-update 'hackage.haskell.org,2026-01-03T05:41:55Z'
 
 packages:
   marlowe-plutus
+  libs/base16-aeson
+  libs/multiplate
+  -- libs/sqlite-simple
 
 tests: True
 
@@ -33,32 +44,50 @@ package marlowe-plutus
   ghc-options: -Werror
 
 
---Plutus 1.15.0 fork of https://github.com/Charli3-Official/oracle-datum-lib
 source-repository-package
-  type: git
-  location: https://github.com/bwbush/oracle-datum-lib
-  tag: 6a714c1319ddcd0443e108fc55988a781b940ea5
-  --sha256: 13rvagplrar30vzkhkixxf8bwkrkndcgj6cmm02wr54ab8rnvaz1
+   type: git
+   location: https://github.com/marlowe-lang/marlowe
+   tag: 2a5a03fbff15fd0469b89a65a56cc17e89be2acc
+   subdir: marlowe-spec-test
+           haskell
+           isabelle
+   --sha256: sha256-DmjFaROtuxyoVOOdTIYh28evqaa7ZbQyzkaJUTZMcxI=
 
--- Required for the Plutus 1.15.0.0 packages.
-constraints:
-  nothunks ==0.1.4
+
+-- --Plutus 1.15.0 fork of https://github.com/Charli3-Official/oracle-datum-lib
+-- source-repository-package
+--   type: git
+--   location: https://github.com/bwbush/oracle-datum-lib
+--   tag: 6a714c1319ddcd0443e108fc55988a781b940ea5
+--   --sha256: 13rvagplrar30vzkhkixxf8bwkrkndcgj6cmm02wr54ab8rnvaz1
+-- 
+-- -- Required for the Plutus 1.15.0.0 packages.
+-- constraints:
+--   nothunks ==0.1.4
 
 -- Required until PLT-8148 is merged to the main branch.
+-- source-repository-package
+--   type: git
+--   location: https://github.com/input-output-hk/marlowe
+--   tag: 2ecc4c79a23275ae083b40c6bf28f5127d2e5390
+--   --sha256: 0q6zasi052m2yxndpxx8lnb52wfqbf5ypi6nali1zjjgihz1nrqd
+--   subdir: isabelle
+--           haskell
+--           marlowe-spec-test
+
+-- source-repository-package
+--   type: git
+--   location: https://github.com/input-output-hk/marlowe-cardano
+--   tag: 99f432d8ef9dbd1b52b7fa089254de15913b490f
+--   --sha256: sha256-3uq9RRxwAOW3qQoMcKYWby/hvaMCpUaXrshg2vfgCmY
+--   subdir:
+--     marlowe
+--     marlowe-test
+--     libs/base16-aeson
+
+-- Currently this is the simplest way to get compilation working
 source-repository-package
   type: git
-  location: https://github.com/input-output-hk/marlowe
-  tag: 2ecc4c79a23275ae083b40c6bf28f5127d2e5390
-  --sha256: 0q6zasi052m2yxndpxx8lnb52wfqbf5ypi6nali1zjjgihz1nrqd
-  subdir: isabelle
-          haskell
-          marlowe-spec-test
-source-repository-package
-  type: git
-  location: https://github.com/input-output-hk/marlowe-cardano
-  tag: 5bec67bbecefc109ea7b47d0504f3bb7b9fba3aa
-  --sha256: 1cdwmi4c7x9fh2w4b6bxryy3h8fjfsyjhbk2vh4bfarq4yij4cyc
-  subdir:
-    marlowe
-    marlowe-test
-    libs/base16-aeson
+  location: https://github.com/palas/haskell-lmdb-mock.git
+  tag: c8d61e6eee03ee271e7768c0576110da885aec48
+  --sha256: sha256-+gB1MmM6qRApz1p7tFsdvKoAWDrYB4a+bJ9Djm6ieYI=

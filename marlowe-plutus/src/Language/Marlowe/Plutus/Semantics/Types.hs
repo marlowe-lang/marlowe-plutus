@@ -1,31 +1,15 @@
 {- FOURMOLU_DISABLE -}
 
-{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
 {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
 {-# OPTIONS_GHC -fno-omit-interface-pragmas #-}
 {-# OPTIONS_GHC -fno-specialise #-}
 {-# OPTIONS_GHC -fno-strictness #-}
+
+{-# OPTIONS_GHC -fobject-code #-}
 
 -- | Types for Marlowe semantics
 module Language.Marlowe.Plutus.Semantics.Types (
@@ -51,6 +35,7 @@ module Language.Marlowe.Plutus.Semantics.Types (
   IntervalResult (..),
   Observation (..),
   Party (..),
+  PartyString (..),
   Payee (..),
   State (..),
   Token (..),
@@ -62,42 +47,292 @@ module Language.Marlowe.Plutus.Semantics.Types (
   IntervalError (..),
 
   -- * Utility Functions
+  ada,
   emptyState,
   getAction,
   getInputContent,
   inBounds,
+  mkChoiceIdUtf8,
+  mkCurrencySymbolHex,
+  mkPartyAddressBech32,
+  mkRoleByteString,
+  mkRoleHex,
+  mkRoleUtf8,
+  mkTokenNameByteString,
+  mkTokenNameHex,
+  mkTokenNameUtf8,
+  mkValueIdUtf8,
+  mkValueIdHex,
+  unsafeMkCurrencySymbolHex,
+  unsafeMkPartyAddressBech32,
+  unsafeMkRoleHex,
+  unsafeMkTokenNameHex,
+
+  -- * Pattern synonyms
+  pattern LenientCurrencySymbolHex,
+  pattern LenientRoleHex,
+  pattern LenientTokeNameHex,
+  pattern PartyAddressBech32,
+  pattern RoleByteString,
+  pattern RoleUtf8,
+  pattern TokenNameByteString,
+  pattern TokenNameUtf8,
+  pattern UnsafeCurrencySymbolHex,
+  pattern UnsafePartyAddressBech32,
+  pattern UnsafeRoleHex,
+  pattern UnsafeTokenNameHex,
+
+  -- * Serialisation
+  fromJSONAssocMap,
+  parseInteger,
+  posixTimeFromJSON,
+  posixTimeToJSON,
+  toJSONAssocMap,
+  withInteger,
 ) where
 
+import PlutusTx.Prelude
+
+-- FIXME: Clone of AssocMap from PlutusTx which fixes
+-- missing INLINE pragmas
+import Language.Marlowe.Plutus.AssocMap (Map)
+import qualified Language.Marlowe.Plutus.AssocMap as Map
+
+import qualified Control.Applicative as H -- ((<*>), (<|>))
+import Control.DeepSeq (NFData)
 import Control.Newtype.Generics (Newtype)
-import Data.String (IsString (..))
-import GHC.Generics
-import Language.Marlowe.Plutus.Semantics.Types.Address
+import qualified Data.Aeson as A
+import qualified Data.Aeson as JSON
+import qualified Data.Aeson.KeyMap as KeyMap
+import Data.Aeson.Types hiding (Error, Value)
+import qualified Data.Aeson.Types as JSON
+import Data.ByteString (ByteString)
+import qualified Data.ByteString.Base16 as Base16
+import Data.ByteString.Base16.Aeson (EncodeBase16 (EncodeBase16))
+import qualified Data.ByteString.Base16.Aeson as Base16.Aeson
+import qualified Data.Char as Char
+import qualified Data.Foldable as F
+import Data.Scientific (floatingOrInteger, scientific, Scientific)
+import Data.String (String, IsString)
+import Data.Text (Text)
+import qualified Data.Text as Text
+import Data.Text.Encoding as Text (decodeUtf8, decodeUtf8', encodeUtf8)
+-- import qualified Deriving.Aeson as DAeson
+import qualified Language.Marlowe.Plutus.Semantics.Types.Address as Address
+-- import Language.Marlowe.Plutus.Pretty (Pretty (..))
 import qualified PlutusLedgerApi.V1.Value as Val
-import PlutusLedgerApi.V2 (CurrencySymbol (unCurrencySymbol), POSIXTime (..), TokenName (unTokenName))
+import PlutusLedgerApi.V2 (CurrencySymbol (CurrencySymbol, unCurrencySymbol), POSIXTime (..), TokenName (unTokenName))
 import qualified PlutusLedgerApi.V2 as Ledger (Address (..))
-import PlutusTx.AssocMap (Map)
-import qualified PlutusTx.AssocMap as Map
+
+import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringHex)
 import PlutusTx.Lift (makeLift)
-import PlutusTx.Prelude hiding (encodeUtf8, mapM, (<$>), (<*>), (<>))
-import qualified Prelude as Haskell
+import qualified PlutusTx.List as List
+import PlutusTx (makeIsDataIndexed)
+-- import Text.PrettyPrint.Leijen (parens, text)
+import qualified GHC.Generics as H (Generic)
+import qualified Prelude as H
 
 #ifdef ASDATA_CASE
 import Data.Data (Data)
-import PlutusTx (FromData, ToData, UnsafeFromData, makeIsDataIndexed)
 import PlutusTx.AsData (asData)
-#else
-import PlutusTx (makeIsDataIndexed)
+import GHC.Exts (IsString(fromString))
 #endif
 
 -- | A Party to a contractt.
 data Party
   = -- | Party identified by a network address.
-    Address Network Ledger.Address
+    Address Address.Network Ledger.Address
   | -- | Party identified by a role token name.
     Role TokenName
-  deriving stock (Generic, Haskell.Eq, Haskell.Ord, Haskell.Show)
+  deriving stock (H.Generic, H.Eq, H.Ord)
 
+-- Users can opt-in and use this newtype wrapper to
+-- automagically parse Party from String literals:
+-- let party = fromPartyString "addr1qxyz..."
+newtype PartyString = PartyString { fromPartyString :: Party }
+  deriving stock (H.Generic, H.Eq, H.Ord)
+
+instance IsString PartyString where
+  fromString s = case Address.deserialiseAddressBech32 $ Text.pack s of
+      Just (network, address) -> PartyString $ Address network address
+      Nothing -> PartyString $ Role . Val.TokenName . toBuiltin $ Text.encodeUtf8 . Text.pack $ s
+
+instance NFData Party
 makeIsDataIndexed ''Party [('Address, 0), ('Role, 1)]
+
+-- instance Pretty Party where
+--   prettyFragment (Address network address) = parens $ text "Address " H.<> prettyFragment (Address.serialiseAddressBech32 network address)
+--   prettyFragment (Role role) = parens $ text "Role " H.<> prettyFragment role
+
+instance H.Show Party where
+  showsPrec _ (Address network address) = H.showsPrec 11 $ H.show (Address.serialiseAddressBech32 network address)
+  showsPrec _ (Role role) = H.showsPrec 11 $ unTokenName role
+
+mkPartyAddressBech32 :: String -> H.Maybe Party
+mkPartyAddressBech32 s = do
+  (network, address) <- Address.deserialiseAddressBech32 $ Text.pack s
+  return $ Address network address
+
+unsafeMkPartyAddressBech32 :: String -> Party
+unsafeMkPartyAddressBech32 s =
+  case mkPartyAddressBech32 s of
+    H.Just party -> party
+    H.Nothing -> H.error $ "Invalid address: " H.++ s
+
+serialiseAddressBech32' :: Party -> H.Maybe Text
+serialiseAddressBech32' (Address net addr) = Just $ Address.serialiseAddressBech32 net addr
+serialiseAddressBech32' _ = Nothing
+
+-- Only pattern matching is safe.
+{-# COMPLETE PartyAddressBech32, RoleByteString #-}
+pattern PartyAddressBech32 :: String -> Party
+pattern PartyAddressBech32 str <- (fmap Text.unpack . serialiseAddressBech32' -> Just str)
+
+-- Actually the constructor here is unsafe.
+{-# COMPLETE UnsafePartyAddressBech32, RoleByteString #-}
+pattern UnsafePartyAddressBech32 :: String -> Party
+pattern UnsafePartyAddressBech32 str <- (fmap Text.unpack . serialiseAddressBech32' -> Just str)
+  where
+    UnsafePartyAddressBech32 = unsafeMkPartyAddressBech32
+
+fromBuiltinByteStringToHex :: BuiltinByteString -> String
+fromBuiltinByteStringToHex = Text.unpack . Text.decodeUtf8 . Base16.encode . fromBuiltin
+
+fromBuiltinByteStringToUtf8 :: BuiltinByteString -> Maybe String
+fromBuiltinByteStringToUtf8 (fromBuiltin -> bs) =
+  case Text.decodeUtf8' bs of
+    Left _ -> Nothing
+    Right txt -> Just $ Text.unpack txt
+
+-- Useful helpers which decode a literal using
+-- `Text` or `ByteString` instances for `IsString`.
+-- Example: "café" is encoded as 5 bytes (0x 63 61 66 C3 A9)
+mkRoleUtf8 :: String -> Party
+mkRoleUtf8 = Role . mkTokenNameUtf8
+
+-- Example: "café" is encoded as 4 bytes (0x 63 61 66 E9)
+-- because the over 255 value C3 is replaced by single E9 byte.
+-- On the other hand you can control the exact bytes using escape
+-- codes.
+mkRoleByteString :: ByteString -> Party
+mkRoleByteString = Role . mkTokenNameByteString
+
+-- You can be exact and use this constructor instead:
+-- `roleHex "636166E9"`  or `roleHex "636166C3A9"`
+mkRoleHex :: String -> H.Maybe Party
+mkRoleHex str = Role H.<$> mkTokenNameHex str
+
+unsafeMkRoleHex :: String -> Party
+unsafeMkRoleHex = Role . unsafeMkTokenNameHex
+
+pattern RoleUtf8 :: String -> Party
+pattern RoleUtf8 name <- Role (TokenNameUtf8 name)
+  where
+    RoleUtf8 name = Role (mkTokenNameUtf8 name)
+
+pattern RoleByteString :: ByteString -> Party
+pattern RoleByteString bs <- Role (TokenNameByteString bs)
+  where
+    RoleByteString bs = Role (mkTokenNameByteString bs)
+
+-- Actually the constructor is unsafe here
+{-# COMPLETE UnsafeRoleHex #-}
+pattern UnsafeRoleHex :: String -> Party
+pattern UnsafeRoleHex hexStr <- Role (UnsafeTokenNameHex hexStr)
+  where
+    UnsafeRoleHex hexStr = Role (unsafeMkTokenNameHex hexStr)
+
+{-# COMPLETE LenientRoleHex #-}
+pattern LenientRoleHex :: String -> Party
+pattern LenientRoleHex hexStr <- Role (LenientTokeNameHex hexStr)
+  where
+    LenientRoleHex hexStr = Role (LenientTokeNameHex hexStr)
+
+mkTokenNameUtf8 :: String -> Val.TokenName
+mkTokenNameUtf8 = Val.TokenName . toBuiltin . Text.encodeUtf8 . Text.pack
+
+-- FIXME: This should validate the length of the token name and return Maybe
+-- Cardano maximum token name length is 32 bytes
+mkTokenNameByteString :: ByteString -> Val.TokenName
+mkTokenNameByteString = Val.TokenName . toBuiltin
+
+mkTokenNameHex :: String -> Maybe Val.TokenName
+mkTokenNameHex str
+  | List.all Char.isHexDigit str = Just . Val.TokenName . stringToBuiltinByteStringHex $ str
+  | otherwise = Nothing
+
+unsafeMkTokenNameHex :: String -> Val.TokenName
+unsafeMkTokenNameHex str =
+  case mkTokenNameHex str of
+    Just tn -> tn
+    Nothing -> H.error $ "Invalid hex string for TokenName: " H.++ str
+
+-- This partial is tracked by the compiler
+pattern TokenNameUtf8 :: String -> Val.TokenName
+pattern TokenNameUtf8 txt <- Val.TokenName (fromBuiltinByteStringToUtf8 -> Just txt)
+  where
+    TokenNameUtf8 = Val.TokenName . toBuiltin . Text.encodeUtf8 . Text.pack
+
+{-# COMPLETE TokenNameByteString #-}
+pattern TokenNameByteString :: ByteString -> Val.TokenName
+pattern TokenNameByteString bs <- Val.TokenName (fromBuiltin -> bs)
+  where
+    TokenNameByteString bs = Val.TokenName (toBuiltin bs)
+
+-- Actually the constructor here is unsafe.
+{-# COMPLETE UnsafeTokenNameHex #-}
+pattern UnsafeTokenNameHex :: String -> Val.TokenName
+pattern UnsafeTokenNameHex hexStr <- Val.TokenName (fromBuiltinByteStringToHex -> hexStr)
+  where
+    UnsafeTokenNameHex hexStr = unsafeMkTokenNameHex hexStr
+
+{-# COMPLETE LenientTokeNameHex #-}
+pattern LenientTokeNameHex :: String -> Val.TokenName
+pattern LenientTokeNameHex hexStr <- UnsafeTokenNameHex hexStr
+  where
+    LenientTokeNameHex = Val.TokenName . stringToBuiltinByteStringHex
+
+mkCurrencySymbolHex :: String -> Maybe Val.CurrencySymbol
+mkCurrencySymbolHex str
+  | List.all Char.isHexDigit str = Just . Val.CurrencySymbol . stringToBuiltinByteStringHex $ str
+  | otherwise = Nothing
+
+unsafeMkCurrencySymbolHex :: String -> Val.CurrencySymbol
+unsafeMkCurrencySymbolHex str =
+  case mkCurrencySymbolHex str of
+    Just cs -> cs
+    Nothing -> H.error $ "Invalid hex string for CurrencySymbol: " H.++ str
+
+-- Actually the constructor here is unsafe.
+{-# COMPLETE UnsafeCurrencySymbolHex #-}
+pattern UnsafeCurrencySymbolHex :: String -> Val.CurrencySymbol
+pattern UnsafeCurrencySymbolHex hexStr <- CurrencySymbol (fromBuiltinByteStringToHex -> hexStr)
+  where
+    UnsafeCurrencySymbolHex = unsafeMkCurrencySymbolHex
+
+{-# COMPLETE LenientCurrencySymbolHex #-}
+pattern LenientCurrencySymbolHex :: String -> Val.CurrencySymbol
+pattern LenientCurrencySymbolHex hexStr <- Val.CurrencySymbol (fromBuiltinByteStringToHex -> hexStr)
+  where
+    LenientCurrencySymbolHex = Val.CurrencySymbol . stringToBuiltinByteStringHex
+
+-- | Token - represents a currency or token, it groups
+--   a pair of a currency symbol and token name.
+data Token = Token CurrencySymbol TokenName
+  deriving stock (H.Generic, H.Eq, H.Ord)
+  -- deriving anyclass (Pretty)
+
+instance NFData Token
+makeIsDataIndexed ''Token [('Token, 0)]
+
+ada :: Token
+ada = Token Val.adaSymbol Val.adaToken
+
+instance H.Show Token where
+  showsPrec p (Token cs tn) =
+    H.showParen
+      (p H.>= 11)
+      (H.showString $ "Token \"" H.++ H.show cs H.++ "\" " H.++ H.show tn)
 
 -- | A party's internal account in a contract.
 type AccountId = Party
@@ -117,37 +352,39 @@ type ChosenNum = Integer
 -- | The time validity range for a Marlowe transaction, inclusive of both endpoints.
 type TimeInterval = (POSIXTime, POSIXTime)
 
--- | Token - represents a currency or token, it groups
---   a pair of a currency symbol and token name.
-data Token = Token CurrencySymbol TokenName
-  deriving stock (Generic, Haskell.Eq, Haskell.Ord)
-
-makeIsDataIndexed ''Token [('Token, 0)]
-
 -- | The accounts in a contract.
 type Accounts = Map (AccountId, Token) Integer
 
 -- | Choices – of integers – are identified by ChoiceId which combines a name for
 -- the choice with the Party who had made the choice.
 data ChoiceId = ChoiceId BuiltinByteString Party
-  deriving stock (Haskell.Show, Generic, Haskell.Eq, Haskell.Ord)
+  deriving stock (H.Show, H.Generic, H.Eq, H.Ord)
+  -- deriving anyclass (Pretty)
 
+mkChoiceIdUtf8 :: String -> Party -> ChoiceId
+mkChoiceIdUtf8 name = ChoiceId (toBuiltin $ Text.encodeUtf8 $ Text.pack name)
+
+instance NFData ChoiceId
 makeIsDataIndexed ''ChoiceId [('ChoiceId, 0)]
-
-instance Haskell.Show Token where
-  showsPrec p (Token cs tn) =
-    Haskell.showParen
-      (p Haskell.>= 11)
-      (Haskell.showString $ "Token \"" Haskell.++ Haskell.show cs Haskell.++ "\" " Haskell.++ Haskell.show tn)
 
 -- | Values, as defined using Let ar e identified by name,
 --   and can be used by 'UseValue' construct.
 newtype ValueId = ValueId BuiltinByteString
-  deriving (IsString, Haskell.Show) via TokenName
-  deriving stock (Haskell.Eq, Haskell.Ord, Generic)
+  deriving (H.Show) via TokenName
+  deriving stock (H.Eq, H.Ord, H.Generic)
   deriving anyclass (Newtype)
 
+instance NFData ValueId
 makeIsDataIndexed ''ValueId [('ValueId, 0)]
+
+-- instance Pretty ValueId where
+--   prettyFragment (ValueId n) = prettyFragment n
+
+mkValueIdHex :: String -> ValueId
+mkValueIdHex = ValueId . stringToBuiltinByteStringHex
+
+mkValueIdUtf8 :: String -> ValueId
+mkValueIdUtf8 = ValueId . toBuiltin . Text.encodeUtf8 . Text.pack
 
 -- | Values include some quantities that change with time,
 --   including “the time interval”, “the current balance of an account”,
@@ -167,8 +404,10 @@ data Value a
   | TimeIntervalEnd
   | UseValue ValueId
   | Cond a (Value a) (Value a)
-  deriving stock (Haskell.Show, Generic, Haskell.Eq, Haskell.Ord)
+  deriving stock (H.Show, H.Generic, H.Eq, H.Ord)
+  -- deriving anyclass (Pretty)
 
+instance (NFData a) => NFData (Value a)
 makeIsDataIndexed
   ''Value
   [ ('AvailableMoney, 0)
@@ -202,8 +441,10 @@ data Observation
   | ValueEQ (Value Observation) (Value Observation)
   | TrueObs
   | FalseObs
-  deriving stock (Haskell.Show, Generic, Haskell.Eq, Haskell.Ord)
+  deriving stock (H.Show, H.Generic, H.Eq, H.Ord)
+  -- deriving anyclass (Pretty)
 
+instance NFData Observation
 makeIsDataIndexed
   ''Observation
   [ ('AndObs, 0)
@@ -221,8 +462,10 @@ makeIsDataIndexed
 
 -- | The (inclusive) bound on a choice number.
 data Bound = Bound Integer Integer
-  deriving stock (Haskell.Show, Generic, Haskell.Eq, Haskell.Ord)
+  deriving stock (H.Show, H.Generic, H.Eq, H.Ord)
+  -- deriving anyclass (Pretty)
 
+instance NFData Bound
 makeIsDataIndexed ''Bound [('Bound, 0)]
 
 -- | Actions happen at particular points during execution.
@@ -240,9 +483,11 @@ data Action
   = Deposit AccountId Party Token (Value Observation)
   | Choice ChoiceId [Bound]
   | Notify Observation
-  deriving stock (Haskell.Show, Generic, Haskell.Eq, Haskell.Ord)
+  deriving stock (H.Show, H.Generic, H.Eq, H.Ord)
+  -- deriving anyclass (Pretty)
 
 makeIsDataIndexed ''Action [('Deposit, 0), ('Choice, 1), ('Notify, 2)]
+instance NFData Action
 
 -- | A payment can be made to one of the parties to the contract,
 --   or to one of the accounts of the contract,
@@ -250,23 +495,27 @@ makeIsDataIndexed ''Action [('Deposit, 0), ('Choice, 1), ('Notify, 2)]
 data Payee
   = Account AccountId
   | Party Party
-  deriving stock (Haskell.Show, Generic, Haskell.Eq, Haskell.Ord)
+  deriving stock (H.Show, H.Generic, H.Eq, H.Ord)
+  -- deriving anyclass (Pretty)
 
+instance NFData Payee
 makeIsDataIndexed ''Payee [('Account, 0), ('Party, 1)]
 
 #ifdef ASDATA_CASE
-
 asData
   [d|
     data Case a
       = Case Action a
       | MerkleizedCase Action BuiltinByteString
-      deriving stock (Generic, Data)
-      deriving newtype (ToData, FromData, UnsafeFromData, Haskell.Eq, Haskell.Ord, Haskell.Show)
+      deriving stock (Data, H.Generic)
+      deriving newtype (H.Eq, H.Ord, H.Show)
+      -- deriving anyclass (Pretty)
     |]
 
+deriving newtype instance FromData (Case a)
+deriving newtype instance ToData (Case a)
+deriving newtype instance UnsafeFromData (Case a)
 #else
-
 -- | A case is a branch of a when clause, guarded by an action.
 --   The continuation of the contract may be merkleized or not.
 --
@@ -275,11 +524,13 @@ asData
 data Case a
   = Case Action a
   | MerkleizedCase Action BuiltinByteString
-  deriving stock (Haskell.Show, Generic, Haskell.Eq, Haskell.Ord)
+  deriving stock (H.Show, H.Generic, H.Eq, H.Ord)
+  -- deriving anyclass (Pretty)
 
 makeIsDataIndexed ''Case [('Case, 0), ('MerkleizedCase, 1)]
-
 #endif
+
+instance (NFData a) => NFData (Case a)
 
 -- | Extract the @Action@ from a @Case@.
 #ifdef ASDATA_CASE
@@ -304,8 +555,10 @@ data Contract
   | When [Case Contract] Timeout Contract
   | Let ValueId (Value Observation) Contract
   | Assert Observation Contract
-  deriving stock (Haskell.Show, Generic, Haskell.Eq, Haskell.Ord)
+  deriving stock (H.Show, H.Generic, H.Eq, H.Ord)
+  -- deriving anyclass (Pretty)
 
+instance NFData Contract
 makeIsDataIndexed
   ''Contract
   [ ('Close, 0)
@@ -323,37 +576,130 @@ data State = State
   , boundValues :: Map ValueId Integer
   , minTime :: POSIXTime
   }
-  deriving stock (Haskell.Show, Haskell.Eq, Generic)
+  deriving stock (H.Show, H.Eq, H.Generic)
 
+instance NFData State
 makeIsDataIndexed ''State [('State, 0)]
 
 -- | Execution environment. Contains a time interval of a transaction.
 newtype Environment = Environment {timeInterval :: TimeInterval}
-  deriving stock (Haskell.Show, Haskell.Eq, Haskell.Ord)
+  deriving stock (H.Show, H.Eq, H.Ord)
+
+-- | Parse a JSON value as time.
+posixTimeFromJSON :: JSON.Value -> Parser POSIXTime
+posixTimeFromJSON = \case
+  v@(JSON.Number n) ->
+    either
+      (\_ -> JSON.prependFailure "parsing POSIXTime failed, " (JSON.typeMismatch "Integer" v))
+      (return . POSIXTime)
+      (floatingOrInteger n :: Either H.Double Integer)
+  invalid ->
+    JSON.prependFailure "parsing POSIXTime failed, " (JSON.typeMismatch "Number" invalid)
+
+posixIntervalFromJSON :: A.Object -> Parser TimeInterval
+posixIntervalFromJSON o = (,) H.<$> (posixTimeFromJSON =<< o .: "from") H.<*> (posixTimeFromJSON =<< o .: "to")
+
+-- | Serialise time as a JSON value.
+posixTimeToJSON :: POSIXTime -> JSON.Value
+posixTimeToJSON (POSIXTime n) = JSON.Number $ scientific n 0
+
+posixIntervalToJSON :: TimeInterval -> JSON.Value
+posixIntervalToJSON (from, to) =
+  object
+    [ "from" .= posixTimeToJSON from
+    , "to" .= posixTimeToJSON to
+    ]
+
+instance FromJSON Environment where
+  parseJSON =
+    withObject
+      "Environment"
+      (\v -> Environment H.<$> (posixIntervalFromJSON =<< v .: "timeInterval"))
+
+instance ToJSON Environment where
+  toJSON Environment{..} =
+    object
+      ["timeInterval" .= posixIntervalToJSON timeInterval]
 
 -- | Input for a Marlowe contract. Correspond to expected 'Action's.
 data InputContent
   = IDeposit AccountId Party Token Integer
   | IChoice ChoiceId ChosenNum
   | INotify
-  deriving stock (Haskell.Show, Haskell.Eq, Generic)
+  deriving stock (H.Show, H.Eq, H.Generic)
+  -- deriving anyclass (Pretty)
 
+instance NFData InputContent
 makeIsDataIndexed ''InputContent [('IDeposit, 0), ('IChoice, 1), ('INotify, 2)]
+
+instance FromJSON InputContent where
+  parseJSON (String "input_notify") = return INotify
+  parseJSON (Object v) =
+    IChoice
+      H.<$> v .: "for_choice_id"
+      H.<*> v .: "input_that_chooses_num"
+      H.<|> IDeposit
+        H.<$> v .: "into_account"
+        H.<*> v .: "input_from_party"
+        H.<*> v .: "of_token"
+        H.<*> v .: "that_deposits"
+  parseJSON _ = H.fail "Input must be either an object or the string \"input_notify\""
+
+instance ToJSON InputContent where
+  toJSON (IDeposit accId party tok amount) =
+    object
+      [ "input_from_party" .= party
+      , "that_deposits" .= amount
+      , "of_token" .= tok
+      , "into_account" .= accId
+      ]
+  toJSON (IChoice choiceId chosenNum) =
+    object
+      [ "input_that_chooses_num" .= chosenNum
+      , "for_choice_id" .= choiceId
+      ]
+  toJSON INotify = JSON.String $ Text.pack "input_notify"
 
 -- | Input to a contract, which may include the merkleized continuation
 --   of the contract and its hash.
 data Input
   = NormalInput InputContent
   | MerkleizedInput InputContent BuiltinByteString Contract
-  deriving stock (Haskell.Show, Haskell.Eq, Generic)
+  deriving stock (H.Show, H.Eq, H.Generic)
+  -- deriving anyclass (Pretty)
 
-makeIsDataIndexed ''Input [('NormalInput, 0), ('MerkleizedInput, 1)]
+instance NFData Input
 
+instance FromJSON Input where
+  parseJSON (String s) = NormalInput H.<$> parseJSON (String s)
+  parseJSON (Object v) = do
+    let parseContinuationHash = do
+          h <- v .: "continuation_hash"
+          EncodeBase16 bs <- parseJSON h
+          return $ toBuiltin bs
+    MerkleizedInput H.<$> parseJSON (Object v) H.<*> parseContinuationHash H.<*> v .: "merkleized_continuation"
+      H.<|> MerkleizedInput INotify H.<$> parseContinuationHash H.<*> v .: "merkleized_continuation"
+      H.<|> NormalInput H.<$> parseJSON (Object v)
+  parseJSON _ = H.fail "Input must be either an object or the string \"input_notify\""
+
+instance ToJSON Input where
+  toJSON (NormalInput content) = toJSON content
+  toJSON (MerkleizedInput content hash continuation) =
+    let obj = case toJSON content of
+          Object o -> o
+          _ -> KeyMap.empty
+     in Object
+          $ obj
+          `KeyMap.union` KeyMap.fromList
+            [ ("merkleized_continuation", toJSON continuation)
+            , ("continuation_hash", toJSON $ EncodeBase16 $ fromBuiltin hash)
+            ]
+
+{-# INLINEABLE getInputContent #-}
 -- | Extract the content of input.
 getInputContent :: Input -> InputContent
 getInputContent (NormalInput inputContent) = inputContent
 getInputContent (MerkleizedInput inputContent _ _) = inputContent
-{-# INLINEABLE getInputContent #-}
 
 -- | Time interval errors.
 --   'InvalidInterval' means @slotStart > slotEnd@, and
@@ -363,14 +709,51 @@ getInputContent (MerkleizedInput inputContent _ _) = inputContent
 data IntervalError
   = InvalidInterval TimeInterval
   | IntervalInPastError POSIXTime TimeInterval
-  deriving stock (Haskell.Show, Generic, Haskell.Eq)
+  deriving stock (H.Show, H.Generic, H.Eq)
+
+instance NFData IntervalError
+
+instance ToJSON IntervalError where
+  toJSON (InvalidInterval (s, e)) =
+    A.object
+      [("invalidInterval", A.object [("from", posixTimeToJSON s), ("to", posixTimeToJSON e)])]
+  toJSON (IntervalInPastError t (s, e)) =
+    A.object
+      [
+        ( "intervalInPastError"
+        , A.object [("minTime", posixTimeToJSON t), ("from", posixTimeToJSON s), ("to", posixTimeToJSON e)]
+        )
+      ]
+
+instance FromJSON IntervalError where
+  parseJSON (JSON.Object v) =
+    let parseInvalidInterval = do
+          o <- v .: "invalidInterval"
+          InvalidInterval H.<$> posixIntervalFromJSON o
+        parseIntervalInPastError = do
+          o <- v .: "intervalInPastError"
+          IntervalInPastError
+            H.<$> (posixTimeFromJSON =<< o .: "minTime")
+            H.<*> posixIntervalFromJSON o
+     in parseIntervalInPastError H.<|> parseInvalidInterval
+  parseJSON invalid =
+    JSON.prependFailure "parsing IntervalError failed, " (JSON.typeMismatch "Object" invalid)
 
 -- | Result of 'fixInterval'
 data IntervalResult
   = IntervalTrimmed Environment State
   | IntervalError IntervalError
-  deriving stock (Haskell.Show)
+  deriving stock (H.Show)
 
+parseInteger :: String -> Scientific -> Parser Integer
+parseInteger ctx x = case (floatingOrInteger x :: Either H.Double Integer) of
+  Right a -> return a
+  Left _ -> H.fail $ "parsing " H.++ ctx H.++ " failed, expected integer, but encountered floating point"
+
+withInteger :: String -> JSON.Value -> Parser Integer
+withInteger ctx = withScientific ctx $ parseInteger ctx
+
+{-# INLINEABLE emptyState #-}
 -- | Empty State for a given minimal 'POSIXTime'
 emptyState :: POSIXTime -> State
 emptyState sn =
@@ -380,12 +763,427 @@ emptyState sn =
     , boundValues = Map.empty
     , minTime = sn
     }
-{-# INLINEABLE emptyState #-}
 
+{-# INLINEABLE inBounds #-}
 -- | Check if a 'num' is within a list of inclusive bounds.
 inBounds :: ChosenNum -> [Bound] -> Bool
-inBounds num = any (\(Bound l u) -> num >= l && num <= u)
-{-# INLINEABLE inBounds #-}
+inBounds num = List.any (\(Bound l u) -> num >= l && num <= u)
+
+instance FromJSON State where
+  parseJSON =
+    withObject
+      "State"
+      ( \v ->
+          State
+            H.<$> (v .: "accounts" >>= fromJSONAssocMap)
+            H.<*> (v .: "choices" >>= fromJSONAssocMap)
+            H.<*> (v .: "boundValues" >>= fromJSONAssocMap)
+            H.<*> (POSIXTime H.<$> (withInteger "minTime" =<< (v .: "minTime")))
+      )
+instance ToJSON State where
+  toJSON
+    State
+      { accounts = a
+      , choices = c
+      , boundValues = bv
+      , minTime = POSIXTime ms
+      } =
+      object
+        [ "accounts" .= toJSONAssocMap a
+        , "choices" .= toJSONAssocMap c
+        , "boundValues" .= toJSONAssocMap bv
+        , "minTime" .= ms
+        ]
+
+-- | Serialise an association list to JSON.
+toJSONAssocMap :: (ToJSON k) => (ToJSON v) => Map k v -> JSON.Value
+toJSONAssocMap = toJSON . Map.toList
+
+-- | Parse an association list from JSON.
+fromJSONAssocMap :: (FromJSON k) => (FromJSON v) => JSON.Value -> JSON.Parser (Map k v)
+fromJSONAssocMap v = Map.unsafeFromList H.<$> parseJSON v
+
+instance FromJSON Party where
+  parseJSON = withObject "Party" $ \v ->
+    (maybe (parseFail "Address") (return . uncurry Address) . Address.deserialiseAddressBech32 =<< (v .: "address"))
+      H.<|> (Role . Val.tokenName . Text.encodeUtf8 H.<$> (v .: "role_token"))
+
+instance ToJSON Party where
+  toJSON (Address network address) =
+    object
+      ["address" .= Address.serialiseAddressBech32 network address]
+  toJSON (Role (Val.TokenName name)) =
+    object
+      ["role_token" .= (JSON.String $ Text.decodeUtf8 $ fromBuiltin name)]
+
+instance ToJSONKey ChoiceId where
+  toJSONKey = JSON.ToJSONKeyValue toJSON JSON.toEncoding
+
+instance FromJSONKey ChoiceId where
+  fromJSONKey = JSON.FromJSONKeyValue parseJSON
+
+instance FromJSON ChoiceId where
+  parseJSON =
+    withObject
+      "ChoiceId"
+      ( \v ->
+          ChoiceId . toBuiltin . Text.encodeUtf8
+            H.<$> (v .: "choice_name")
+            H.<*> (v .: "choice_owner")
+      )
+
+instance ToJSON ChoiceId where
+  toJSON (ChoiceId name party) =
+    object
+      [ "choice_name" .= (JSON.String $ Text.decodeUtf8 $ fromBuiltin name)
+      , "choice_owner" .= party
+      ]
+
+instance FromJSON Token where
+  parseJSON =
+    withObject
+      "Token"
+      ( \v ->
+          Token
+            H.<$> do
+              cs <- v .: "currency_symbol"
+              EncodeBase16 bs <- parseJSON cs
+              return $ Val.currencySymbol bs
+            H.<*> (Val.tokenName . Text.encodeUtf8 H.<$> (v .: "token_name"))
+      )
+
+instance ToJSON Token where
+  toJSON (Token currSym tokName) =
+    object
+      [ "currency_symbol" .= (toJSON $ EncodeBase16 $ fromBuiltin $ unCurrencySymbol currSym)
+      , "token_name" .= (JSON.String $ Text.decodeUtf8 $ fromBuiltin $ unTokenName tokName)
+      ]
+
+instance FromJSON ValueId where
+  parseJSON = withText "ValueId" $ return . ValueId . toBuiltin . Text.encodeUtf8
+
+instance ToJSON ValueId where
+  toJSON (ValueId x) = JSON.String (Text.decodeUtf8 $ fromBuiltin x)
+
+instance FromJSON (Value Observation) where
+  parseJSON (Object v) =
+    ( AvailableMoney
+        H.<$> (v .: "in_account")
+        H.<*> (v .: "amount_of_token")
+    )
+      H.<|> (NegValue H.<$> (v .: "negate"))
+      H.<|> ( AddValue
+              H.<$> (v .: "add")
+              H.<*> (v .: "and")
+          )
+      H.<|> ( SubValue
+              H.<$> (v .: "value")
+              H.<*> (v .: "minus")
+          )
+      H.<|> ( MulValue
+              H.<$> (v .: "multiply")
+              H.<*> (v .: "times")
+          )
+      H.<|> (DivValue H.<$> (v .: "divide") H.<*> (v .: "by"))
+      H.<|> (ChoiceValue H.<$> (v .: "value_of_choice"))
+      H.<|> (UseValue H.<$> (v .: "use_value"))
+      H.<|> ( Cond
+              H.<$> (v .: "if")
+              H.<*> (v .: "then")
+              H.<*> (v .: "else")
+          )
+  parseJSON (String "time_interval_start") = return TimeIntervalStart
+  parseJSON (String "time_interval_end") = return TimeIntervalEnd
+  parseJSON (Number n) = Constant H.<$> parseInteger "constant value" n
+  parseJSON _ = H.fail "Value must be either an object or an integer"
+
+instance ToJSON (Value Observation) where
+  toJSON (AvailableMoney accountId token) =
+    object
+      [ "amount_of_token" .= token
+      , "in_account" .= accountId
+      ]
+  toJSON (Constant x) = toJSON x
+  toJSON (NegValue x) =
+    object
+      ["negate" .= x]
+  toJSON (AddValue lhs rhs) =
+    object
+      [ "add" .= lhs
+      , "and" .= rhs
+      ]
+  toJSON (SubValue lhs rhs) =
+    object
+      [ "value" .= lhs
+      , "minus" .= rhs
+      ]
+  toJSON (MulValue lhs rhs) =
+    object
+      [ "multiply" .= lhs
+      , "times" .= rhs
+      ]
+  toJSON (DivValue lhs rhs) =
+    object
+      [ "divide" .= lhs
+      , "by" .= rhs
+      ]
+  toJSON (ChoiceValue choiceId) =
+    object
+      ["value_of_choice" .= choiceId]
+  toJSON TimeIntervalStart = JSON.String $ Text.pack "time_interval_start"
+  toJSON TimeIntervalEnd = JSON.String $ Text.pack "time_interval_end"
+  toJSON (UseValue valueId) =
+    object
+      ["use_value" .= valueId]
+  toJSON (Cond obs tv ev) =
+    object
+      [ "if" .= obs
+      , "then" .= tv
+      , "else" .= ev
+      ]
+
+instance FromJSON Observation where
+  parseJSON (Bool True) = return TrueObs
+  parseJSON (Bool False) = return FalseObs
+  parseJSON (Object v) =
+    ( AndObs
+        H.<$> (v .: "both")
+        H.<*> (v .: "and")
+    )
+      H.<|> ( OrObs
+              H.<$> (v .: "either")
+              H.<*> (v .: "or")
+          )
+      H.<|> (NotObs H.<$> (v .: "not"))
+      H.<|> (ChoseSomething H.<$> (v .: "chose_something_for"))
+      H.<|> ( ValueGE
+              H.<$> (v .: "value")
+              H.<*> (v .: "ge_than")
+          )
+      H.<|> ( ValueGT
+              H.<$> (v .: "value")
+              H.<*> (v .: "gt")
+          )
+      H.<|> ( ValueLT
+              H.<$> (v .: "value")
+              H.<*> (v .: "lt")
+          )
+      H.<|> ( ValueLE
+              H.<$> (v .: "value")
+              H.<*> (v .: "le_than")
+          )
+      H.<|> ( ValueEQ
+              H.<$> (v .: "value")
+              H.<*> (v .: "equal_to")
+          )
+  parseJSON _ = H.fail "Observation must be either an object or a boolean"
+
+instance ToJSON Observation where
+  toJSON (AndObs lhs rhs) =
+    object
+      [ "both" .= lhs
+      , "and" .= rhs
+      ]
+  toJSON (OrObs lhs rhs) =
+    object
+      [ "either" .= lhs
+      , "or" .= rhs
+      ]
+  toJSON (NotObs v) =
+    object
+      ["not" .= v]
+  toJSON (ChoseSomething choiceId) =
+    object
+      ["chose_something_for" .= choiceId]
+  toJSON (ValueGE lhs rhs) =
+    object
+      [ "value" .= lhs
+      , "ge_than" .= rhs
+      ]
+  toJSON (ValueGT lhs rhs) =
+    object
+      [ "value" .= lhs
+      , "gt" .= rhs
+      ]
+  toJSON (ValueLT lhs rhs) =
+    object
+      [ "value" .= lhs
+      , "lt" .= rhs
+      ]
+  toJSON (ValueLE lhs rhs) =
+    object
+      [ "value" .= lhs
+      , "le_than" .= rhs
+      ]
+  toJSON (ValueEQ lhs rhs) =
+    object
+      [ "value" .= lhs
+      , "equal_to" .= rhs
+      ]
+  toJSON TrueObs = toJSON True
+  toJSON FalseObs = toJSON False
+
+instance FromJSON Bound where
+  parseJSON =
+    withObject
+      "Bound"
+      ( \v ->
+          Bound
+            H.<$> (parseInteger "lower bound" =<< (v .: "from"))
+            H.<*> (parseInteger "higher bound" =<< (v .: "to"))
+      )
+instance ToJSON Bound where
+  toJSON (Bound from to) =
+    object
+      [ "from" .= from
+      , "to" .= to
+      ]
+
+instance FromJSON Action where
+  parseJSON =
+    withObject
+      "Action"
+      ( \v ->
+          ( Deposit
+              H.<$> (v .: "into_account")
+              H.<*> (v .: "party")
+              H.<*> (v .: "of_token")
+              H.<*> (v .: "deposits")
+          )
+            H.<|> ( Choice
+                    H.<$> (v .: "for_choice")
+                    H.<*> ( (v .: "choose_between")
+                            >>= withArray
+                              "Bound list"
+                              ( \bl ->
+                                  H.mapM parseJSON (F.toList bl)
+                              )
+                        )
+                )
+            H.<|> (Notify H.<$> (v .: "notify_if"))
+      )
+instance ToJSON Action where
+  toJSON (Deposit accountId party token val) =
+    object
+      [ "into_account" .= accountId
+      , "party" .= party
+      , "of_token" .= token
+      , "deposits" .= val
+      ]
+  toJSON (Choice choiceId bounds) =
+    object
+      [ "for_choice" .= choiceId
+      , "choose_between" .= toJSONList (H.map toJSON bounds)
+      ]
+  toJSON (Notify obs) =
+    object
+      ["notify_if" .= obs]
+
+instance FromJSON Payee where
+  parseJSON =
+    withObject
+      "Payee"
+      ( \v ->
+          (Account H.<$> (v .: "account"))
+            H.<|> (Party H.<$> (v .: "party"))
+      )
+
+instance ToJSON Payee where
+  toJSON (Account acc) = object ["account" .= acc]
+  toJSON (Party party) = object ["party" .= party]
+
+instance (FromJSON a, ToData a, UnsafeFromData a) => FromJSON (Case a) where
+  parseJSON = withObject "Case" \v ->
+    Case H.<$> (v .: "case") H.<*> (v .: "then")
+      H.<|> MerkleizedCase
+        H.<$> v .: "case"
+        H.<*> do
+          mt <- v .: "merkleized_then"
+          EncodeBase16 bs <- parseJSON mt
+          return $ toBuiltin bs
+
+instance (ToJSON a, ToData a, UnsafeFromData a) => ToJSON (Case a) where
+  toJSON (Case act cont) =
+    object
+      [ "case" .= act
+      , "then" .= cont
+      ]
+  toJSON (MerkleizedCase act bs) =
+    object
+      [ "case" .= act
+      , "merkleized_then" .= (Base16.Aeson.byteStringToJSON $ fromBuiltin bs)
+      ]
+
+instance FromJSON Contract where
+  parseJSON (String "close") = return Close
+  parseJSON (Object v) =
+    ( Pay
+        H.<$> (v .: "from_account")
+        H.<*> (v .: "to")
+        H.<*> (v .: "token")
+        H.<*> (v .: "pay")
+        H.<*> (v .: "then")
+    )
+      H.<|> ( If
+              H.<$> (v .: "if")
+              H.<*> (v .: "then")
+              H.<*> (v .: "else")
+          )
+      H.<|> ( When
+              H.<$> ( (v .: "when")
+                        >>= withArray
+                          "Case list"
+                          ( \cl ->
+                              H.mapM parseJSON (F.toList cl)
+                          )
+                    )
+              H.<*> (POSIXTime H.<$> (withInteger "when timeout" =<< (v .: "timeout")))
+              H.<*> (v .: "timeout_continuation")
+          )
+      H.<|> ( Let
+              H.<$> (v .: "let")
+              H.<*> (v .: "be")
+              H.<*> (v .: "then")
+          )
+      H.<|> ( Assert
+              H.<$> (v .: "assert")
+              H.<*> (v .: "then")
+          )
+  parseJSON _ = H.fail "Contract must be either an object or a the string \"close\""
+
+instance ToJSON Contract where
+  toJSON Close = JSON.String $ Text.pack "close"
+  toJSON (Pay accountId payee token value contract) =
+    object
+      [ "from_account" .= accountId
+      , "to" .= payee
+      , "token" .= token
+      , "pay" .= value
+      , "then" .= contract
+      ]
+  toJSON (If obs cont1 cont2) =
+    object
+      [ "if" .= obs
+      , "then" .= cont1
+      , "else" .= cont2
+      ]
+  toJSON (When caseList timeout cont) =
+    object
+      [ "when" .= toJSONList (H.map toJSON caseList)
+      , "timeout" .= getPOSIXTime timeout
+      , "timeout_continuation" .= cont
+      ]
+  toJSON (Let valId value cont) =
+    object
+      [ "let" .= valId
+      , "be" .= value
+      , "then" .= cont
+      ]
+  toJSON (Assert obs cont) =
+    object
+      [ "assert" .= obs
+      , "then" .= cont
+      ]
 
 instance Eq Party where
   {-# INLINEABLE (==) #-}
@@ -473,11 +1271,11 @@ instance Eq Action where
   Choice cid1 bounds1 == Choice cid2 bounds2 =
     cid1
       == cid2
-      && length bounds1
-      == length bounds2
-      && let bounds = zip bounds1 bounds2
+      && List.length bounds1
+      == List.length bounds2
+      && let bounds = List.zip bounds1 bounds2
              checkBound (Bound low1 high1, Bound low2 high2) = low1 == low2 && high1 == high2
-          in all checkBound bounds
+          in List.all checkBound bounds
   Choice{} == _ = False
   Notify obs1 == Notify obs2 = obs1 == obs2
   Notify{} == _ = False
@@ -509,9 +1307,9 @@ instance Eq Contract where
       == timeout2
       && cont1
       == cont2
-      && length cases1
-      == length cases2
-      && and (zipWith (==) cases1 cases2)
+      && List.length cases1
+      == List.length cases2
+      && List.and (List.zipWith (==) cases1 cases2)
   When{} == _ = False
   Let valId1 val1 cont1 == Let valId2 val2 cont2 =
     valId1 == valId2 && val1 == val2 && cont1 == cont2
@@ -519,17 +1317,17 @@ instance Eq Contract where
   Assert obs1 cont1 == Assert obs2 cont2 = obs1 == obs2 && cont1 == cont2
   Assert{} == _ = False
 
-instance Eq State where
-  {-# INLINEABLE (==) #-}
-  l == r =
-    minTime l
-      == minTime r
-      && accounts l
-      == accounts r
-      && choices l
-      == choices r
-      && boundValues l
-      == boundValues r
+-- instance Eq State where
+--   {-# INLINEABLE (==) #-}
+--   l == r =
+--     minTime l
+--       == minTime r
+--       && accounts l
+--       == accounts r
+--       && choices l
+--       == choices r
+--       && boundValues l
+--       == boundValues r
 
 -- Lifting data types to Plutus Core
 makeLift ''Party
@@ -547,3 +1345,4 @@ makeLift ''State
 makeLift ''Environment
 makeLift ''InputContent
 makeLift ''Input
+makeIsDataIndexed ''Input [('NormalInput, 0), ('MerkleizedInput, 1)]

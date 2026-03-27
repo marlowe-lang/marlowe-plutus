@@ -1,31 +1,16 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
-{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:defer-errors #-}
-{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.0.0 #-}
 
 -- | Marlowe open-roles validator.
 module Language.Marlowe.Plutus.OpenRoles (
   -- * Validation
-  openRoleValidator,
-  openRoleValidatorBytes,
-  openRoleValidatorHash,
+  mkOpenRoleValidator,
 ) where
 
 import GHC.Generics (Generic)
-import Language.Marlowe.Plutus (hashScript)
-import Language.Marlowe.Plutus.Script (marloweValidatorHash)
-import Language.Marlowe.Plutus.Script.Types (MarloweInput, MarloweTxInput (..))
-import PlutusCore.Version (plcVersion100)
+import Language.Marlowe.Plutus.Scripts.Types (MarloweInput, MarloweTxInput (..))
 import PlutusLedgerApi.V1.Value (valueOf)
 import PlutusLedgerApi.V2 (
   Address (..),
@@ -34,16 +19,14 @@ import PlutusLedgerApi.V2 (
   Redeemer (..),
   ScriptHash (..),
   ScriptPurpose (Spending),
-  SerialisedScript,
   TxInInfo (TxInInfo, txInInfoOutRef, txInInfoResolved),
-  UnsafeFromData (..),
   Value (..),
   adaSymbol,
-  serialiseCompiledCode,
  )
 import PlutusLedgerApi.V2.Tx (TxOut (TxOut, txOutAddress, txOutValue))
-import PlutusTx (CompiledCode)
-import PlutusTx.Plugin ()
+-- Till the AssocMap instances are fixed in general (beside Value)
+-- we use Language.Marlowe.AssocMap here.
+import qualified PlutusTx.AssocMap as PlutusTxAssocMap
 
 import Language.Marlowe.Plutus.Semantics.Types as Semantics (
   ChoiceId (ChoiceId),
@@ -57,9 +40,6 @@ import PlutusTx.Prelude as PlutusTxPrelude (
   Eq (..),
   Maybe (Just, Nothing),
   Ord ((>)),
-  Semigroup ((<>)),
-  check,
-  find,
   isJust,
   traceError,
   traceIfFalse,
@@ -68,7 +48,8 @@ import PlutusTx.Prelude as PlutusTxPrelude (
  )
 
 import qualified PlutusTx
-import qualified PlutusTx.AssocMap as AssocMap
+import PlutusTx.List as List
+import qualified Language.Marlowe.Plutus.AssocMap as AssocMap
 import qualified Prelude as Haskell
 
 -- By decoding only the part of the script context I was able
@@ -78,10 +59,6 @@ data SubScriptContext = SubScriptContext
   , subScriptContextPurpose :: ScriptPurpose
   }
   deriving (Generic, Haskell.Eq, Haskell.Show)
-
-instance Eq SubScriptContext where
-  {-# INLINEABLE (==) #-}
-  SubScriptContext info purpose == SubScriptContext info' purpose' = info == info' && purpose == purpose'
 
 data SubTxInfo = SubTxInfo
   { subTxInfoInputs :: [TxInInfo]
@@ -98,34 +75,6 @@ data SubTxInfo = SubTxInfo
   , subTxInfoId :: BuiltinData
   }
   deriving (Generic, Haskell.Show, Haskell.Eq)
-
-instance Eq SubTxInfo where
-  {-# INLINEABLE (==) #-}
-  SubTxInfo i ri o f m c w r s rs d tid == SubTxInfo i' ri' o' f' m' c' w' r' s' rs' d' tid' =
-    i
-      == i'
-      && ri
-      == ri'
-      && o
-      == o'
-      && f
-      == f'
-      && m
-      == m'
-      && c
-      == c'
-      && w
-      == w'
-      && r
-      == r'
-      && s
-      == s'
-      && rs
-      == rs'
-      && d
-      == d'
-      && tid
-      == tid'
 
 {- Open Role validator - it releases role token(s) (you can put more coins of the same role token to it) based on a few conditions:
 
@@ -165,10 +114,10 @@ mkOpenRoleValidator
     let -- Performance:
         -- In the case of three inputs `find` seems to be faster than custom single pass over the list.
         -- Inlined pattern matching over `Maybe` in both cases also seems to be faster than separate helper function.
-        ownInput = case find (\TxInInfo{txInInfoOutRef} -> txInInfoOutRef == txOutRef) subTxInfoInputs of
+        ownInput = case List.find (\TxInInfo{txInInfoOutRef} -> txInInfoOutRef == txOutRef) subTxInfoInputs of
           Just input -> input
           Nothing -> traceError "1" -- Own input not found.
-        marloweInput = case find
+        marloweInput = case List.find
           ( \TxInInfo{txInInfoResolved} -> addressCredential (txOutAddress txInInfoResolved) == ScriptCredential marloweValidatorHash
           )
           subTxInfoInputs of
@@ -178,14 +127,14 @@ mkOpenRoleValidator
 
         -- Extract role token information from the own input `Value`.
         (currencySymbol, roleName) = do
-          let valuesList = AssocMap.toList $ getValue ownValue
+          let valuesList = PlutusTxAssocMap.toList $ getValue ownValue
           -- Value should contain only min. ADA and a specific role token(s) (we can have few coins of the same role
           -- token - they are all released).
           -- Performance: `find` performs here clearly worse.
           case valuesList of
-            [(possibleAdaSymbol, _), (currencySymbol, AssocMap.toList -> [(roleName, _)])]
+            [(possibleAdaSymbol, _), (currencySymbol, PlutusTxAssocMap.toList -> [(roleName, _)])]
               | possibleAdaSymbol PlutusTxPrelude.== adaSymbol -> (currencySymbol, roleName)
-            [(currencySymbol, AssocMap.toList -> [(roleName, _)]), _] -> (currencySymbol, roleName)
+            [(currencySymbol, PlutusTxAssocMap.toList -> [(roleName, _)]), _] -> (currencySymbol, roleName)
             _ -> traceError "2" -- Invalid value - we expect only the role token(s).
 
         -- In order to release the role token we have to encounter an action which uses/unlocks the role.
@@ -205,7 +154,7 @@ mkOpenRoleValidator
                 Just (Redeemer bytes) -> case fromBuiltinData bytes of
                   Just inputs -> inputs
                   _ -> traceError "3" -- Invalid Marlowe redeemer
-          isJust $ find inputUsesRole inputs
+          isJust $ List.find inputUsesRole inputs
 
         -- Check the Marlowe input `Value` for the thread token.
         threadTokenOk = do
@@ -220,30 +169,3 @@ PlutusTx.makeIsDataIndexed ''SubTxInfo [('SubTxInfo, 0)]
 PlutusTx.makeLift ''SubScriptContext
 PlutusTx.makeIsDataIndexed ''SubScriptContext [('SubScriptContext, 0)]
 
--- Copied from marlowe-cardano. This is pretty standard way to minimize size of the typed validator:
---  * Wrap validator function so it accepts raw `BuiltinData`.
---  * Create a validator which is simply typed.
---  * Create "typed by `Any` validator".
---  * Coerce it if you like. This step is not required - we only need `TypedValidator`.
-openRoleValidator :: CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> ())
-openRoleValidator =
-  let openRoleValidator' :: ScriptHash -> BuiltinData -> BuiltinData -> BuiltinData -> ()
-      openRoleValidator' mvh d r p =
-        check
-          $ mkOpenRoleValidator
-            mvh
-            (unsafeFromBuiltinData d)
-            (unsafeFromBuiltinData r)
-            (unsafeFromBuiltinData p)
-      errorOrApplied =
-        $$(PlutusTx.compile [||openRoleValidator'||])
-          `PlutusTx.applyCode` PlutusTx.liftCode plcVersion100 marloweValidatorHash
-   in case errorOrApplied of
-        Haskell.Left err -> Haskell.error $ "Application of marlowe validator hash to openRole validator failed." <> err
-        Haskell.Right applied -> applied
-
-openRoleValidatorBytes :: SerialisedScript
-openRoleValidatorBytes = serialiseCompiledCode openRoleValidator
-
-openRoleValidatorHash :: ScriptHash
-openRoleValidatorHash = hashScript openRoleValidator

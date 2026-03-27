@@ -1,24 +1,18 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE NoImplicitPrelude #-}
+
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-simplifiable-class-constraints #-}
 {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
 {-# OPTIONS_GHC -fno-omit-interface-pragmas #-}
+-- A big hammer, but it helps.
 {-# OPTIONS_GHC -fno-specialise #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+
+{-# OPTIONS_GHC -fno-strictness #-}
+{-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
+{-# OPTIONS_GHC -fno-omit-interface-pragmas #-}
+{-# OPTIONS_GHC -fobject-code #-}
 
 {- HLINT ignore "Avoid restricted function" -}
 
@@ -50,7 +44,7 @@ module Language.Marlowe.Plutus.Semantics (
   computeTransaction,
   playTrace,
 
-  -- * Supporting Functions
+  -- * Supporting Functions/Constants
   addMoneyToAccount,
   applyAction,
   applyAllInputs,
@@ -60,6 +54,8 @@ module Language.Marlowe.Plutus.Semantics (
   evalObservation,
   evalValue,
   fixInterval,
+  foldMapAssocMap,
+  foldMapList,
   getContinuation,
   giveMoney,
   moneyInAccount,
@@ -88,9 +84,34 @@ module Language.Marlowe.Plutus.Semantics (
   notClose,
   paymentMoney,
   totalBalance,
+
+  -- * Serialisation
+  currencySymbolFromJSON,
+  currencySymbolToJSON,
+  validatorHashFromJSON,
+  validatorHashToJSON,
 ) where
 
-import GHC.Generics
+import Control.Applicative as H
+import Control.DeepSeq (NFData)
+import qualified Data.Aeson as JSON
+import Data.Aeson.Types (
+  FromJSON (parseJSON),
+  KeyValue ((.=)),
+  Parser,
+  ToJSON (toJSON, toJSONList),
+  object,
+  withArray,
+  withObject,
+  (.:),
+  (.:?),
+ )
+import qualified Data.Aeson.Types as JSON
+import Data.ByteString.Base16.Aeson (EncodeBase16 (EncodeBase16))
+import qualified Data.Foldable as F
+import Data.Scientific (Scientific)
+import Data.Text (pack)
+import Deriving.Aeson (Generic)
 import Language.Marlowe.Plutus.Semantics.Types (
   AccountId,
   Accounts,
@@ -115,13 +136,21 @@ import Language.Marlowe.Plutus.Semantics.Types (
   getAction,
   getInputContent,
   inBounds,
+  parseInteger,
+  withInteger,
  )
-import PlutusLedgerApi.V2 (CurrencySymbol, POSIXTime (..))
+-- import Language.Marlowe.Plutus.Pretty (Pretty (..))
+import PlutusLedgerApi.V2 (CurrencySymbol (CurrencySymbol), POSIXTime (..), ScriptHash (ScriptHash))
 import qualified PlutusLedgerApi.V2 as Val
 import PlutusTx (makeIsDataIndexed)
-import qualified PlutusTx.AssocMap as Map
 import qualified PlutusTx.Builtins as Builtins
 import PlutusTx.Lift (makeLift)
+import PlutusTx.List (
+  all,
+  map,
+  reverse,
+  (++),
+ )
 import PlutusTx.Prelude (
   AdditiveGroup ((-)),
   AdditiveSemigroup ((+)),
@@ -131,50 +160,70 @@ import PlutusTx.Prelude (
   Maybe (..),
   MultiplicativeSemigroup ((*)),
   Ord (max, min, (<), (<=), (>), (>=)),
-  all,
-  foldMap,
-  foldr,
+  fromBuiltin,
   fst,
   negate,
   not,
   otherwise,
-  reverse,
+  return,
   snd,
+  toBuiltin,
   ($),
   (&&),
-  (++),
+  (.),
   (||),
  )
-import qualified Prelude as Haskell
 
--- Functions that used in Plutus Core must be inlineable,
--- so their code is available for PlutusTx compiler.
-{-# INLINEABLE fixInterval #-}
-{-# INLINEABLE evalValue #-}
-{-# INLINEABLE evalObservation #-}
-{-# INLINEABLE refundOne #-}
-{-# INLINEABLE moneyInAccount #-}
-{-# INLINEABLE updateMoneyInAccount #-}
-{-# INLINEABLE addMoneyToAccount #-}
-{-# INLINEABLE giveMoney #-}
-{-# INLINEABLE reduceContractStep #-}
-{-# INLINEABLE reduceContractUntilQuiescent #-}
-{-# INLINEABLE applyAction #-}
-{-# INLINEABLE getContinuation #-}
-{-# INLINEABLE applyCases #-}
-{-# INLINEABLE applyInput #-}
-{-# INLINEABLE convertReduceWarnings #-}
-{-# INLINEABLE applyAllInputs #-}
-{-# INLINEABLE isClose #-}
-{-# INLINEABLE notClose #-}
-{-# INLINEABLE computeTransaction #-}
-{-# INLINEABLE contractLifespanUpperBound #-}
-{-# INLINEABLE totalBalance #-}
+import qualified Prelude as H
+
+import PlutusTx.Foldable (foldr)
+import PlutusTx.Semigroup ((<>))
+import PlutusTx.Monoid (Monoid (mempty))
+
+-- FIXME: Clone of AssocMap from PlutusTx which fixes
+-- missing INLINE pragmas
+import Language.Marlowe.Plutus.AssocMap (Map)
+import qualified Language.Marlowe.Plutus.AssocMap as Map
+
+{-# INLINEABLE foldMapAssocMap #-}
+foldMapAssocMap :: (Monoid m) => ((k, v) -> m) -> Map k v -> m
+foldMapAssocMap f = go . Map.toList
+  where
+    go [] = mempty
+    go (pair : xs) = f pair <> go xs
+
+{-# INLINEABLE foldMapList #-}
+foldMapList :: (Monoid m) => (a -> m) -> [a] -> m
+foldMapList f = go
+  where
+    go [] = mempty
+    go (x : xs) = f x <> go xs
 
 -- | Payment occurs during 'Pay' contract evaluation, and
 --     when positive balances are payed out on contract closure.
 data Payment = Payment AccountId Payee Token Integer
-  deriving stock (Haskell.Eq, Generic, Haskell.Show)
+  deriving stock (H.Eq, Generic, H.Show)
+
+instance NFData Payment
+
+instance ToJSON Payment where
+  toJSON (Payment accountId payee token amount) =
+    object
+      [ "payment_from" .= accountId
+      , "to" .= payee
+      , "token" .= token
+      , "amount" .= amount
+      ]
+
+instance FromJSON Payment where
+  parseJSON =
+    withObject "Payment"
+      $ \o ->
+        Payment
+          H.<$> o .: "payment_from"
+          H.<*> o .: "to"
+          H.<*> o .: "token"
+          H.<*> o .: "amount"
 
 -- | Extract the money value from a payment.
 paymentMoney :: Payment -> Money
@@ -184,7 +233,7 @@ paymentMoney (Payment _ _ (Token cur tok) amt) = Val.singleton cur tok amt
 data ReduceEffect
   = ReduceWithPayment Payment
   | ReduceNoPayment
-  deriving stock (Haskell.Show)
+  deriving stock (H.Show)
 
 -- | Warning during 'reduceContractStep'
 data ReduceWarning
@@ -195,33 +244,33 @@ data ReduceWarning
     ReduceShadowing ValueId Integer Integer
   | --                                     oldVal ^  newVal ^
     ReduceAssertionFailed
-  deriving stock (Haskell.Show)
+  deriving stock (H.Show, H.Eq)
 
 -- | Result of 'reduceContractStep'
 data ReduceStepResult
   = Reduced ReduceWarning ReduceEffect State Contract
   | NotReduced
   | AmbiguousTimeIntervalReductionError
-  deriving stock (Haskell.Show)
+  deriving stock (H.Show)
 
 -- | Result of 'reduceContractUntilQuiescent'
 data ReduceResult
   = ContractQuiescent Bool [ReduceWarning] [Payment] State Contract
   | RRAmbiguousTimeIntervalError
-  deriving stock (Haskell.Show)
+  deriving stock (H.Show, H.Eq)
 
 -- | Warning of 'applyCases'
 data ApplyWarning
   = ApplyNoWarning
   | ApplyNonPositiveDeposit Party AccountId Token Integer
-  deriving stock (Haskell.Show)
+  deriving stock (H.Show, H.Eq)
 
 -- | Result of 'applyCases'
 data ApplyResult
   = Applied ApplyWarning State Contract
   | ApplyNoMatchError
   | ApplyHashMismatch
-  deriving stock (Haskell.Show)
+  deriving stock (H.Show, H.Eq)
 
 -- | Result of 'applyAllInputs'
 data ApplyAllResult
@@ -229,7 +278,7 @@ data ApplyAllResult
   | ApplyAllNoMatchError
   | ApplyAllAmbiguousTimeIntervalError
   | ApplyAllHashMismatch
-  deriving stock (Haskell.Show)
+  deriving stock (H.Show)
 
 -- | Warnings during transaction computation
 data TransactionWarning
@@ -240,7 +289,10 @@ data TransactionWarning
     TransactionShadowing ValueId Integer Integer
   | --                                                 oldVal ^  newVal ^
     TransactionAssertionFailed
-  deriving stock (Haskell.Show, Generic, Haskell.Eq)
+  deriving stock (H.Show, Generic, H.Eq)
+  -- deriving anyclass (Pretty)
+
+instance NFData TransactionWarning
 
 -- | Transaction error
 data TransactionError
@@ -249,14 +301,46 @@ data TransactionError
   | TEIntervalError IntervalError
   | TEUselessTransaction
   | TEHashMismatch
-  deriving stock (Haskell.Show, Generic, Haskell.Eq)
+  deriving stock (H.Show, Generic, H.Eq)
+
+instance NFData TransactionError
+
+instance ToJSON TransactionError where
+  toJSON TEAmbiguousTimeIntervalError = JSON.String "TEAmbiguousTimeIntervalError"
+  toJSON TEApplyNoMatchError = JSON.String "TEApplyNoMatchError"
+  toJSON (TEIntervalError intervalError) = object ["error" .= JSON.String "TEIntervalError", "context" .= intervalError]
+  toJSON TEUselessTransaction = JSON.String "TEUselessTransaction"
+  toJSON TEHashMismatch = JSON.String "TEHashMismatch"
+
+instance FromJSON TransactionError where
+  parseJSON (JSON.String s) =
+    case s of
+      "TEAmbiguousTimeIntervalError" -> return TEAmbiguousTimeIntervalError
+      "TEApplyNoMatchError" -> return TEApplyNoMatchError
+      "TEUselessTransaction" -> return TEUselessTransaction
+      "TEHashMismatch" -> return TEHashMismatch
+      _ -> H.fail "Failed parsing TransactionError"
+  parseJSON (JSON.Object o) = do
+    err <- o .: "error"
+    if err H.== ("TEIntervalError" :: H.String)
+      then TEIntervalError H.<$> o .: "context"
+      else H.fail "Failed parsing TransactionError"
+  parseJSON _ = H.fail "Failed parsing TransactionError"
 
 -- | Marlowe transaction input.
 data TransactionInput = TransactionInput
   { txInterval :: TimeInterval
   , txInputs :: [Input]
   }
-  deriving stock (Haskell.Show, Haskell.Eq, Generic)
+  deriving stock (H.Show, H.Eq, Generic)
+
+instance NFData TransactionInput
+
+-- instance Pretty TransactionInput where
+--   prettyFragment tInp = text "TransactionInput" PP.<> space PP.<> lbrace PP.<> line PP.<> txIntLine PP.<> line PP.<> txInpLine
+--     where
+--       txIntLine = hang 2 $ text "txInterval = " PP.<> prettyFragment (txInterval tInp) PP.<> comma
+--       txInpLine = hang 2 $ text "txInputs = " PP.<> prettyFragment (txInputs tInp) PP.<> rbrace
 
 -- | Marlowe transaction output.
 data TransactionOutput
@@ -267,7 +351,52 @@ data TransactionOutput
       , txOutContract :: Contract
       }
   | Error TransactionError
-  deriving stock (Haskell.Eq, Generic, Haskell.Show)
+  deriving stock (H.Eq, Generic, H.Show)
+
+instance NFData TransactionOutput
+
+instance ToJSON TransactionOutput where
+  toJSON TransactionOutput{..} =
+    object
+      [ "warnings" .= txOutWarnings
+      , "payments" .= txOutPayments
+      , "state" .= txOutState
+      , "contract" .= txOutContract
+      ]
+  toJSON (Error err) = object ["transaction_error" .= err]
+
+instance FromJSON TransactionOutput where
+  parseJSON =
+    withObject "TransactionOutput"
+      $ \o ->
+        let asTransactionOutput =
+              TransactionOutput
+                H.<$> o .: "warnings"
+                H.<*> o .: "payments"
+                H.<*> o .: "state"
+                H.<*> o .: "contract"
+            asError = Error H.<$> o .: "transaction_error"
+         in asTransactionOutput H.<|> asError
+
+-- | Parse a validator hash from JSON.
+validatorHashFromJSON :: JSON.Value -> Parser ScriptHash
+validatorHashFromJSON v = do
+  EncodeBase16 bs <- parseJSON v
+  return $ ScriptHash $ toBuiltin bs
+
+-- | Serialise a validator hash as JSON.
+validatorHashToJSON :: ScriptHash -> JSON.Value
+validatorHashToJSON (ScriptHash h) = toJSON . EncodeBase16 . fromBuiltin $ h
+
+-- | Parse a currency symbol from JSON.
+currencySymbolFromJSON :: JSON.Value -> Parser CurrencySymbol
+currencySymbolFromJSON v = do
+  EncodeBase16 bs <- parseJSON v
+  return $ CurrencySymbol $ toBuiltin bs
+
+-- | Serialise a currency symbol to JSON.
+currencySymbolToJSON :: CurrencySymbol -> JSON.Value
+currencySymbolToJSON (CurrencySymbol h) = toJSON . EncodeBase16 . fromBuiltin $ h
 
 -- | This data type is a content of a contract's /Datum/
 data MarloweData = MarloweData
@@ -275,12 +404,27 @@ data MarloweData = MarloweData
   , marloweState :: State
   , marloweContract :: Contract
   }
-  deriving stock (Haskell.Show, Haskell.Eq, Generic)
+  deriving stock (H.Show, H.Eq, Generic)
+  deriving anyclass (ToJSON, FromJSON)
 
 -- | Parameters constant during the course of a contract.
 newtype MarloweParams = MarloweParams {rolesCurrency :: CurrencySymbol}
-  deriving stock (Haskell.Show, Generic, Haskell.Eq, Haskell.Ord)
+  deriving stock (H.Show, Generic, H.Eq, H.Ord)
 
+instance FromJSON MarloweParams where
+  parseJSON (JSON.Object v) = do
+    c <- v .: "rolesCurrency"
+    MarloweParams
+      H.<$> currencySymbolFromJSON c
+  parseJSON invalid =
+    JSON.prependFailure "parsing MarloweParams failed, " (JSON.typeMismatch "Object" invalid)
+
+instance ToJSON MarloweParams where
+  toJSON (MarloweParams c) =
+    JSON.object
+      [("rolesCurrency", currencySymbolToJSON c)]
+
+{-# INLINEABLE fixInterval #-}
 -- | Checks 'interval' and trims it if necessary.
 fixInterval :: TimeInterval -> State -> IntervalResult
 fixInterval interval state =
@@ -299,6 +443,7 @@ fixInterval interval state =
                 then IntervalError (IntervalInPastError curMinTime interval)
                 else IntervalTrimmed env newState
 
+{-# INLINEABLE evalValue #-}
 -- | Evaluates @Value@ given current @State@ and @Environment@.
 evalValue :: Environment -> State -> Value Observation -> Integer
 evalValue env state value =
@@ -338,6 +483,7 @@ evalValue env state value =
             Nothing -> 0
         Cond cond thn els -> if evalObservation env state cond then eval thn else eval els
 
+{-# INLINEABLE evalObservation #-}
 -- | Evaluate 'Observation' to 'Bool'.
 evalObservation :: Environment -> State -> Observation -> Bool
 evalObservation env state obs =
@@ -361,6 +507,7 @@ evalObservation env state obs =
         TrueObs -> True
         FalseObs -> False
 
+{-# INLINEABLE refundOne #-}
 -- | Pick the first account with money in it, discarding any accounts prior to that if they have a non-positive balance.
 refundOne :: Accounts -> Maybe ((Party, Token, Integer), Accounts)
 refundOne accounts = case Map.toList accounts of
@@ -373,9 +520,10 @@ refundOne accounts = case Map.toList accounts of
   -- invariants of order and non-duplication.
   ((accId, token), balance) : rest ->
     if balance > 0
-      then Just ((accId, token, balance), Map.fromList rest)
-      else refundOne (Map.fromList rest)
+      then Just ((accId, token, balance), Map.unsafeFromList rest)
+      else refundOne (Map.unsafeFromList rest)
 
+{-# INLINEABLE moneyInAccount #-}
 -- | Obtains the amount of money available an account.
 moneyInAccount :: AccountId -> Token -> Accounts -> Integer
 moneyInAccount accId token accounts =
@@ -388,6 +536,7 @@ moneyInAccount accId token accounts =
     Just x -> x
     Nothing -> 0
 
+{-# INLINEABLE updateMoneyInAccount #-}
 -- | Sets the amount of money available in an account.
 updateMoneyInAccount :: AccountId -> Token -> Integer -> Accounts -> Accounts
 updateMoneyInAccount accId token amount =
@@ -399,6 +548,7 @@ updateMoneyInAccount accId token amount =
   -- contain duplicate entries.
   if amount <= 0 then Map.delete (accId, token) else Map.insert (accId, token) amount
 
+{-# INLINEABLE addMoneyToAccount #-}
 -- | Add the given amount of money to an account (only if it is positive).
 --   Return the updated Map.
 addMoneyToAccount :: AccountId -> Token -> Integer -> Accounts -> Accounts
@@ -409,6 +559,7 @@ addMoneyToAccount accId token amount accounts =
         then accounts
         else updateMoneyInAccount accId token newBalance accounts
 
+{-# INLINEABLE giveMoney #-}
 -- | Gives the given amount of money to the given payee.
 --   Returns the appropriate effect and updated accounts.
 giveMoney :: AccountId -> Payee -> Token -> Integer -> Accounts -> (ReduceEffect, Accounts)
@@ -418,6 +569,7 @@ giveMoney accountId payee token amount accounts =
         Account accId -> addMoneyToAccount accId token amount accounts
    in (ReduceWithPayment (Payment accountId payee token amount), newAccounts)
 
+{-# INLINEABLE reduceContractStep #-}
 -- | Carry a step of the contract with no inputs.
 reduceContractStep :: Environment -> State -> Contract -> ReduceStepResult
 reduceContractStep env state contract = case contract of
@@ -461,7 +613,6 @@ reduceContractStep env state contract = case contract of
         if endTime < timeout
           then NotReduced
           else -- if timeout in the past – reduce to timeout continuation
-
             if timeout <= startTime
               then Reduced ReduceNoWarning ReduceNoPayment state cont
               else -- if timeout in the time range – issue an ambiguity error
@@ -491,6 +642,7 @@ reduceContractStep env state contract = case contract of
             else ReduceAssertionFailed
      in Reduced warning ReduceNoPayment state cont
 
+{-# INLINEABLE reduceContractUntilQuiescent #-}
 -- | Reduce a contract until it cannot be reduced more.
 reduceContractUntilQuiescent :: Environment -> State -> Contract -> ReduceResult
 reduceContractUntilQuiescent env state contract =
@@ -515,8 +667,9 @@ reduceContractUntilQuiescent env state contract =
 data ApplyAction
   = AppliedAction ApplyWarning State
   | NotAppliedAction
-  deriving stock (Haskell.Show)
+  deriving stock (H.Show)
 
+{-# INLINEABLE applyAction #-}
 -- | Try to apply a single input content to a single action.
 applyAction :: Environment -> State -> InputContent -> Action -> ApplyAction
 applyAction env state (IDeposit accId1 party1 tok1 amount) (Deposit accId2 party2 tok2 val) =
@@ -537,7 +690,6 @@ applyAction _ state (IChoice choId1 choice) (Choice choId2 bounds) =
     -- from internal ordering) to Marlowe's Isabelle semantics
     -- given the precondition that the initial state's `choices`
     -- in Isabelle was sorted and did not contain duplicate entries.
-
       let newState = state{choices = Map.insert choId1 choice (choices state)}
        in AppliedAction ApplyNoWarning newState
     else NotAppliedAction
@@ -545,6 +697,7 @@ applyAction env state INotify (Notify obs)
   | evalObservation env state obs = AppliedAction ApplyNoWarning state
 applyAction _ _ _ _ = NotAppliedAction
 
+{-# INLINEABLE getContinuation #-}
 -- | Try to get a continuation from a pair of Input and Case.
 getContinuation :: Input -> Case Contract -> Maybe Contract
 getContinuation (NormalInput _) (Case _ continuation) = Just continuation
@@ -554,6 +707,7 @@ getContinuation (MerkleizedInput _ inputContinuationHash continuation) (Merkleiz
     else Nothing
 getContinuation _ _ = Nothing
 
+{-# INLINEABLE applyCases #-}
 -- | Try to apply an input to a list of cases, accepting the first match.
 applyCases :: Environment -> State -> Input -> [Case Contract] -> ApplyResult
 applyCases env state input (headCase : tailCases) =
@@ -570,11 +724,13 @@ applyCases env state input (headCase : tailCases) =
         NotAppliedAction -> applyCases env state input tailCases
 applyCases _ _ _ [] = ApplyNoMatchError
 
+{-# INLINEABLE applyInput #-}
 -- | Apply a single @Input@ to a current contract.
 applyInput :: Environment -> State -> Input -> Contract -> ApplyResult
 applyInput env state input (When cases _ _) = applyCases env state input cases
 applyInput _ _ _ _ = ApplyNoMatchError
 
+{-# INLINEABLE convertReduceWarnings #-}
 -- | Propagate 'ReduceWarning' to 'TransactionWarning'.
 convertReduceWarnings :: [ReduceWarning] -> [TransactionWarning]
 convertReduceWarnings =
@@ -592,6 +748,7 @@ convertReduceWarnings =
     )
     []
 
+{-# INLINEABLE applyAllInputs #-}
 -- | Apply a list of Inputs to the contract.
 applyAllInputs :: Environment -> State -> Contract -> [Input] -> ApplyAllResult
 applyAllInputs env state contract inputs =
@@ -639,16 +796,19 @@ applyAllInputs env state contract inputs =
         ApplyNonPositiveDeposit party accId tok amount ->
           [TransactionNonPositiveDeposit party accId tok amount]
 
+{-# INLINEABLE isClose #-}
 -- | Check if a contract is just @Close@.
 isClose :: Contract -> Bool
 isClose Close = True
 isClose _ = False
 
+{-# INLINEABLE notClose #-}
 -- | Check if a contract is not just @Close@.
 notClose :: Contract -> Bool
 notClose Close = False
 notClose _ = True
 
+{-# INLINEABLE computeTransaction #-}
 -- | Try to compute outputs of a transaction given its inputs, a contract, and it's @State@
 computeTransaction :: TransactionInput -> State -> Contract -> TransactionOutput
 computeTransaction tx state contract =
@@ -706,6 +866,7 @@ playTrace minTime c =
       , txOutContract = c
       }
 
+{-# INLINEABLE contractLifespanUpperBound #-}
 -- | Calculates an upper bound for the maximum lifespan of a contract (assuming is not merkleized)
 contractLifespanUpperBound :: Contract -> POSIXTime
 contractLifespanUpperBound contract = case contract of
@@ -715,20 +876,120 @@ contractLifespanUpperBound contract = case contract of
     max (contractLifespanUpperBound contract1) (contractLifespanUpperBound contract2)
   When cases timeout subContract ->
     let contractsLifespans = [contractLifespanUpperBound c | Case _ c <- cases]
-     in Haskell.maximum (timeout : contractLifespanUpperBound subContract : contractsLifespans)
+     in H.maximum (timeout : contractLifespanUpperBound subContract : contractsLifespans)
   Let _ _ cont -> contractLifespanUpperBound cont
   Assert _ cont -> contractLifespanUpperBound cont
 
+{-# INLINEABLE totalBalance #-}
 -- | Total the balance in all accounts.
 totalBalance :: Accounts -> Money
-totalBalance accounts =
-  foldMap
+totalBalance =
+  foldMapAssocMap
     (\((_, Token cur tok), balance) -> Val.singleton cur tok balance)
-    (Map.toList accounts)
 
 -- | Check that all accounts have positive balance.
 allBalancesArePositive :: State -> Bool
 allBalancesArePositive State{..} = all (\(_, balance) -> balance > 0) (Map.toList accounts)
+
+instance FromJSON TransactionInput where
+  parseJSON (JSON.Object v) =
+    TransactionInput
+      H.<$> (parseTimeInterval H.=<< (v .: "tx_interval"))
+      H.<*> ( (v .: "tx_inputs")
+              H.>>= withArray
+                "Transaction input list"
+                ( \cl ->
+                    H.mapM parseJSON (F.toList cl)
+                )
+          )
+    where
+      parseTimeInterval =
+        withObject
+          "TimeInterval"
+          ( \v ->
+              do
+                from <- POSIXTime H.<$> (withInteger "TimeInterval from" H.=<< (v .: "from"))
+                to <- POSIXTime H.<$> (withInteger "TimeInterval to" H.=<< (v .: "to"))
+                return (from, to)
+          )
+  parseJSON _ = H.fail "TransactionInput must be an object"
+
+instance ToJSON TransactionInput where
+  toJSON (TransactionInput (POSIXTime from, POSIXTime to) txInps) =
+    object
+      [ "tx_interval" .= timeIntervalJSON
+      , "tx_inputs" .= toJSONList (map toJSON txInps)
+      ]
+    where
+      timeIntervalJSON =
+        object
+          [ "from" .= from
+          , "to" .= to
+          ]
+
+instance FromJSON TransactionWarning where
+  parseJSON (JSON.String "assertion_failed") = return TransactionAssertionFailed
+  parseJSON (JSON.Object v) =
+    ( TransactionNonPositiveDeposit
+        H.<$> (v .: "party")
+        H.<*> (v .: "in_account")
+        H.<*> (v .: "of_token")
+        H.<*> (v .: "asked_to_deposit")
+    )
+      H.<|> ( do
+              maybeButOnlyPaid <- v .:? "but_only_paid"
+              case maybeButOnlyPaid :: Maybe Scientific of
+                Nothing ->
+                  TransactionNonPositivePay
+                    H.<$> (v .: "account")
+                    H.<*> (v .: "to_payee")
+                    H.<*> (v .: "of_token")
+                    H.<*> (v .: "asked_to_pay")
+                Just butOnlyPaid ->
+                  TransactionPartialPay
+                    H.<$> (v .: "account")
+                    H.<*> (v .: "to_payee")
+                    H.<*> (v .: "of_token")
+                    H.<*> parseInteger "but only paid" butOnlyPaid
+                    H.<*> (v .: "asked_to_pay")
+          )
+      H.<|> ( TransactionShadowing
+              H.<$> (v .: "value_id")
+              H.<*> (v .: "had_value")
+              H.<*> (v .: "is_now_assigned")
+          )
+  parseJSON _ = H.fail "Contract must be either an object or a the string \"close\""
+
+instance ToJSON TransactionWarning where
+  toJSON (TransactionNonPositiveDeposit party accId tok amount) =
+    object
+      [ "party" .= party
+      , "asked_to_deposit" .= amount
+      , "of_token" .= tok
+      , "in_account" .= accId
+      ]
+  toJSON (TransactionNonPositivePay accId payee tok amount) =
+    object
+      [ "account" .= accId
+      , "asked_to_pay" .= amount
+      , "of_token" .= tok
+      , "to_payee" .= payee
+      ]
+  toJSON (TransactionPartialPay accId payee tok paid expected) =
+    object
+      [ "account" .= accId
+      , "asked_to_pay" .= expected
+      , "of_token" .= tok
+      , "to_payee" .= payee
+      , "but_only_paid" .= paid
+      ]
+  toJSON (TransactionShadowing valId oldVal newVal) =
+    object
+      [ "value_id" .= valId
+      , "had_value" .= oldVal
+      , "is_now_assigned" .= newVal
+      ]
+  toJSON TransactionAssertionFailed = JSON.String $ pack "assertion_failed"
 
 instance Eq Payment where
   {-# INLINEABLE (==) #-}

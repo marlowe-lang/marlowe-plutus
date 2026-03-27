@@ -28,17 +28,19 @@ module Language.Marlowe.Plutus.RoleTokens.Types (
 import GHC.Generics (Generic)
 import PlutusTx (makeIsDataIndexed)
 import PlutusTx.Builtins (serialiseData)
+import PlutusTx.List (sort)
 import PlutusTx.Lift (makeLift)
+import PlutusTx.Foldable (
+  foldr,
+ )
 import PlutusTx.Prelude (
   AdditiveSemigroup ((+)),
   Bool (False, True),
   Eq (..),
-  Foldable (foldr),
   Integer,
   Maybe (Just, Nothing),
   Ord,
   sha2_256,
-  sort,
   ($),
   (.),
  )

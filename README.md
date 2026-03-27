@@ -5,6 +5,22 @@ The main outputs are the marlowe semantics validator, which checks the spending
 of Marlowe script outputs, and the marlowe role payout validator, which checks
 the spending of role payouts.
 
+## Repo Structure
+
+The Haskell/Plinth code is structured as follows:
+
+```shell
+.
+├── libs                # Shared internal libraries, adaptors, and utilities
+├── marlowe-binaries    # Separated plutus-tx compilation pipeline and scripts generation
+└── marlowe-plutus      # Marlowe implementation in Plinth together with test suite
+```
+
+### marlowe-plutus
+
+
+
+
 ## Dev Shell
 
 This repository uses nix to provide the development and build environment.
