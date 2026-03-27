@@ -27,6 +27,14 @@ The Haskell/Plinth code is structured as follows:
 
 ### marlowe-plutus
 
+#### marlowe-testing
+
+`marlowe-testing` is a library which does not expose tests but provides core utilities which can be used during binaries testing and pure semantic testing.
+Prominent modules include:
+
+* `Spec.Marlowe.Scripts` - this module implement a tests on the "pure transaction" level. This test suite is parametrised by `MarloweValidators` structure which expects
+two validator functions - one for semantics and one for the role payout. It is used by both `marlowe-plutus` and `marlowe-binaries`.
+
 
 
 

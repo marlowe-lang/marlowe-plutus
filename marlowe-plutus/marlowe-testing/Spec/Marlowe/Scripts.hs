@@ -59,7 +59,6 @@ import PlutusLedgerApi.V2
   , PubKeyHash
   , Redeemer (..)
   , ScriptContext (..)
-  , ScriptHash
   , ScriptPurpose (Spending)
   , ToData (..)
   , TokenName
@@ -148,9 +147,7 @@ import Data.Aeson (eitherDecodeFileStrict)
 -- executed. Callers (core semantics tests, binaries tests, etc.) provide an
 -- instance built either from a pure Haskell model or from compiled scripts.
 data MarloweScripts = MarloweScripts
-  { semanticsHash    :: !ScriptHash
-  , payoutHash       :: !ScriptHash
-  , semanticsAddress :: !Address
+  { semanticsAddress :: !Address
   , payoutAddress    :: !Address
   , runSemantics     :: Data -> Data -> Data -> These String LogOutput
   , runPayout        :: Data -> Data -> Data -> These String LogOutput
