@@ -1,6 +1,7 @@
 module Marlowe.Testing.Scripts
   ( -- * Script abstraction
-    MarloweScripts (..)
+    CheckPlutusLog (..)
+  , MarloweScripts (..)
     -- * Top-level spec
   , specForScripts
   ) where
@@ -106,6 +107,7 @@ import Marlowe.Testing.Contrib.Integer.Arbitrary (arbitraryPositiveInteger)
 import Marlowe.Testing.Semantics.Golden (GoldenTransaction)
 import System.Directory (listDirectory)
 import System.FilePath ((</>))
+import Paths_marlowe_plutus (getDataDir)
 import Test.Hspec
   ( Spec
   , describe
@@ -1193,20 +1195,25 @@ checkWithdrawal scripts mutate =
 -- checkValidatorHash actual reference =
 --   property $ actual === reference
 
-referenceFolder :: FilePath
-referenceFolder = "reference" </> "data"
+referenceFolderIO :: IO FilePath
+referenceFolderIO = do
+  dataDir <- getDataDir
+  pure (dataDir </> "marlowe-testing" </> "reference" </> "data")
 
 readReferencePaths :: IO [ReferencePath]
-readReferencePaths =
-  do
-    pathFiles <- fmap (referenceFolder </>) . filter (".paths" `isSuffixOf`) <$> listDirectory referenceFolder
-    fmap concat
-      . forM pathFiles
-      $ \pathFile ->
-        eitherDecodeFileStrict pathFile
-          >>= \case
-            Right paths -> pure $ filter (not . null . transactions) paths
-            Left msg -> error $ "Failed parsing " <> pathFile <> ": " <> msg <> "."
+readReferencePaths = do
+  referenceFolder <- referenceFolderIO
+  pathFiles <-
+    fmap (referenceFolder </>)
+      . filter (".paths" `isSuffixOf`)
+      <$> listDirectory referenceFolder
+  fmap concat
+    . forM pathFiles
+    $ \pathFile ->
+      eitherDecodeFileStrict pathFile
+        >>= \case
+          Right paths -> pure $ filter (not . null . transactions) paths
+          Left msg -> error $ "Failed parsing " <> pathFile <> ": " <> msg <> "."
 
 -- -- FIXME: Investigate and drop unsafePerformIO if possible
 -- {-# NOINLINE unsafeDumpBenchmark #-}

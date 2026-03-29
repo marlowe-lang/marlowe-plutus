@@ -79,7 +79,8 @@ import Language.Marlowe.Plutus.Semantics.Types (
   mkTokenNameUtf8,
   unsafeMkCurrencySymbolHex,
   unsafeMkTokenNameHex,
-  pattern RoleUtf8, unsafeMkPartyAddressBech32
+  unsafeMkPartyAddressBech32,
+  pattern RoleUtf8,
  )
 import Test.QuickCheck (Gen, choose, frequency, oneof, shrinkList, sized, vectorOf)
 

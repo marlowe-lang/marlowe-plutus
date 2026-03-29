@@ -5,6 +5,7 @@
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:no-preserve-logging #-}
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.1.0 #-}
 
 {-# OPTIONS_GHC -fno-strictness #-}
 {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}

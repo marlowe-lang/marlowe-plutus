@@ -15,8 +15,6 @@ license-files:
 data-files:
   benchmarks/rolepayout/*.benchmark
   benchmarks/semantics/*.benchmark
-  reference/data/*.contract
-  reference/data/*.paths
 
   test/contract.json
   test/input.json
@@ -99,9 +97,8 @@ common lang
     DeriveFunctor
     DeriveGeneric
     DeriveLift
-    DeriveDataTypeable
-    DerivingStrategies
     DeriveTraversable
+    DerivingStrategies
     DerivingVia
     DoAndIfThenElse
     ExplicitForAll
@@ -236,11 +233,13 @@ library
 library marlowe-testing
   import:             lang
   hs-source-dirs:     marlowe-testing
+  visibility:        public
   other-modules:
     Paths_marlowe_plutus
 
   exposed-modules:
     Data.Jsonable
+    Marlowe.Testing.ProtocolParams
     Marlowe.Testing.Contrib.Integer.Arbitrary
     Marlowe.Testing.Common
     Marlowe.Testing.Contrib.PlutusTx.Arbitrary
@@ -288,12 +287,18 @@ library marlowe-testing
     , serialise
     , tasty-quickcheck ^>=0.11
     , transformers
+    , vector
 
   build-tool-depends: hspec-discover:hspec-discover
   ghc-options:        -threaded
 
+  data-files:
+    marlowe-testing/reference/data/*.contract
+    marlowe-testing/reference/data/*.paths
+    marlowe-testing/data/mainnet-protocol-params.json
+
 -- The core spec for the interpreter
-test-suite marlowe-plutus-spec
+test-suite marlowe-plutus-test
   import:         lang
   hs-source-dirs: test
   main-is:        Spec.hs

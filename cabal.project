@@ -29,6 +29,7 @@ index-state:
 
 packages:
   marlowe-plutus
+  marlowe-binaries
   libs/base16-aeson
   libs/multiplate
   -- libs/sqlite-simple

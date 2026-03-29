@@ -1,113 +1,159 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Main (
-  main,
-) where
 
-import Control.Monad (unless)
-import Language.Marlowe.PlutusSpec (ScriptsInfo (..), specForScript)
+module Main (main) where
+
+import Control.Applicative ((<|>))
+import Data.Foldable (for_)
+import Data.Functor ((<&>))
+import Data.List qualified as List
+import Data.Proxy (Proxy (..))
 import System.Environment (getArgs)
-import Test.Hspec.Core.Runner (
-  defaultConfig,
-  evaluateSummary,
-  readConfig,
-  runSpec,
- )
+import Test.Hspec (hspec)
 
 import qualified Cardano.Api as C
 import qualified Cardano.Api.Shelley as C
-import qualified PlutusLedgerApi.V1.Address as P (scriptHashAddress)
-import qualified PlutusLedgerApi.V2 as P
+import PlutusTx.These (These (..))
+import qualified PlutusLedgerApi.V1.Address as PV1
+import qualified PlutusLedgerApi.V2 as PV2
+import qualified PlutusLedgerApi.Common as PLC
 
-import Language.Marlowe.Plutus.Binaries as Devel (
-  marloweValidatorBytes,
-  marloweValidatorHash,
-  rolePayoutValidatorBytes,
-  rolePayoutValidatorHash,
+import Language.Marlowe.Plutus.Binaries
+  ( marloweValidatorBytes
+  , marloweValidatorHash
+  , rolePayoutValidatorBytes
+  , rolePayoutValidatorHash
   )
-import Control.Applicative ((<|>))
-import Data.Functor ((<&>))
-import Data.Proxy (Proxy(..))
-import qualified PlutusLedgerApi.Common as P
-import qualified Data.List as List
 
-develScripts :: ScriptsInfo
-develScripts =
-    ScriptsInfo
-      { semanticsValidatorBytes = Devel.marloweValidatorBytes
-      , semanticsValidatorHash = Devel.marloweValidatorHash
-      , semanticsAddress = P.scriptHashAddress Devel.marloweValidatorHash
-      , payoutValidatorBytes = Devel.rolePayoutValidatorBytes
-      , payoutValidatorHash = Devel.rolePayoutValidatorHash
-      , payoutAddress = P.scriptHashAddress Devel.rolePayoutValidatorHash
-      , plutusVersion = P.PlutusV3
-      }
+import Language.Marlowe.Plutus.BinariesSpec (binariesSpec)
+import Marlowe.Testing.Scripts
+  ( MarloweScripts (..)
+  , specForScripts
+  , CheckPlutusLog (..)
+  )
+import Marlowe.Testing.ProtocolParams (loadMainnetEvaluationContexts)
+import Control.Monad (when)
 
-runTestSuite :: Maybe (FilePath, FilePath) -> [String] -> IO ()
-runTestSuite maybeFiles flags = do
-  binariesSpec <- case maybeFiles of
-    (Just (semanticsFile, payoutFile)) -> do
-      providedBinaries <- mkScriptsInfo semanticsFile payoutFile
-      pure (specForScript "Provided" providedBinaries)
-    Nothing -> pure (pure ())
-  config <- readConfig defaultConfig flags
-  let combinedSpec = do
+-- | Construct scripts from in-repo compiled binaries.
+develScripts
+  :: PV2.MajorProtocolVersion
+  -> (PV2.EvaluationContext, PV2.EvaluationContext)
+  -> MarloweScripts
+develScripts mpv (_ecV2, ecV3) =
+  MarloweScripts
+    { semanticsAddress = PV1.scriptHashAddress marloweValidatorHash
+    , payoutAddress = PV1.scriptHashAddress rolePayoutValidatorHash
+    , runSemantics = evaluateBinary mpv ecV3 marloweValidatorBytes
+    , runPayout = evaluateBinary mpv ecV3 rolePayoutValidatorBytes
+    }
+
+-- | Run full test suite.
+runTestSuite :: Maybe (FilePath, FilePath) -> IO ()
+runTestSuite maybeFiles = do
+  evalCtxs <- loadMainnetEvaluationContexts
+  case evalCtxs of
+    Left err -> error ("Failed to load protocol params: " <> err)
+    Right (mpv, ctxs) -> do
+      for_ maybeFiles \(semanticsFile, payoutFile) -> do
+        provided <- mkScripts mpv ctxs semanticsFile payoutFile
+        hspec do
+          specForScripts "Provided" provided (CheckPlutusLog False)
+      hspec do
+        specForScripts "Devel" (develScripts mpv ctxs) (CheckPlutusLog False)
         binariesSpec
-        specForScript "Devel" develScripts
-  summary <- runSpec combinedSpec config
-  evaluateSummary summary
 
--- "USAGE: marlowe-plutus [<semantics validator text envelope file> <payoutValidator text envelope file>] [hspec flags]\nWe assume that file names do not start with '-'."
 main :: IO ()
 main =
-  getArgs
-    >>= \case
-      -- Check if two first are file paths
-      allFlags@(semanticsArg : payoutArg : flags) -> do
-        let
-          isFilePath arg = not (null arg) && (fmap fst . List.uncons $ arg) /= Just '-'
-        if isFilePath semanticsArg && isFilePath payoutArg
-          then runTestSuite (Just (semanticsArg, payoutArg)) flags
-          else runTestSuite Nothing allFlags
-      flags -> runTestSuite Nothing flags
+  getArgs >>= \case
+    semanticsArg : payoutArg : _ ->
+      let isFilePath arg = not (null arg) && (fmap fst . List.uncons $ arg) /= Just '-'
+       in if isFilePath semanticsArg && isFilePath payoutArg
+            then runTestSuite (Just (semanticsArg, payoutArg))
+            else runTestSuite Nothing
+    _ -> runTestSuite Nothing
 
-mkScriptsInfo
-  :: FilePath
+-- | Build scripts from external text envelope files.
+mkScripts
+  :: PV2.MajorProtocolVersion
+  -> (PV2.EvaluationContext, PV2.EvaluationContext)
   -> FilePath
-  -> IO ScriptsInfo
-mkScriptsInfo semanticsFile payoutFile = do
-  (plutusVersion, semanticsValidatorBytes, semanticsValidatorHash, semanticsAddress) <- readScript semanticsFile
-  (plutusVersionPayout, payoutValidatorBytes, payoutValidatorHash, payoutAddress) <- readScript payoutFile
-  unless (plutusVersion == plutusVersionPayout) do
-    error "Semantics and payout validators have different Plutus versions. The current test suite requires them to be the same."
-  pure ScriptsInfo{..}
+  -> FilePath
+  -> IO MarloweScripts
+mkScripts mpv (ecV2, ecV3) semanticsFile payoutFile = do
+  (semanticLang, semanticsBytes, _semanticsHash, semanticsAddr) <- readScript semanticsFile
+  (payoutLang, payoutBytes, _payoutHash, payoutAddr) <- readScript payoutFile
+  when (semanticLang /= payoutLang) $
+    error "Semantics and payout scripts must be the same Plutus version"
+  pure $ case semanticLang of
+    PLC.PlutusV1 ->
+      error "Plutus V1 scripts are not supported for testing"
+    PLC.PlutusV2 ->
+      MarloweScripts
+        { semanticsAddress = semanticsAddr
+        , payoutAddress = payoutAddr
+        , runSemantics = evaluateBinary mpv ecV2 semanticsBytes
+        , runPayout = evaluateBinary mpv ecV2 payoutBytes
+        }
+    PLC.PlutusV3 ->
+      MarloweScripts
+        { semanticsAddress = semanticsAddr
+        , payoutAddress = payoutAddr
+        , runSemantics = evaluateBinary mpv ecV3 semanticsBytes
+        , runPayout = evaluateBinary mpv ecV3 payoutBytes
+        }
 
 readScript
   :: FilePath
-  -> IO (P.PlutusLedgerLanguage, P.SerialisedScript, P.ScriptHash, P.Address)
-readScript file =
-  do
-    possibleResult <-
-      readPlutusScriptFile (Proxy @C.PlutusScriptV1) file
-        <|> readPlutusScriptFile (Proxy @C.PlutusScriptV2) file
-        <|> readPlutusScriptFile (Proxy @C.PlutusScriptV3) file
-    (pv, validatorBytes, validatorHash) <- case possibleResult of
+  -> IO (PLC.PlutusLedgerLanguage, PV2.SerialisedScript, PV2.ScriptHash, PV2.Address)
+readScript file = do
+  possibleResult <-
+    readPlutusScriptFile (Proxy @C.PlutusScriptV1) file
+      <|> readPlutusScriptFile (Proxy @C.PlutusScriptV2) file
+      <|> readPlutusScriptFile (Proxy @C.PlutusScriptV3) file
+  (pv, validatorBytes, validatorHash) <-
+    case possibleResult of
       Just res -> pure res
       Nothing -> error $ "Failed to read Plutus script from file " ++ file
-    let
-        address = P.scriptHashAddress validatorHash
-    pure (pv, validatorBytes, validatorHash, address)
+  let address = PV1.scriptHashAddress validatorHash
+  pure (pv, validatorBytes, validatorHash, address)
 
-readPlutusScriptFile :: forall lang. C.IsPlutusScriptLanguage lang => Proxy lang -> FilePath -> IO (Maybe (P.PlutusLedgerLanguage, P.SerialisedScript, P.ScriptHash))
+readPlutusScriptFile
+  :: forall lang.
+     C.IsPlutusScriptLanguage lang
+  => Proxy lang
+  -> FilePath
+  -> IO (Maybe (PLC.PlutusLedgerLanguage, PV2.SerialisedScript, PV2.ScriptHash))
 readPlutusScriptFile _ file = do
-  let
-    pv = case C.plutusScriptVersion :: C.PlutusScriptVersion lang of
-      C.PlutusScriptV1 -> P.PlutusV1
-      C.PlutusScriptV2 -> P.PlutusV2
-      C.PlutusScriptV3 -> P.PlutusV3
+  let pv = case C.plutusScriptVersion :: C.PlutusScriptVersion lang of
+        C.PlutusScriptV1 -> PLC.PlutusV1
+        C.PlutusScriptV2 -> PLC.PlutusV2
+        C.PlutusScriptV3 -> PLC.PlutusV3
   C.readFileTextEnvelope (C.File file) <&> \case
     Right (script :: C.Script lang) -> case script of
       C.SimpleScript {} -> Nothing
       C.PlutusScript _ (C.PlutusScriptSerialised bytes) -> do
-        let hash = P.ScriptHash $ P.toBuiltin $ C.serialiseToRawBytes $ C.hashScript script
+        let hash = PV2.ScriptHash $ PLC.toBuiltin $ C.serialiseToRawBytes $ C.hashScript script
         Just (pv, bytes, hash)
     Left _ -> Nothing
+
+-- | Evaluate serialized Plutus script using counting evaluator.
+evaluateBinary
+  :: PV2.MajorProtocolVersion
+  -> PV2.EvaluationContext
+  -> PV2.SerialisedScript
+  -> PV2.Data
+  -> PV2.Data
+  -> PV2.Data
+  -> These String PV2.LogOutput
+evaluateBinary mpv ec bytes d r c =
+  case PV2.deserialiseScript mpv bytes of
+    Left err -> This (show err)
+    Right script ->
+      case PV2.evaluateScriptCounting
+             mpv
+             PV2.Verbose
+             ec
+             script
+             [d, r, c] of
+        (logs, Right _) -> That logs
+        (_, Left err)   -> This (show err)
