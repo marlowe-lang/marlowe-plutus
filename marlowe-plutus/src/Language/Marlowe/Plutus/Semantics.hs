@@ -1,10 +1,14 @@
+{-# LANGUAGE TemplateHaskell #-}
+
+-- Plinth options
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:defer-errors #-}
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.1.0 #-}
 
 -- Recommended extensions and flags
 -- https://plutus.cardano.intersectmbo.org/docs/using-plinth/extensions-flags-pragmas
 -- https://plutus.cardano.intersectmbo.org/docs/auction-smart-contract/on-chain-code#4-script-context
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE Strict #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 {-# OPTIONS -fno-full-laziness #-}
 {-# OPTIONS -fno-ignore-interface-pragmas #-}
 {-# OPTIONS -fno-omit-interface-pragmas #-}
@@ -14,7 +18,8 @@
 {-# OPTIONS -fno-unbox-small-strict-fields #-}
 {-# OPTIONS -fno-unbox-strict-fields #-}
 
--- Custom warning supression
+-- Custom warning suppression
+{-# OPTIONS -fno-warn-orphans #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-simplifiable-class-constraints #-}
 

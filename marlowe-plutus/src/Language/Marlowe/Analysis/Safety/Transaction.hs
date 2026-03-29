@@ -737,7 +737,7 @@ evaluateSemantics
   -- ^ The result.
 evaluateSemantics evaluationContext validator datum redeemer context =
   P.evaluateScriptCounting
-    P.PlutusV2
+    P.PlutusV3
     P.valentinePV
     P.Verbose
     evaluationContext

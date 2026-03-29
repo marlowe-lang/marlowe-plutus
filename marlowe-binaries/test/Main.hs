@@ -16,6 +16,7 @@ import qualified Cardano.Api.Shelley as C
 import PlutusTx.These (These (..))
 import qualified PlutusLedgerApi.V1.Address as PV1
 import qualified PlutusLedgerApi.V2 as PV2
+import qualified PlutusLedgerApi.V3 as PV3
 import qualified PlutusLedgerApi.Common as PLC
 
 import Language.Marlowe.Plutus.Binaries
@@ -142,18 +143,16 @@ evaluateBinary
   -> PV2.EvaluationContext
   -> PV2.SerialisedScript
   -> PV2.Data
-  -> PV2.Data
-  -> PV2.Data
   -> These String PV2.LogOutput
-evaluateBinary mpv ec bytes d r c =
-  case PV2.deserialiseScript mpv bytes of
+evaluateBinary mpv ec bytes ctx =
+  case PV3.deserialiseScript mpv bytes of
     Left err -> This (show err)
     Right script ->
-      case PV2.evaluateScriptCounting
+      case PV3.evaluateScriptCounting
              mpv
              PV2.Verbose
              ec
              script
-             [d, r, c] of
+             [ctx] of
         (logs, Right _) -> That logs
         (_, Left err)   -> This (show err)

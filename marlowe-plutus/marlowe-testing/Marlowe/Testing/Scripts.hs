@@ -151,8 +151,8 @@ import Data.Aeson (eitherDecodeFileStrict)
 data MarloweScripts = MarloweScripts
   { semanticsAddress :: !Address
   , payoutAddress    :: !Address
-  , runSemantics     :: Data -> Data -> Data -> These String LogOutput
-  , runPayout        :: Data -> Data -> Data -> These String LogOutput
+  , runSemantics     :: Data -> These String LogOutput
+  , runPayout        :: Data -> These String LogOutput
   }
 
 type ArbitraryTransaction p a = StateT (PlutusTransaction p) Gen a

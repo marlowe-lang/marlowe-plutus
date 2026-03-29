@@ -1,12 +1,27 @@
 {- FOURMOLU_DISABLE -}
 
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 
-{-# OPTIONS_GHC -Wno-name-shadowing #-}
-{-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
+-- Plinth options
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:defer-errors #-}
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.1.0 #-}
+
+-- Recommended extensions and flags
+-- https://plutus.cardano.intersectmbo.org/docs/using-plinth/extensions-flags-pragmas
+-- https://plutus.cardano.intersectmbo.org/docs/auction-smart-contract/on-chain-code#4-script-context
+{-# LANGUAGE Strict #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+{-# OPTIONS -fno-full-laziness #-}
+{-# OPTIONS -fno-ignore-interface-pragmas #-}
+{-# OPTIONS -fno-omit-interface-pragmas #-}
+{-# OPTIONS -fno-spec-constr #-}
+{-# OPTIONS -fno-specialise #-}
+{-# OPTIONS -fno-strictness #-}
+{-# OPTIONS -fno-unbox-small-strict-fields #-}
+{-# OPTIONS -fno-unbox-strict-fields #-}
+
+-- Custom warning suppression
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 -- | Marlowe semantics validator.
 module Language.Marlowe.Plutus.Scripts (
@@ -44,7 +59,6 @@ import Language.Marlowe.Plutus.Semantics as Semantics (
 import Language.Marlowe.Plutus.Semantics.Types as Semantics (
   ChoiceId (ChoiceId),
   Contract (Close),
-  CurrencySymbol,
   Input (..),
   InputContent (..),
   IntervalError (IntervalInPastError, InvalidInterval),
@@ -52,10 +66,9 @@ import Language.Marlowe.Plutus.Semantics.Types as Semantics (
   Payee (Account, Party),
   State (..),
   Token (Token),
-  TokenName (..),
   getInputContent,
  )
-import PlutusLedgerApi.V2 (
+import PlutusLedgerApi.V3 (
   Credential (..),
   Datum (Datum),
   DatumHash (DatumHash),
@@ -64,16 +77,16 @@ import PlutusLedgerApi.V2 (
   LowerBound (..),
   POSIXTime (..),
   POSIXTimeRange,
-  ScriptContext (ScriptContext, scriptContextPurpose, scriptContextTxInfo),
+  ScriptContext (ScriptContext, scriptContextScriptInfo, scriptContextTxInfo),
   ScriptHash (..),
-  ScriptPurpose (Spending),
+  ScriptInfo (SpendingScript),
   TxInInfo (TxInInfo, txInInfoOutRef, txInInfoResolved),
-  TxInfo (TxInfo, txInfoInputs, txInfoOutputs, txInfoValidRange),
+  TxInfo (TxInfo, txInfoInputs, txInfoOutputs, txInfoValidRange, txInfoRedeemers),
   UnsafeFromData (..),
   UpperBound (..),
-  ToData (toBuiltinData),
+  ToData (toBuiltinData), ScriptPurpose (Spending),
  )
-import PlutusLedgerApi.V2.Contexts (findDatum, findDatumHash, txSignedBy, valueSpent)
+import PlutusLedgerApi.V3.Contexts (findDatum, findDatumHash, txSignedBy, valueSpent)
 import PlutusLedgerApi.V2.Tx (OutputDatum (OutputDatumHash), TxOut (TxOut, txOutAddress, txOutDatum, txOutValue))
 
 import PlutusLedgerApi.V1.Address as Address (scriptHashAddress)
@@ -86,7 +99,6 @@ import PlutusTx.Prelude as PlutusTxPrelude (
   Enum (fromEnum),
   Eq (..),
   Functor (fmap),
-  Integer,
   Maybe (..),
   Ord ((>)),
   Semigroup ((<>)),
@@ -107,10 +119,11 @@ import qualified PlutusTx.List as List
 import qualified PlutusLedgerApi.V1.Value as Val
 import qualified PlutusLedgerApi.V2 as Ledger (Address (Address))
 import qualified Language.Marlowe.Plutus.AssocMap as AssocMap
-
+import Prelude qualified as H
+import PlutusLedgerApi.V2 (Redeemer(Redeemer))
+import qualified PlutusTx.AssocMap as PlutusTxMap
 
 {-# INLINEABLE closeInterval #-}
-
 -- | Convert a Plutus POSIX time range into the closed interval needed by Marlowe semantics.
 closeInterval :: POSIXTimeRange -> Maybe (POSIXTime, POSIXTime)
 closeInterval (Interval (LowerBound (Finite (POSIXTime l)) lc) (UpperBound (Finite (POSIXTime h)) hc)) =
@@ -123,38 +136,45 @@ closeInterval _ = Nothing
 {-# INLINEABLE mkRolePayoutValidator #-}
 -- | The Marlowe payout validator.
 mkRolePayoutValidator
-  :: (CurrencySymbol, TokenName)
-  -- ^ The datum is the currency symbol and role name for the payout.
-  -> ()
-  -- ^ No redeemer is required.
-  -> ScriptContext
+  :: ScriptContext
   -- ^ The script context.
   -> Bool
   -- ^ Whether the transaction validated.
-mkRolePayoutValidator (currency, role) _ ctx =
-  -- The role token for the correct currency must be present.
-  -- [Marlowe-Cardano Specification: "17. Payment authorized".]
-  Val.singleton currency role 1 `Val.leq` valueSpent (scriptContextTxInfo ctx)
+mkRolePayoutValidator ScriptContext{scriptContextTxInfo, scriptContextScriptInfo} =
+  let
+    (currency, role) = case scriptContextScriptInfo of
+      SpendingScript _ (H.Just (Datum d)) -> unsafeFromBuiltinData d
+      _ -> traceError "q"
+  in
+    -- The role token for the correct currency must be present.
+    -- [Marlowe-Cardano Specification: "17. Payment authorized".]
+    Val.singleton currency role 1 `Val.leq` valueSpent scriptContextTxInfo
 
+findSpendingRedeemer :: UnsafeFromData a => ScriptContext -> a
+findSpendingRedeemer (ScriptContext {scriptContextTxInfo, scriptContextScriptInfo}) = do
+  let
+    ownTxOutRef = case scriptContextScriptInfo of
+      SpendingScript txOutRef _ -> txOutRef
+      _ -> traceError "l"
+    go ((Spending txOutRef, Redeemer builtinData) : redeemers)
+      | txOutRef == ownTxOutRef = unsafeFromBuiltinData builtinData
+      | otherwise = go redeemers
+    go (_ : redeemers) = go redeemers
+    go [] = traceError "g"
+  go (PlutusTxMap.toList (txInfoRedeemers scriptContextTxInfo))
 
 {-# INLINEABLE mkMarloweValidator #-}
 -- | The Marlowe semantics validator.
 mkMarloweValidator
   :: ScriptHash
   -- ^ The hash of the corresponding Marlowe payout validator.
-  -> MarloweData
-  -- ^ The datum is the Marlowe parameters, state, and contract.
-  -> MarloweInput
-  -- ^ The redeemer is the list of inputs applied to the contract.
   -> ScriptContext
   -- ^ The script context.
   -> Bool
   -- ^ Whether the transaction validated.
 mkMarloweValidator
   rolePayoutValidatorHash
-  MarloweData{..}
-  marloweTxInputs
-  ctx@ScriptContext{scriptContextTxInfo} = do
+  ctx@ScriptContext{scriptContextTxInfo, scriptContextScriptInfo} = do
     let scriptInValue = txOutValue $ txInInfoResolved ownInput
     let interval =
           -- Marlowe semantics require a closed interval, so we might adjust by one millisecond.
@@ -181,9 +201,9 @@ mkMarloweValidator
     -- [Marlowe-Cardano Specification: "Constraint 13. Positive balances".]
     -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
     -- Check that the initial state obeys the Semantic's invariants.
-#ifdef CHECK_PRECONDITIONS
-    let preconditionsOk = checkState "i" scriptInValue marloweState
-#endif
+
+
+
 
     -- [Marlowe-Cardano Specification: "Constraint 0. Input to semantics".]
     -- Package the inputs to be applied in the semantics.
@@ -234,12 +254,12 @@ mkMarloweValidator
                         -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
                         -- Check that the final state obeys the Semantic's invariants.
                         && checkState "o" finalBalance txOutState
-#ifdef CHECK_PRECONDITIONS
-        preconditionsOk
-          && inputsOk
-#else
+
+
+
+
         inputsOk
-#endif
+
           && payoutsOk
           && checkContinuation
           -- [Marlowe-Cardano Specification: "20. Single satisfaction".]
@@ -252,12 +272,17 @@ mkMarloweValidator
       Error TEUselessTransaction -> traceError "u"
       Error TEHashMismatch -> traceError "m"
     where
+      MarloweData {..} = case scriptContextScriptInfo of
+        SpendingScript _ (H.Just (Datum d)) -> unsafeFromBuiltinData d
+        _ -> traceError "f"
+      marloweTxInputs = findSpendingRedeemer ctx
+
       -- The roles currency is in the Marlowe parameters.
       MarloweParams{rolesCurrency} = marloweParams
 
       -- Find the input being spent by a script.
       findOwnInput :: ScriptContext -> Maybe TxInInfo
-      findOwnInput ScriptContext{scriptContextTxInfo = TxInfo{txInfoInputs}, scriptContextPurpose = Spending txOutRef} =
+      findOwnInput ScriptContext{scriptContextTxInfo = TxInfo{txInfoInputs}, scriptContextScriptInfo = SpendingScript txOutRef _datum} =
         List.find (\TxInInfo{txInInfoOutRef} -> txInInfoOutRef == txOutRef) txInfoInputs
       findOwnInput _ = Nothing
 
@@ -305,37 +330,37 @@ mkMarloweValidator
       checkState :: BuiltinString -> Val.Value -> State -> Bool
       checkState tag expected State{..} =
         let
-#ifdef CHECK_POSITIVE_BALANCES
-            positiveBalance :: (a, Integer) -> Bool
-            positiveBalance (_, balance) = balance > 0
-#endif
-#if defined(CHECK_DUPLICATE_ACCOUNTS) || defined(CHECK_DUPLICATE_CHOICES) || defined(CHECK_DUPLICATE_BINDINGS)
-            noDuplicates :: (Eq k) => AssocMap.Map k v -> Bool
-            noDuplicates am =
-              let test [] = True -- An empty list has no duplicates.
-                  test (x : xs) -- Look for a duplicate of the head in the tail.
-                    | List.elem x xs = False -- A duplicate is present.
-                    | otherwise = test xs -- Continue searching for a duplicate.
-               in test $ AssocMap.keys am
-#endif
+
+
+
+
+
+
+
+
+
+
+
+
+
          in -- [Marlowe-Cardano Specification: "Constraint 5. Input value from script".]
             -- and/or
             -- [Marlowe-Cardano Specification: "Constraint 18. Final balance."]
             traceIfFalse ("v" <> tag) (totalBalance accounts == expected)
               -- [Marlowe-Cardano Specification: "Constraint 13. Positive balances".]
-#ifdef CHECK_POSITIVE_BALANCES
-              && traceIfFalse ("b" <> tag) (List.all positiveBalance $ AssocMap.toList accounts)
-#endif
+
+
+
               -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
-#ifdef CHECK_DUPLICATE_ACCOUNTS
-              && traceIfFalse ("ea" <> tag) (noDuplicates accounts)
-#endif
-#ifdef CHECK_DUPLICATE_CHOICES
-              && traceIfFalse ("ec" <> tag) (noDuplicates choices)
-#endif
-#ifdef CHECK_DUPLICATE_BINDINGS
-              && traceIfFalse ("eb" <> tag) (noDuplicates boundValues)
-#endif
+
+
+
+
+
+
+
+
+
 
       -- Look up the Datum hash for specific data.
       findDatumHash' :: (ToData o) => o -> Maybe DatumHash
@@ -445,4 +470,3 @@ mkMarloweValidator
       -- Tally the value paid to an address.
       valuePaidToAddress :: Ledger.Address -> Val.Value
       valuePaidToAddress address = foldMapList txOutValue $ List.filter ((== address) . txOutAddress) allOutputs
-

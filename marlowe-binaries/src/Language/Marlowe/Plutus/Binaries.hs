@@ -1,16 +1,29 @@
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE NoImplicitPrelude #-}
--- Let's ignore for now non used warnings in this module.
-{-# OPTIONS_GHC -Wno-unused-top-binds #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 
+-- Can we make this conditional?
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:no-preserve-logging #-}
 {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.1.0 #-}
 
-{-# OPTIONS_GHC -fno-strictness #-}
-{-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
-{-# OPTIONS_GHC -fno-omit-interface-pragmas #-}
+-- Recommended extensions and flags
+-- https://plutus.cardano.intersectmbo.org/docs/using-plinth/extensions-flags-pragmas
+-- https://plutus.cardano.intersectmbo.org/docs/auction-smart-contract/on-chain-code#4-script-context
+{-# LANGUAGE Strict #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+{-# OPTIONS -fno-full-laziness #-}
+{-# OPTIONS -fno-ignore-interface-pragmas #-}
+{-# OPTIONS -fno-omit-interface-pragmas #-}
+{-# OPTIONS -fno-spec-constr #-}
+{-# OPTIONS -fno-specialise #-}
+{-# OPTIONS -fno-strictness #-}
+{-# OPTIONS -fno-unbox-small-strict-fields #-}
+{-# OPTIONS -fno-unbox-strict-fields #-}
+
+-- FIXME: Do we need this?
 {-# OPTIONS_GHC -fobject-code #-}
+
+-- FIXME: Drop these two:
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Language.Marlowe.Plutus.Binaries where
 
@@ -41,17 +54,15 @@ import PlutusTx.Blueprint.PlutusVersion (PlutusVersion(..))
 
 {-# INLINEABLE rolePayoutValidator #-}
 -- | The Marlowe payout validator.
-rolePayoutValidator :: CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> BuiltinUnit)
+rolePayoutValidator :: CompiledCode (BuiltinData -> BuiltinUnit)
 rolePayoutValidator =
   $$(PlutusTx.compile [||rolePayoutValidator'||])
   where
-    rolePayoutValidator' :: BuiltinData -> BuiltinData -> BuiltinData -> BuiltinUnit
-    rolePayoutValidator' d r p =
+    rolePayoutValidator' :: BuiltinData -> BuiltinUnit
+    rolePayoutValidator' ctx =
       check
         $ mkRolePayoutValidator
-          (unsafeFromBuiltinData d)
-          (unsafeFromBuiltinData r)
-          (unsafeFromBuiltinData p)
+         (unsafeFromBuiltinData ctx)
 
 
 -- | Compute the hash of a script.
@@ -92,16 +103,14 @@ applyArg code = unsafeApplyCode code . liftCodeDef
 
 {-# INLINEABLE marloweValidator #-}
 -- | The validator for Marlowe semantics.
-marloweValidator :: CompiledCode (BuiltinData -> BuiltinData -> BuiltinData -> BuiltinUnit)
+marloweValidator :: CompiledCode (BuiltinData -> BuiltinUnit)
 marloweValidator = do
-  let marloweValidator' :: ScriptHash -> BuiltinData -> BuiltinData -> BuiltinData -> BuiltinUnit
-      marloweValidator' rpvh d r p =
+  let marloweValidator' :: ScriptHash -> BuiltinData -> BuiltinUnit
+      marloweValidator' rpvh sc =
         check
           $ mkMarloweValidator
             rpvh
-            (unsafeFromBuiltinData d)
-            (unsafeFromBuiltinData r)
-            (unsafeFromBuiltinData p)
+            (unsafeFromBuiltinData sc)
 
   $$(PlutusTx.compile [||marloweValidator'||])
     `applyArg` rolePayoutValidatorHash
