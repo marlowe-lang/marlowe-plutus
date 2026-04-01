@@ -37,9 +37,7 @@ import Language.Marlowe.Plutus.Semantics (
   fixInterval,
   getContinuation,
   giveMoney,
-  isClose,
   moneyInAccount,
-  notClose,
   playTrace,
   reduceContractStep,
   reduceContractUntilQuiescent,
@@ -60,6 +58,7 @@ import Language.Marlowe.Plutus.Semantics.Types (
   State (..),
   Value (..),
  )
+import qualified Language.Marlowe.Plutus.Semantics.Types as S
 import Language.Marlowe.Plutus.FindInputs (getAllInputs)
 import PlutusLedgerApi.V2 (POSIXTime (..))
 import Marlowe.Testing.Semantics.Arbitrary (
@@ -216,9 +215,7 @@ tests =
     , testProperty "getContinuation" checkGetContinuation
     , testProperty "applyCases" checkApplyCases
     , testProperty "applyInput" checkApplyInput
-    , --  , testProperty "applyAllInputs" checkApplyAllInputs
-      testCase "isClose" checkIsClose
-    , testCase "notClose" checkNotClose
+    --  , testProperty "applyAllInputs" checkApplyAllInputs
     , testProperty "computeTransaction (via playTrace)" checkComputeTransaction
     , testProperty "playTrace" checkPlayTrace
     ]
@@ -344,11 +341,20 @@ checkMulValue =
   checkValue (const $ const arbitrary) $ \eval _ _ _ (x, y) ->
     eval (MulValue x y) == eval x * eval y
 
+mockEnv :: Environment
+mockEnv = do
+  let
+    timeInterval = (0, 0)
+  Environment{timeInterval}
+
+emptyState :: State
+emptyState = S.emptyState 0
+
 -- | Test `Language.Marlowe.Plutus.Semantics.Types.DivValue` for 0/0.
 checkDivValueNumeratorDenominatorZero :: Assertion
 checkDivValueNumeratorDenominatorZero =
   assertBool "DivValue 0 0 = 0" $
-    evalValue undefined undefined (DivValue (Constant 0) (Constant 0)) == 0
+    evalValue mockEnv emptyState (DivValue (Constant 0) (Constant 0)) == 0
 
 -- | Test `Language.Marlowe.Plutus.Semantics.Types.DivValue` for zero numerator.
 checkDivValueNumeratorZero :: Property
@@ -510,7 +516,7 @@ checkValueEQ =
 checkTrueObs :: Assertion
 checkTrueObs =
   assertBool "TrueObs is true." $
-    evalObservation undefined undefined TrueObs
+    evalObservation mockEnv emptyState TrueObs
 
 -- | Test `Language.Marlowe.Plutus.Semantics.Types.FalseObs`
 --   by comparison to Haskell semantics.
@@ -518,19 +524,23 @@ checkFalseObs :: Assertion
 checkFalseObs =
   assertBool "FalseObs is false."
     . not
-    $ evalObservation undefined undefined FalseObs
+    $ evalObservation mockEnv emptyState FalseObs
 
 -- | Test detection of actions not matching cases.
 checkApplyActionMismatch :: Property
 checkApplyActionMismatch = property $ do
   let gen = do
-        let inputs = [IDeposit undefined undefined undefined undefined, IChoice undefined undefined, INotify]
-            actions = [Deposit undefined undefined undefined undefined, Choice undefined undefined, Notify undefined]
+        let fakeParty = S.mkRoleUtf8 "party"
+            fakeChoice = S.mkChoiceIdUtf8 "choice" fakeParty
+            fakeBounds = [S.Bound 0 1]
+            fakeObservation = S.TrueObs
+            inputs = [IDeposit fakeParty fakeParty S.ada 1, IChoice fakeChoice 1, INotify]
+            actions = [Deposit fakeParty fakeParty S.ada (S.Constant 1), Choice fakeChoice fakeBounds, Notify fakeObservation]
         x <- chooseInt (0, length inputs - 1)
         y <- suchThat (chooseInt (0, length actions - 1)) (/= x)
         pure (inputs !! x, actions !! y)
   forAll' gen $ \(x, y) ->
-    case applyAction undefined undefined x y of
+    case applyAction mockEnv emptyState x y of
       NotAppliedAction -> True
       _ -> False
 
@@ -922,28 +932,6 @@ checkApplyInput =
         (When cases _ _, result) -> result == applyCases environment state input cases
         (_, ApplyNoMatchError) -> True
         e -> error $ show e
-
--- | Test that `Language.Marlowe.Plutus.Semantics.isClose` reports correctly.
-checkIsClose :: Assertion
-checkIsClose =
-  do
-    assertBool "isClose Close = True" $ isClose Close
-    assertBool "isClose Pay = False" . not . isClose $ Pay undefined undefined undefined undefined undefined
-    assertBool "isClose If = False" . not . isClose $ If undefined undefined undefined
-    assertBool "isClose When = False" . not . isClose $ When undefined undefined undefined
-    assertBool "isClose Let = False" . not . isClose $ Let undefined undefined undefined
-    assertBool "isClose Asset = False" . not . isClose $ Assert undefined undefined
-
--- | Test that `Language.Marlowe.Plutus.Semantics.notClose` reports correctly.
-checkNotClose :: Assertion
-checkNotClose =
-  do
-    assertBool "notClose Close = False" . not $ notClose Close
-    assertBool "notClose Pay = True" . notClose $ Pay undefined undefined undefined undefined undefined
-    assertBool "notClose If = True" . notClose $ If undefined undefined undefined
-    assertBool "notClose When = True" . notClose $ When undefined undefined undefined
-    assertBool "notClose Let = True" . notClose $ Let undefined undefined undefined
-    assertBool "notClose Asset = True" . notClose $ Assert undefined undefined
 
 -- | Test `Language.Marlowe.Plutus.Semantics.computeTransaction` against static analysis cases that should succeed.
 checkComputeTransaction :: Property

@@ -32,6 +32,17 @@ module Language.Marlowe.Plutus.Scripts (
   MarloweTxInput (..),
 ) where
 
+import Language.Marlowe.Contrib.PlutusTx.Debugging.Trace (
+  traceError,
+  traceIfFalse,
+  )
+
+-- import Language.Marlowe.Contrib.PlutusTx.Debugging.Trace (
+--     showDebug, traceVerbose
+--   )
+-- import PlutusTx.Builtins (appendString)
+-- Example:
+-- traceVerbose (appendString "COMPUTED:" (showDebug computedTxOutContract)) "o" $ checkOwnOutputConstraint marloweData finalBalance
 import Language.Marlowe.Plutus.Scripts.Types (MarloweInput, MarloweTxInput (..))
 import Language.Marlowe.Plutus.Semantics as Semantics (
   MarloweData (..),
@@ -77,14 +88,14 @@ import PlutusLedgerApi.V3 (
   LowerBound (..),
   POSIXTime (..),
   POSIXTimeRange,
-  ScriptContext (ScriptContext, scriptContextScriptInfo, scriptContextTxInfo),
+  ScriptContext (ScriptContext, scriptContextScriptInfo, scriptContextRedeemer, scriptContextTxInfo),
   ScriptHash (..),
   ScriptInfo (SpendingScript),
   TxInInfo (TxInInfo, txInInfoOutRef, txInInfoResolved),
-  TxInfo (TxInfo, txInfoInputs, txInfoOutputs, txInfoValidRange, txInfoRedeemers),
+  TxInfo (TxInfo, txInfoInputs, txInfoOutputs, txInfoValidRange),
   UnsafeFromData (..),
   UpperBound (..),
-  ToData (toBuiltinData), ScriptPurpose (Spending),
+  ToData (toBuiltinData)
  )
 import PlutusLedgerApi.V3.Contexts (findDatum, findDatumHash, txSignedBy, valueSpent)
 import PlutusLedgerApi.V2.Tx (OutputDatum (OutputDatumHash), TxOut (TxOut, txOutAddress, txOutDatum, txOutValue))
@@ -95,17 +106,13 @@ import PlutusTx.Prelude as PlutusTxPrelude (
   AdditiveMonoid (zero),
   AdditiveSemigroup ((+)),
   Bool (..),
-  BuiltinString,
   Enum (fromEnum),
   Eq (..),
   Functor (fmap),
   Maybe (..),
   Ord ((>)),
-  Semigroup ((<>)),
   otherwise,
   snd,
-  traceError,
-  traceIfFalse,
   ($),
   (&&),
   (.),
@@ -121,7 +128,6 @@ import qualified PlutusLedgerApi.V2 as Ledger (Address (Address))
 import qualified Language.Marlowe.Plutus.AssocMap as AssocMap
 import Prelude qualified as H
 import PlutusLedgerApi.V2 (Redeemer(Redeemer))
-import qualified PlutusTx.AssocMap as PlutusTxMap
 
 {-# INLINEABLE closeInterval #-}
 -- | Convert a Plutus POSIX time range into the closed interval needed by Marlowe semantics.
@@ -150,19 +156,6 @@ mkRolePayoutValidator ScriptContext{scriptContextTxInfo, scriptContextScriptInfo
     -- [Marlowe-Cardano Specification: "17. Payment authorized".]
     Val.singleton currency role 1 `Val.leq` valueSpent scriptContextTxInfo
 
-findSpendingRedeemer :: UnsafeFromData a => ScriptContext -> a
-findSpendingRedeemer (ScriptContext {scriptContextTxInfo, scriptContextScriptInfo}) = do
-  let
-    ownTxOutRef = case scriptContextScriptInfo of
-      SpendingScript txOutRef _ -> txOutRef
-      _ -> traceError "l"
-    go ((Spending txOutRef, Redeemer builtinData) : redeemers)
-      | txOutRef == ownTxOutRef = unsafeFromBuiltinData builtinData
-      | otherwise = go redeemers
-    go (_ : redeemers) = go redeemers
-    go [] = traceError "g"
-  go (PlutusTxMap.toList (txInfoRedeemers scriptContextTxInfo))
-
 {-# INLINEABLE mkMarloweValidator #-}
 -- | The Marlowe semantics validator.
 mkMarloweValidator
@@ -174,7 +167,7 @@ mkMarloweValidator
   -- ^ Whether the transaction validated.
 mkMarloweValidator
   rolePayoutValidatorHash
-  ctx@ScriptContext{scriptContextTxInfo, scriptContextScriptInfo} = do
+  ctx@ScriptContext{scriptContextTxInfo, scriptContextRedeemer=Redeemer (unsafeFromBuiltinData -> marloweTxInputs), scriptContextScriptInfo} = do
     let scriptInValue = txOutValue $ txInInfoResolved ownInput
     let interval =
           -- Marlowe semantics require a closed interval, so we might adjust by one millisecond.
@@ -197,14 +190,10 @@ mkMarloweValidator
     -- [Marlowe-Cardano Specification: "Constraint 14. Inputs authorized".]
     let inputsOk = allInputsAreAuthorized inputContents
 
+    -- We decided to drop this redundancy:
     -- [Marlowe-Cardano Specification: "Constraint 5. Input value from script".]
     -- [Marlowe-Cardano Specification: "Constraint 13. Positive balances".]
     -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
-    -- Check that the initial state obeys the Semantic's invariants.
-
-
-
-
     -- [Marlowe-Cardano Specification: "Constraint 0. Input to semantics".]
     -- Package the inputs to be applied in the semantics.
     let txInput =
@@ -219,7 +208,11 @@ mkMarloweValidator
     -- the incoming datum.
     let computedResult = computeTransaction txInput marloweState marloweContract
     case computedResult of
-      TransactionOutput{txOutPayments, txOutState, txOutContract} -> do
+      TransactionOutput
+        { txOutPayments = computedTxOutPayments
+        , txOutState = computedTxOutState
+        , txOutContract = computedTxOutContract
+        } -> do
         -- [Marlowe-Cardano Specification: "Constraint 9. Marlowe parameters".]
         -- [Marlowe-Cardano Specification: "Constraint 10. Output state".]
         -- [Marlowe-Cardano Specification: "Constraint 11. Output contract."]
@@ -228,38 +221,38 @@ mkMarloweValidator
         let marloweData =
               MarloweData
                 { marloweParams = marloweParams
-                , marloweContract = txOutContract
-                , marloweState = txOutState
+                , marloweContract = computedTxOutContract
+                , marloweState = computedTxOutState
                 }
 
             -- Each party must receive as least as much value as the semantics specify.
             -- [Marlowe-Cardano Specification: "Constraint 15. Sufficient payment."]
-            payoutsByParty = AssocMap.toList $ foldMapList payoutByParty txOutPayments
+            payoutsByParty = AssocMap.toList $ foldMapList payoutByParty computedTxOutPayments
             payoutsOk = payoutConstraints payoutsByParty
 
             checkContinuation =
-              case txOutContract of
+              case computedTxOutContract of
                 -- [Marlowe-Cardano Specification: "Constraint 4. No output to script on close".]
-                Close -> traceIfFalse "c" hasNoOutputToOwnScript
-                _ ->
+                Close -> do
+                  let
+                    -- Check for any output to the script address.
+                    hasNoOutputToOwnScript :: Bool
+                    hasNoOutputToOwnScript = List.all ((/= ownAddress) . txOutAddress) allOutputs
+                  traceIfFalse "c" hasNoOutputToOwnScript
+                _ -> do
                   let totalIncome = foldMapList collectDeposits inputContents
                       totalPayouts = foldMapList snd payoutsByParty
                       finalBalance = scriptInValue + totalIncome - totalPayouts
-                   in -- [Marlowe-Cardano Specification: "Constraint 3. Single Marlowe output".]
-                      -- [Marlowe-Cardano Specification: "Constraint 6. Output value to script."]
-                      -- Check that the single Marlowe output has the correct datum and value.
-                      checkOwnOutputConstraint marloweData finalBalance
-                        -- [Marlowe-Cardano Specification: "Constraint 18. Final balance."]
-                        -- [Marlowe-Cardano Specification: "Constraint 13. Positive balances".]
-                        -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
-                        -- Check that the final state obeys the Semantic's invariants.
-                        && checkState "o" finalBalance txOutState
-
-
-
-
+                  -- [Marlowe-Cardano Specification: "Constraint 3. Single Marlowe output".]
+                  -- [Marlowe-Cardano Specification: "Constraint 6. Output value to script."]
+                  -- Check that the single Marlowe output has the correct datum and value.
+                  checkOwnOutputConstraint marloweData finalBalance
+                    -- [Marlowe-Cardano Specification: "Constraint 18. Final balance."]
+                    -- [Marlowe-Cardano Specification: "Constraint 13. Positive balances".]
+                    -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
+                    -- Check that the final state obeys the Semantic's invariants.
+                    && checkState finalBalance computedTxOutState
         inputsOk
-
           && payoutsOk
           && checkContinuation
           -- [Marlowe-Cardano Specification: "20. Single satisfaction".]
@@ -275,7 +268,6 @@ mkMarloweValidator
       MarloweData {..} = case scriptContextScriptInfo of
         SpendingScript _ (H.Just (Datum d)) -> unsafeFromBuiltinData d
         _ -> traceError "f"
-      marloweTxInputs = findSpendingRedeemer ctx
 
       -- The roles currency is in the Marlowe parameters.
       MarloweParams{rolesCurrency} = marloweParams
@@ -327,40 +319,15 @@ mkMarloweValidator
       sameValidatorHash _ _ = False
 
       -- Check a state for the correct value, positive accounts, and no duplicates.
-      checkState :: BuiltinString -> Val.Value -> State -> Bool
-      checkState tag expected State{..} =
-        let
-
-
-
-
-
-
-
-
-
-
-
-
-
-         in -- [Marlowe-Cardano Specification: "Constraint 5. Input value from script".]
-            -- and/or
-            -- [Marlowe-Cardano Specification: "Constraint 18. Final balance."]
-            traceIfFalse ("v" <> tag) (totalBalance accounts == expected)
-              -- [Marlowe-Cardano Specification: "Constraint 13. Positive balances".]
-
-
-
-              -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
-
-
-
-
-
-
-
-
-
+      checkState :: Val.Value -> State -> Bool
+      checkState expected State{..} =
+         -- [Marlowe-Cardano Specification: "Constraint 5. Input value from script".]
+         -- and/or
+         -- [Marlowe-Cardano Specification: "Constraint 18. Final balance."]
+         traceIfFalse "v" (totalBalance accounts == expected)
+         -- These checks were redundant:
+         -- [Marlowe-Cardano Specification: "Constraint 13. Positive balances".]
+         -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
 
       -- Look up the Datum hash for specific data.
       findDatumHash' :: (ToData o) => o -> Maybe DatumHash
@@ -368,24 +335,20 @@ mkMarloweValidator
 
       -- Check that the correct datum and value is being output to the script.
       checkOwnOutputConstraint :: MarloweData -> Val.Value -> Bool
-      checkOwnOutputConstraint ocDatum ocValue =
-        let hsh = findDatumHash' ocDatum
-         in traceIfFalse "d"
-              $ checkScriptOutput (==) ownAddress hsh ocValue getContinuingOutput -- "Output constraint"
-      getContinuingOutput :: TxOut
-      getContinuingOutput = case List.filter (\TxOut{txOutAddress} -> ownAddress == txOutAddress) allOutputs of
-        [out] -> out
-        _ -> traceError "o" -- No continuation or multiple Marlowe contract outputs is forbidden.
+      checkOwnOutputConstraint ocDatum ocValue = do
+        let 
+          hsh = findDatumHash' ocDatum
+          continuingOutput = case List.filter (\TxOut{txOutAddress} -> ownAddress == txOutAddress) allOutputs of
+            [out] -> out
+            _ -> traceError "o" -- No continuation or multiple Marlowe contract outputs is forbidden.
+        traceIfFalse "d" $ checkScriptOutput (==) ownAddress hsh ocValue continuingOutput -- "Output constraint"
+
 
       -- Check that address, value, and datum match the specified.
       checkScriptOutput :: (Val.Value -> Val.Value -> Bool) -> Ledger.Address -> Maybe DatumHash -> Val.Value -> TxOut -> Bool
       checkScriptOutput comparison addr hsh value TxOut{txOutAddress, txOutValue, txOutDatum = OutputDatumHash svh} =
         txOutValue `comparison` value && hsh == Just svh && txOutAddress == addr
       checkScriptOutput _ _ _ _ _ = False
-
-      -- Check for any output to the script address.
-      hasNoOutputToOwnScript :: Bool
-      hasNoOutputToOwnScript = List.all ((/= ownAddress) . txOutAddress) allOutputs
 
       -- All of the script outputs.
       allOutputs :: [TxOut]
@@ -470,3 +433,4 @@ mkMarloweValidator
       -- Tally the value paid to an address.
       valuePaidToAddress :: Ledger.Address -> Val.Value
       valuePaidToAddress address = foldMapList txOutValue $ List.filter ((== address) . txOutAddress) allOutputs
+

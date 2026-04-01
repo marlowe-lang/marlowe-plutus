@@ -15,14 +15,14 @@ module Spec.PlutusTx.ScriptContext (
 
 import Data.List (find)
 import Data.Maybe (mapMaybe)
-import PlutusLedgerApi.V2 (
+import PlutusLedgerApi.V3 (
   Address (Address),
   Credential (PubKeyCredential),
   TxInInfo (txInInfoResolved),
   TxInfo (TxInfo, txInfoData, txInfoInputs, txInfoOutputs, txInfoSignatories),
   TxOut (TxOut, txOutAddress, txOutValue),
  )
-import PlutusLedgerApi.V2.Contexts (findDatum, findDatumHash, txSignedBy, valuePaidTo, valueSpent)
+import PlutusLedgerApi.V3.Contexts (findDatum, findDatumHash, txSignedBy, valuePaidTo, valueSpent)
 import Marlowe.Testing.Contrib.PlutusTx.Arbitrary ()
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (Arbitrary (..), Property, elements, forAll, property, suchThat, testProperty)

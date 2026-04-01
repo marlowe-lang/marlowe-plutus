@@ -7,6 +7,8 @@
       flake = false;
     };
 
+    jailed-agents.url = "github:andersonjoseph/jailed-agents";
+
     CHaP = {
       url = "github:IntersectMBO/cardano-haskell-packages?ref=repo";
       flake = false;

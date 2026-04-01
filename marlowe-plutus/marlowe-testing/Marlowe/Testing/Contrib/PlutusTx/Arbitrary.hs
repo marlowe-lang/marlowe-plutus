@@ -16,7 +16,7 @@ module Marlowe.Testing.Contrib.PlutusTx.Arbitrary (
   shrinkBuiltinByteString,
 ) where
 
-import PlutusLedgerApi.V2 (
+import PlutusLedgerApi.V3 (
   BuiltinData (..),
   Data (..),
   Datum (..),
@@ -38,7 +38,7 @@ import PlutusLedgerApi.V2 (
   adaSymbol,
   adaToken,
   singleton,
-  toBuiltin,
+  toBuiltin, ScriptInfo (SpendingScript), Lovelace(..),
  )
 import PlutusTx.Builtins (BuiltinByteString, lengthOfByteString)
 import Marlowe.Testing.Contrib.Integer.Arbitrary (arbitraryPositiveInteger, arbitraryInteger)
@@ -60,8 +60,10 @@ import qualified Data.ByteString as BS (ByteString, pack)
 import qualified Data.ByteString.Char8 as BS8 (pack)
 import qualified PlutusTx.AssocMap as PlutusTxAM
 import qualified PlutusTx.List as List
-import PlutusLedgerApi.V1 (PubKeyHash, CurrencySymbol, TokenName (TokenName), POSIXTime (POSIXTime), Address(..), Credential (PubKeyCredential, ScriptCredential), StakingCredential (StakingHash), ScriptHash)
+import PlutusLedgerApi.V1 (PubKeyHash, CurrencySymbol, TokenName (TokenName), POSIXTime (POSIXTime), Credential (PubKeyCredential, ScriptCredential), StakingCredential (StakingHash), ScriptHash)
 import Language.Marlowe.Plutus.Semantics.Types (unsafeMkCurrencySymbolHex, mkTokenNameByteString)
+import PlutusLedgerApi.V3.MintValue (emptyMintValue)
+import qualified PlutusLedgerApi.V3 as Ledger
 
 arbitraryPlutusTxAssocMap :: (Eq k) => Gen k -> Gen v -> Gen (PlutusTxAM.Map k v)
 arbitraryPlutusTxAssocMap arbitraryKey arbitraryValue =
@@ -79,8 +81,8 @@ shrinkBuiltinByteString f universe selected =
     (\candidate -> lengthOfByteString (f candidate) > 0 && lengthOfByteString (f candidate) < lengthOfByteString (f selected))
     universe
 
-instance Arbitrary Address where
-  arbitrary = Address <$> arbitrary <*> arbitrary
+instance Arbitrary Ledger.Address where
+  arbitrary = Ledger.Address <$> arbitrary <*> arbitrary
 
 instance Arbitrary Credential where
   arbitrary = do
@@ -112,8 +114,6 @@ randomScriptHashes =
   , "a2bd7ddd1d11c7f4994fa7f41c2781c750525705f9c259f97cb27d0e"
   , "c5b4c54ec387ad8250b183a0d0d181617bb18bcf2eccc0f27fe7aa23"
   , "d877b83fee4a52bd72269ece77d78549fa64e111aa0e20cd4a1c471b"
-  -- , "d877b83fee4a52bd72269ece77d78549fa64e111aa0e20cd4a1c47"
-  -- , "d877b83fee4a52bd72269ece77d78549fa64e111aa0e20cd4a1c470908"
   ]
 
 
@@ -185,7 +185,7 @@ instance Arbitrary Redeemer where
   arbitrary = Redeemer <$> arbitrary
 
 instance Arbitrary ScriptContext where
-  arbitrary = ScriptContext <$> arbitrary <*> (Spending <$> arbitrary)
+  arbitrary = ScriptContext <$> arbitrary <*> arbitrary <*> (SpendingScript <$> arbitrary <*> arbitrary)
 
 instance Arbitrary ScriptPurpose where
   arbitrary =
@@ -201,20 +201,27 @@ instance Arbitrary POSIXTime where
   arbitrary = POSIXTime <$> arbitraryInteger
   shrink (POSIXTime i) = POSIXTime <$> shrink i
 
+instance Arbitrary Lovelace where
+  arbitrary = Lovelace <$> arbitraryPositiveInteger
+
 instance Arbitrary TxInfo where
   arbitrary =
     do
       txInfoInputs <- arbitrary
       txInfoReferenceInputs <- arbitrary
       txInfoOutputs <- arbitrary
-      txInfoFee <- singleton adaSymbol adaToken <$> arbitraryPositiveInteger
+      txInfoFee <- arbitrary
       txInfoValidRange <- arbitrary
       txInfoSignatories <- arbitrary
       txInfoRedeemers <- arbitraryPlutusTxAssocMap arbitrary arbitrary
       txInfoData <- arbitraryPlutusTxAssocMap arbitrary arbitrary
-      let txInfoMint = mempty
-          txInfoDCert = mempty
+      let txInfoMint = emptyMintValue
+          txInfoTxCerts = mempty
           txInfoWdrl = PlutusTxAM.empty
+          txInfoVotes = PlutusTxAM.empty
+          txInfoProposalProcedures = mempty
+          txInfoTreasuryDonation = Nothing
+          txInfoCurrentTreasuryAmount = Nothing
       txInfoId <- arbitrary
       pure TxInfo{..}
 

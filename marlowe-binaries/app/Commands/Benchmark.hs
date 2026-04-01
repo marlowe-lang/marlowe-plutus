@@ -1,0 +1,215 @@
+{-# LANGUAGE ApplicativeDo #-}
+
+module Commands.Benchmark
+  ( benchmarkCommandParser
+  ) where
+
+import Control.Monad.Trans.Except (runExceptT)
+import Data.Aeson qualified as A
+import Data.ByteString.Char8 qualified as BS8
+import Data.ByteString.Lazy.Char8 qualified as LBS8
+import Data.Foldable (fold)
+import Data.Maybe (fromMaybe)
+import Data.Yaml qualified as Y
+import Marlowe.Binaries.Api.Benchmark
+    ( BenchmarkCaseResult(..),
+      BenchmarkGenerateRequest(..),
+      BenchmarkGenerateResponse(..),
+      BenchmarkGeneratedSuite(..),
+      BenchmarkRequest(..),
+      BenchmarkResponse(..),
+      ResourceUsage(..),
+      benchmarkScripts,
+      generateBenchmarks,
+      EvaluationError(..) )
+import Options.Applicative
+  ( Parser
+  , ParserInfo
+  , ReadM
+  , command
+  , eitherReader
+  , help
+  , hsubparser
+  , info
+  , long
+  , metavar
+  , option
+  , optional
+  , progDesc
+  , showDefault
+  , strOption
+  , value
+  )
+import Paths_marlowe_binaries (getDataDir)
+import System.Exit (die)
+import System.FilePath ((</>))
+import qualified Data.Aeson.Encode.Pretty as A
+
+data MessageFormat = MessageFormatText | MessageFormatJson | MessageFormatYaml
+  deriving (Eq)
+
+instance Show MessageFormat where
+  show = \case
+    MessageFormatText -> "text"
+    MessageFormatJson -> "json"
+    MessageFormatYaml -> "yaml"
+
+benchmarkCommandParser :: ParserInfo (IO ())
+benchmarkCommandParser =
+  info
+    ( hsubparser
+        . fold
+        $ [ command "generate" (runGenerateCommand <$> generateCommandParser)
+          , command "run" (runRunCommand <$> runCommandParser)
+          ]
+    )
+    (progDesc "Generate and run Marlowe benchmarks.")
+
+data BenchmarkRunCommand = BenchmarkRunCommand
+  { benchmarkRootDir :: Maybe FilePath
+  , messageFormat :: MessageFormat
+  , payoutScriptFile :: Maybe FilePath
+  , scenarioRootDir :: Maybe FilePath
+  , semanticsScriptFile :: Maybe FilePath
+  }
+
+runCommandParser :: ParserInfo BenchmarkRunCommand
+runCommandParser =
+  info
+    ( BenchmarkRunCommand
+        <$> optional do
+          strOption
+            ( long "benchmark-dir"
+                <> metavar "DIR"
+                <> help "Benchmark root directory containing scenarios. Defaults to packaged benchmarks."
+            )
+        <*> messageFormatParser
+        <*> optional do
+          scriptFileOption "payout-script-file" "Path to the payout script `.plutus` file. If omitted, the devel script is complied on the fly and used."
+        <*> optional do
+          strOption
+            ( long "scenario-root-dir"
+                <> metavar "DIR"
+                <> help "Root directory for scenario file paths. Defaults to the benchmark root directory."
+            )
+        <*> optional do
+          scriptFileOption "semantics-script-file" "Path to the semantics script `.plutus` file. If omitted, the devel script is complied on the fly and used."
+    )
+    (progDesc "Run Marlowe benchmarks from a benchmark root directory.")
+
+newtype BenchmarkGenerateCommand = BenchmarkGenerateCommand (Maybe FilePath)
+
+generateCommandParser :: ParserInfo BenchmarkGenerateCommand
+generateCommandParser =
+  info
+    do
+      scenarioDir <- optional do
+            strOption
+              ( long "scenario-dir"
+                  <> metavar "DIR"
+                  <> help "Directory to write generated benchmark scenarios to. Defaults to a `scenarios` subdirectory of the packaged benchmark directory."
+              )
+      pure $ BenchmarkGenerateCommand scenarioDir
+    (progDesc "Generate Marlowe benchmark scenarios.")
+
+runRunCommand :: BenchmarkRunCommand -> IO ()
+runRunCommand cmd = do
+  dataDir <- getDataDir
+  (semScript, payScript) <- case (cmd.semanticsScriptFile, cmd.payoutScriptFile) of
+    (Nothing, Nothing) -> do
+      -- Read Compile result from stdin and grab the binaries paths from there.
+      error "Not implemented yet"
+    (Just s, Just p) -> pure (s, p)
+    (_, _) -> die "Both semantics and payout script files must be provided, or neither to read them from stdin."
+
+  benchmarkRootDir <- case cmd.benchmarkRootDir of
+    Just dir -> pure dir
+    Nothing -> pure $ dataDir </> "benchmarks"
+  scenarioRootDir <- case cmd.scenarioRootDir of
+    Just dir -> pure dir
+    Nothing -> pure $ benchmarkRootDir </> "scenarios"
+
+  let
+    request =
+        BenchmarkRequest
+          { benchmarkRootDir
+          , scenarioRootDir
+          , semanticsScriptFile = semScript
+          , payoutScriptFile = payScript
+          }
+  runExceptT (benchmarkScripts request) >>= \case
+    Left err -> emitBenchmarkError cmd.messageFormat err
+    Right response -> emitBenchmarkSummary cmd.messageFormat response
+
+runGenerateCommand :: BenchmarkGenerateCommand -> IO ()
+runGenerateCommand (BenchmarkGenerateCommand scenarioRootDir) = do
+  dataDir <- getDataDir
+  let
+    rootDir = fromMaybe (dataDir </> "benchmarks") scenarioRootDir
+  result <- runExceptT $ generateBenchmarks
+    (BenchmarkGenerateRequest rootDir)
+  case result of
+    Left err -> emitBenchmarkError MessageFormatText err
+    Right response -> emitGenerateSummary MessageFormatText response
+
+emitBenchmarkSummary :: MessageFormat -> BenchmarkResponse -> IO ()
+emitBenchmarkSummary messageFormat response@BenchmarkResponse{benchmarkResults} =
+  case messageFormat of
+    MessageFormatText -> mapM_ printResult benchmarkResults
+    MessageFormatJson -> LBS8.putStrLn $ A.encodePretty response
+    MessageFormatYaml -> BS8.putStrLn $ Y.encode response
+ where
+  printResult :: BenchmarkCaseResult -> IO ()
+  printResult result = do
+    case result.result of
+      Left err -> do
+        putStrLn $ "  error: " <> case err of
+          OtherError msg -> msg
+          EvaluationError msg logs -> msg <> "\n    logs: " <> show logs
+      Right (usage, logs) -> do
+        putStrLn $ "  cpu: " <> show usage.cpu
+        putStrLn $ "  memory: " <> show usage.memory
+        putStrLn $ "  logs: " <> show logs
+
+emitGenerateSummary :: MessageFormat -> BenchmarkGenerateResponse -> IO ()
+emitGenerateSummary messageFormat response@BenchmarkGenerateResponse{generatedBenchmarkSuites} =
+  case messageFormat of
+    MessageFormatText -> mapM_ printSuite generatedBenchmarkSuites
+    MessageFormatJson -> LBS8.putStrLn $ A.encodePretty response
+    MessageFormatYaml -> BS8.putStrLn $ Y.encode response
+ where
+  printSuite BenchmarkGeneratedSuite{generatedScenarioDir, generatedScenarios} = do
+    putStrLn $ "directory: " <> generatedScenarioDir
+    putStrLn $ "  scenarios: " <> show (length generatedScenarios)
+
+emitBenchmarkError :: MessageFormat -> String -> IO a
+emitBenchmarkError messageFormat err =
+  case messageFormat of
+    MessageFormatText -> die err
+    MessageFormatJson -> LBS8.putStrLn (A.encodePretty $ A.toJSON err) >> die "benchmark command failed"
+    MessageFormatYaml -> BS8.putStrLn (Y.encode err) >> die "benchmark command failed"
+
+scriptFileOption :: String -> String -> Parser FilePath
+scriptFileOption name description =
+  strOption
+    ( long name
+        <> metavar "FILE"
+        <> help description
+    )
+
+messageFormatParser :: Parser MessageFormat
+messageFormatParser =
+  option readMessageFormat
+    ( long "message-format"
+        <> metavar "text|json|yaml"
+        <> value MessageFormatText
+        <> showDefault
+        <> help "Format of command output."
+    )
+
+readMessageFormat :: ReadM MessageFormat
+readMessageFormat = eitherReader $ \case
+  "text" -> Right MessageFormatText
+  "json" -> Right MessageFormatJson
+  "yaml" -> Right MessageFormatYaml
+  other -> Left $ "Unknown message format: " <> other <> ". Expected one of: text, json, yaml."

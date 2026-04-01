@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Marlowe.Testing.ProtocolParams
-  ( loadMainnetEvaluationContexts
+  ( EvaluationContexts(..)
+  , loadMainnetEvaluationContexts
   ) where
 
 import qualified Data.ByteString.Lazy as LBS
@@ -35,8 +36,14 @@ instance Aeson.FromJSON CostModelsRaw where
 data PlutusVersion2or3 = Version2 | Version3
   deriving (Eq, Ord, Show)
 
+data EvaluationContexts = EvaluationContexts
+  { majorProtocolVersion :: PV2.MajorProtocolVersion
+  , v2 :: PV2.EvaluationContext
+  , v3 :: PV2.EvaluationContext
+  }
+
 loadMainnetEvaluationContexts
-  :: IO (Either String (PV2.MajorProtocolVersion, (PV2.EvaluationContext, PV2.EvaluationContext)))
+  :: IO (Either String EvaluationContexts)
 loadMainnetEvaluationContexts = do
   file <- getDataFileName "marlowe-testing/data/mainnet-protocol-params.json"
   bytes <- LBS.readFile file
@@ -57,4 +64,4 @@ loadMainnetEvaluationContexts = do
         . runExcept
         . runWriterT
         $ PV2.mkEvaluationContext v3
-    pure (mpv, (v2ec, v3ec))
+    pure $ EvaluationContexts mpv v2ec v3ec

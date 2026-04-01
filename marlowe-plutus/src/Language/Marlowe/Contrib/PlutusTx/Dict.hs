@@ -1,6 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 
-module PlutusTx.Dict
+module Language.Marlowe.Contrib.PlutusTx.Dict
   ( Dict
   , empty
   , insert

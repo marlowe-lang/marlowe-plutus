@@ -28,8 +28,9 @@ index-state:
 --     cabal v2-update 'hackage.haskell.org,2026-01-03T05:41:55Z'
 
 packages:
-  marlowe-plutus
   marlowe-binaries
+  marlowe-plutus
+  marlowe-transactions
   libs/base16-aeson
   libs/multiplate
   -- libs/sqlite-simple
@@ -44,6 +45,11 @@ package marlowe-plutus
   tests: True
   ghc-options: -Werror
 
+
+constraints:
+    cardano-api ^>=10.16
+  , plutus-core ==1.45.0.0
+  , plutus-ledger-api ==1.45.0.0
 
 source-repository-package
    type: git

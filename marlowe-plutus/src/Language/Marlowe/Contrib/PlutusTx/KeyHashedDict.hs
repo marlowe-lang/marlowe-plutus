@@ -2,7 +2,7 @@
 
 -- | A dictionary (map) with keys hashed to minimize
 -- | storage requirements on-chain.
-module PlutusTx.KeyHashedDict
+module Language.Marlowe.Contrib.PlutusTx.KeyHashedDict
   ( KeyHashedDict
   , KeyHash
   , delete
@@ -24,8 +24,8 @@ import PlutusTx.Prelude
 import PlutusTx.Foldable (Foldable(foldr))
 import PlutusTx.Traversable (Traversable(traverse))
 
-import PlutusTx.Dict (Dict)
-import qualified PlutusTx.Dict as Dict
+import Language.Marlowe.Contrib.PlutusTx.Dict (Dict)
+import qualified Language.Marlowe.Contrib.PlutusTx.Dict as Dict
 
 newtype KeyHashedDict v = KeyHashedDict (Dict v)
 

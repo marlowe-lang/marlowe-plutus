@@ -85,6 +85,7 @@ import qualified PlutusTx.Prelude as P
 import qualified PlutusTx.Ratio as P
 import Marlowe.Testing.Common (alicePk, amount, contractGen, pangramContract, shrinkContract, valueGen)
 import Marlowe.Testing.Semantics.Arbitrary ()
+import Marlowe.Testing.Contrib.PlutusTx.Arbitrary ()
 import System.Timeout (timeout)
 import Test.QuickCheck (
   arbitrary,
@@ -367,10 +368,10 @@ inputSerialization = do
 -- | Test JSON serialization of state.
 stateSerialization :: IO ()
 stateSerialization = do
-  stateJson <- Paths.getDataFileName "test/state.json"
-  state <- readFile stateJson
+  stateJsonStr <- Paths.getDataFileName "test/state.json"
+  stateJson <- readFile stateJsonStr
   let decoded :: Maybe State
-      decoded = decode (fromString state)
+      decoded = decode (fromString stateJson)
   case decoded of
     Just st ->
       case decode $ encode st of

@@ -5,30 +5,7 @@ The main outputs are the marlowe semantics validator, which checks the spending
 of Marlowe script outputs, and the marlowe role payout validator, which checks
 the spending of role payouts.
 
-
-Cleanup needed:
-
-Recompilation:
-
-We are using some CPP macros so in general this option `-fforce-recomp` should be used BUT
-it slows down the devel cycle significantly.
-We should consider either using it from command line or in cabal.project with local override.
-
-```
-cabal build marlowe-plutus-test --ghc-option=-fforce-recomp
-```
-
-Flags:
-
--- Recommended extensions and flags
--- https://plutus.cardano.intersectmbo.org/docs/using-plinth/extensions-flags-pragmas
--- https://plutus.cardano.intersectmbo.org/docs/auction-smart-contract/on-chain-code#4-script-context
-
-
-Blockfrost:
-
-curl https://cardano-mainnet.blockfrost.io/api/v0/epochs/${LATEST_EPOCH}/parameters   --header "project_id: ${BLOCKFROST_PROJECT_ID}" >
-marlowe-plutus/marlowe-testing/data/mainnet-protocol-params.json
+For testing support, fixture generation, and reference data, see `marlowe-plutus/marlowe-testing/README.md`.
 
 
 ## Repo Structure
@@ -46,11 +23,13 @@ The Haskell/Plinth code is structured as follows:
 
 #### marlowe-testing
 
-`marlowe-testing` is a library which does not expose tests but provides core utilities which can be used during binaries testing and pure semantic testing.
-Prominent modules include:
+`marlowe-testing` contains shared testing utilities, reference fixtures, and the fixture-generation executable.
+See `marlowe-plutus/marlowe-testing/README.md` for details.
 
-* `Spec.Marlowe.Scripts` - this module implement a tests on the "pure transaction" level. This test suite is parametrised by `MarloweValidators` structure which expects
-two validator functions - one for semantics and one for the role payout. It is used by both `marlowe-plutus` and `marlowe-binaries`.
+### marlowe-binaries
+
+`marlowe-binaries` provides the CLI for compiling scripts and working with benchmark fixtures. For example, `cabal run marlowe-binaries -- compile --message-format json | cabal run marlowe-binaries -- benchmark generate --output-dir benchmarks` compiles the default production scripts, prints a JSON `CompileResponse`, and pipes it into benchmark generation.
+By default, `compile` writes scripts to `out/`, `benchmark generate` writes fixtures under `benchmarks/semantics` and `benchmarks/rolepayout`, and `benchmark run` reads from the packaged `benchmarks/` directory unless `--benchmark-dir` is provided.
 
 
 
@@ -84,16 +63,15 @@ Alternatively, you can compile with `nix` using `nix build .#marlowe-validators`
 
 ## Compiling the validators
 
-You can compile the validators using the following command:
+You can compile the validators with the CLI:
 
 ```bash
-nix build .#marlowe-validators
+cabal run marlowe-binaries -- compile
 ```
 
-This will build the project and run the `marlowe-validators` executable and
-output the compiled plutus scripts into local directory called `result`. This
-directory will contain two files:
+This writes the default production scripts to `out/`:
 
-- `marlowe-rolepayout.plutus` The compiled role payout validator as a JSON-encoded CBOR text-envelope.
-- `marlowe-semantics.plutus` The compiled marlowe validator as a JSON-encoded CBOR text-envelope.
+- `out/marlowe-rolepayout.plutus` - the role payout validator as a JSON-encoded CBOR text-envelope
+- `out/marlowe-semantics.plutus` - the Marlowe validator as a JSON-encoded CBOR text-envelope
 
+Use `--devel-scripts` to preserve tracing and `--message-format text|json|yaml` to control command output.

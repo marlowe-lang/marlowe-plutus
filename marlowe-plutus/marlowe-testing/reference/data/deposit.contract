@@ -1,0 +1,22 @@
+{
+  "when": [
+    {
+      "case": {
+        "party": {
+          "role_token": "Buyer"
+        },
+        "of_token": {
+          "token_name": "",
+          "currency_symbol": ""
+        },
+        "into_account": {
+          "role_token": "Seller"
+        },
+        "deposits": 100000000
+      },
+      "then": "close"
+    }
+  ],
+  "timeout_continuation": "close",
+  "timeout": 1678288099894
+}
