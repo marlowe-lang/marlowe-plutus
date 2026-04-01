@@ -6,10 +6,10 @@ import Test.Hspec
 import Test.QuickCheck (property, (===))
 import qualified Data.ByteString.Short as SBS
 
-import qualified Language.Marlowe.Plutus.Binaries as Devel
+import qualified Language.Marlowe.Plutus.Binaries.Devel as Devel
 
 maxSemanticsSize :: Int
-maxSemanticsSize = 11500
+maxSemanticsSize = 12265
 
 binariesSpec :: Spec
 binariesSpec = do

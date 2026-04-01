@@ -4,12 +4,31 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
+{--
 {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
 {-# OPTIONS_GHC -fno-omit-interface-pragmas #-}
 {-# OPTIONS_GHC -fno-specialise #-}
 {-# OPTIONS_GHC -fno-strictness #-}
-
 {-# OPTIONS_GHC -fobject-code #-}
+-}
+
+-- Plinth options
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:defer-errors #-}
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.1.0 #-}
+
+-- Recommended extensions and flags
+-- https://plutus.cardano.intersectmbo.org/docs/using-plinth/extensions-flags-pragmas
+-- https://plutus.cardano.intersectmbo.org/docs/auction-smart-contract/on-chain-code#4-script-context
+{-# LANGUAGE Strict #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+{-# OPTIONS -fno-full-laziness #-}
+{-# OPTIONS -fno-ignore-interface-pragmas #-}
+{-# OPTIONS -fno-omit-interface-pragmas #-}
+{-# OPTIONS -fno-spec-constr #-}
+{-# OPTIONS -fno-specialise #-}
+{-# OPTIONS -fno-strictness #-}
+{-# OPTIONS -fno-unbox-small-strict-fields #-}
+{-# OPTIONS -fno-unbox-strict-fields #-}
 
 -- | Types for Marlowe semantics
 module Language.Marlowe.Plutus.Semantics.Types (

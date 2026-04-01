@@ -28,8 +28,9 @@ index-state:
 --     cabal v2-update 'hackage.haskell.org,2026-01-03T05:41:55Z'
 
 packages:
-  marlowe-plutus
   marlowe-binaries
+  marlowe-plutus
+  -- marlowe-validators
   libs/base16-aeson
   libs/multiplate
   -- libs/sqlite-simple

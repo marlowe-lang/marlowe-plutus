@@ -16,6 +16,10 @@ data-files:
   benchmarks/rolepayout/*.benchmark
   benchmarks/semantics/*.benchmark
 
+  marlowe-testing/reference/data/*.contract
+  marlowe-testing/reference/data/*.paths
+  marlowe-testing/data/mainnet-protocol-params.json
+
   test/contract.json
   test/input.json
   test/Spec/Marlowe/Serialization/golden/swap-contract.json
@@ -192,19 +196,19 @@ library
     , either ^>=5.0.3
 
   exposed-modules:
-    PlutusTx.Dict
-    PlutusTx.KeyHashedDict
     Language.Marlowe.Analysis.FSSemantics
     Language.Marlowe.Analysis.Safety.Ledger
     Language.Marlowe.Analysis.Safety.Ledger.Validators
     Language.Marlowe.Analysis.Safety.Transaction
     Language.Marlowe.Analysis.Safety.Types
     Language.Marlowe.Analysis.Safety.Types.Validator
+    Language.Marlowe.Contrib.PlutusTx.Debugging.Trace
+    Language.Marlowe.Contrib.PlutusTx.Dict
+    Language.Marlowe.Contrib.PlutusTx.KeyHashedDict
     Language.Marlowe.Plutus
     Language.Marlowe.Plutus.AssocMap
     Language.Marlowe.Plutus.FindInputs
     Language.Marlowe.Plutus.Foldings
-    Language.Marlowe.Plutus.OpenRoles
     Language.Marlowe.Plutus.Merkle
     Language.Marlowe.Plutus.Next
     Language.Marlowe.Plutus.Next.Applicables
@@ -215,8 +219,9 @@ library
     Language.Marlowe.Plutus.Next.CanReduce
     Language.Marlowe.Plutus.Next.Indexed
     Language.Marlowe.Plutus.Next.IsMerkleizedContinuation
-    Language.Marlowe.Plutus.Pretty
+    Language.Marlowe.Plutus.OpenRoles
     Language.Marlowe.Plutus.Plate
+    Language.Marlowe.Plutus.Pretty
     Language.Marlowe.Plutus.RolePayout
     Language.Marlowe.Plutus.RoleTokens
     Language.Marlowe.Plutus.RoleTokens.Types
@@ -240,9 +245,11 @@ library marlowe-testing
   exposed-modules:
     Data.Jsonable
     Marlowe.Testing.ProtocolParams
-    Marlowe.Testing.Contrib.Integer.Arbitrary
     Marlowe.Testing.Common
+    Marlowe.Testing.Contrib.Integer.Arbitrary
+    Marlowe.Testing.Contrib.Data.Functor
     Marlowe.Testing.Contrib.PlutusTx.Arbitrary
+    Marlowe.Testing.Contrib.PlutusTx.Debugging.Aeson
     Marlowe.Testing.Contrib.PlutusTx.Lens
     Marlowe.Testing.Contrib.PlutusTx.PlutusTransaction
     Marlowe.Testing.Reference
@@ -267,7 +274,10 @@ library marlowe-testing
 
   build-depends:
     , aeson
+    , aeson-pretty
     , base >=4.9 && <5
+    , base16-aeson ==0.1.0.0
+    , base16-bytestring
     , bytestring
     , cardano-api ^>=10.16
     , cardano-crypto-class
@@ -286,16 +296,26 @@ library marlowe-testing
     , plutus-tx
     , serialise
     , tasty-quickcheck ^>=0.11
+    , text
     , transformers
     , vector
+    , yaml
 
   build-tool-depends: hspec-discover:hspec-discover
   ghc-options:        -threaded
 
-  data-files:
-    marlowe-testing/reference/data/*.contract
-    marlowe-testing/reference/data/*.paths
-    marlowe-testing/data/mainnet-protocol-params.json
+executable marlowe-testing-reference
+  import:         lang
+  hs-source-dirs: marlowe-testing/reference
+  main-is:        Main.hs
+  other-modules:
+    Paths_marlowe_plutus
+  build-depends:
+    , base >=4.9 && <5
+    , directory
+    , filepath
+    , marlowe-plutus:{marlowe-testing}
+    , mtl >=2.2 && <3
 
 -- The core spec for the interpreter
 test-suite marlowe-plutus-test
@@ -345,6 +365,7 @@ test-suite marlowe-plutus-test
     , data-default
     , filepath ^>=1.4
     , hint ^>=0.9
+    , hspec
     , ilist ==0.4.0.1
     , lens >=5.2 && <6
     , marlowe-plutus:{marlowe-plutus, marlowe-testing}
@@ -356,6 +377,7 @@ test-suite marlowe-plutus-test
     , quickcheck-instances ^>=0.3.29
     , sbv
     , tasty ^>=1.5
+    , tasty-hspec
     , tasty-hunit ^>=0.10
     , tasty-quickcheck ^>=0.11
     , text

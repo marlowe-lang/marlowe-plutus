@@ -5,30 +5,7 @@ The main outputs are the marlowe semantics validator, which checks the spending
 of Marlowe script outputs, and the marlowe role payout validator, which checks
 the spending of role payouts.
 
-
-Cleanup needed:
-
-Recompilation:
-
-We are using some CPP macros so in general this option `-fforce-recomp` should be used BUT
-it slows down the devel cycle significantly.
-We should consider either using it from command line or in cabal.project with local override.
-
-```
-cabal build marlowe-plutus-test --ghc-option=-fforce-recomp
-```
-
-Flags:
-
--- Recommended extensions and flags
--- https://plutus.cardano.intersectmbo.org/docs/using-plinth/extensions-flags-pragmas
--- https://plutus.cardano.intersectmbo.org/docs/auction-smart-contract/on-chain-code#4-script-context
-
-
-Blockfrost:
-
-curl https://cardano-mainnet.blockfrost.io/api/v0/epochs/${LATEST_EPOCH}/parameters   --header "project_id: ${BLOCKFROST_PROJECT_ID}" >
-marlowe-plutus/marlowe-testing/data/mainnet-protocol-params.json
+For testing support, fixture generation, and reference data, see `marlowe-plutus/marlowe-testing/README.md`.
 
 
 ## Repo Structure
@@ -46,11 +23,8 @@ The Haskell/Plinth code is structured as follows:
 
 #### marlowe-testing
 
-`marlowe-testing` is a library which does not expose tests but provides core utilities which can be used during binaries testing and pure semantic testing.
-Prominent modules include:
-
-* `Spec.Marlowe.Scripts` - this module implement a tests on the "pure transaction" level. This test suite is parametrised by `MarloweValidators` structure which expects
-two validator functions - one for semantics and one for the role payout. It is used by both `marlowe-plutus` and `marlowe-binaries`.
+`marlowe-testing` contains shared testing utilities, reference fixtures, and the fixture-generation executable.
+See `marlowe-plutus/marlowe-testing/README.md` for details.
 
 
 
@@ -96,4 +70,3 @@ directory will contain two files:
 
 - `marlowe-rolepayout.plutus` The compiled role payout validator as a JSON-encoded CBOR text-envelope.
 - `marlowe-semantics.plutus` The compiled marlowe validator as a JSON-encoded CBOR text-envelope.
-

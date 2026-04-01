@@ -16,9 +16,10 @@ module Marlowe.Testing.Contrib.PlutusTx.Lens (
   (<><~),
 
   -- * Lenses
-  scriptContextPurposeLens,
+  scriptContextInfoLens,
   scriptContextTxInfoLens,
-  txInfoDCertLens,
+  scriptContextRedeemerLens,
+  scriptInfoDatumGetter,
   txInfoDataLens,
   txInfoFeeLens,
   txInfoIdLens,
@@ -32,23 +33,23 @@ module Marlowe.Testing.Contrib.PlutusTx.Lens (
   txInfoWdrlLens,
 ) where
 
-import Control.Lens (Lens', lens, use, (<>=))
+import Control.Lens (Lens', lens, use, (<>=), Getter)
 import Control.Monad.State (MonadState)
 import PlutusLedgerApi.V2 (
-  DCert,
+  Lovelace, Credential,
+ )
+import PlutusLedgerApi.V3 (
   Datum,
   DatumHash,
   Map,
   POSIXTimeRange,
   PubKeyHash,
   Redeemer,
-  ScriptContext (scriptContextPurpose, scriptContextTxInfo),
+  ScriptContext (scriptContextScriptInfo, scriptContextTxInfo, scriptContextRedeemer),
   ScriptPurpose,
-  StakingCredential,
   TxId,
   TxInInfo,
   TxInfo (
-    txInfoDCert,
     txInfoData,
     txInfoFee,
     txInfoId,
@@ -62,8 +63,9 @@ import PlutusLedgerApi.V2 (
     txInfoWdrl
   ),
   TxOut,
-  Value,
+  ScriptInfo (SpendingScript), MintValue,
  )
+import qualified Control.Lens as Lens
 
 -- | Append a monadic value to a field.
 (<><~) :: (MonadState s m, Semigroup a) => Lens' s a -> m a -> m ()
@@ -77,11 +79,19 @@ field <>%~ f =
     extra <- f value
     field <>= value <> extra
 
+scriptInfoDatumGetter :: Getter ScriptInfo (Maybe Datum)
+scriptInfoDatumGetter = Lens.to $ \case
+  SpendingScript _ datum -> datum
+  _ -> Nothing
+
 scriptContextTxInfoLens :: Lens' ScriptContext TxInfo
 scriptContextTxInfoLens = lens scriptContextTxInfo $ \s x -> s{scriptContextTxInfo = x}
 
-scriptContextPurposeLens :: Lens' ScriptContext ScriptPurpose
-scriptContextPurposeLens = lens scriptContextPurpose $ \s x -> s{scriptContextPurpose = x}
+scriptContextRedeemerLens :: Lens' ScriptContext Redeemer
+scriptContextRedeemerLens = lens scriptContextRedeemer $ \s x -> s{scriptContextRedeemer = x}
+
+scriptContextInfoLens :: Lens' ScriptContext ScriptInfo
+scriptContextInfoLens = lens scriptContextScriptInfo $ \s x -> s{scriptContextScriptInfo = x}
 
 txInfoInputsLens :: Lens' TxInfo [TxInInfo]
 txInfoInputsLens = lens txInfoInputs $ \s x -> s{txInfoInputs = x}
@@ -92,16 +102,13 @@ txInfoReferenceInputsLens = lens txInfoReferenceInputs $ \s x -> s{txInfoReferen
 txInfoOutputsLens :: Lens' TxInfo [TxOut]
 txInfoOutputsLens = lens txInfoOutputs $ \s x -> s{txInfoOutputs = x}
 
-txInfoFeeLens :: Lens' TxInfo Value
+txInfoFeeLens :: Lens' TxInfo Lovelace
 txInfoFeeLens = lens txInfoFee $ \s x -> s{txInfoFee = x}
 
-txInfoMintLens :: Lens' TxInfo Value
+txInfoMintLens :: Lens' TxInfo MintValue
 txInfoMintLens = lens txInfoMint $ \s x -> s{txInfoMint = x}
 
-txInfoDCertLens :: Lens' TxInfo [DCert]
-txInfoDCertLens = lens txInfoDCert $ \s x -> s{txInfoDCert = x}
-
-txInfoWdrlLens :: Lens' TxInfo (Map StakingCredential Integer)
+txInfoWdrlLens :: Lens' TxInfo (Map Credential Lovelace)
 txInfoWdrlLens = lens txInfoWdrl $ \s x -> s{txInfoWdrl = x}
 
 txInfoValidRangeLens :: Lens' TxInfo POSIXTimeRange

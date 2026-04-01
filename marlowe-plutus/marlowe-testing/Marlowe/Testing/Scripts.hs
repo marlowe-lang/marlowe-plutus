@@ -1,9 +1,14 @@
 module Marlowe.Testing.Scripts
   ( -- * Script abstraction
-    CheckPlutusLog (..)
+    AddNoise (..)
+  , CheckPlutusLog (..)
+  , FixtureName (..)
   , MarloweScripts (..)
+  , TestFailures (..)
+  , Valid (..)
     -- * Top-level spec
   , specForScripts
+  , specForFixture
   ) where
 
 import Control.Lens (Lens', use, uses, (%=), (.=), (<>=), (<~), (^.))
@@ -12,9 +17,9 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State (StateT, execStateT)
 import Control.Monad.Trans.Writer (runWriter)
 import Data.Bifunctor (Bifunctor (..), bimap, second)
-import Data.List (isSuffixOf, nub)
+import Data.List (nub)
 import Data.Maybe (maybeToList)
-import Data.Traversable (forM, for)
+import Data.Traversable (for)
 import Language.Marlowe.Plutus.Merkle
   ( MerkleizedContract (..)
   , deepMerkleize
@@ -43,10 +48,10 @@ import Language.Marlowe.Plutus.Semantics.Types
   , getInputContent
   )
 import Language.Marlowe.Plutus.Scripts (MarloweInput, MarloweTxInput (..))
-import PlutusLedgerApi.V1 (Data)
+import PlutusLedgerApi.V1 (Data, Lovelace (Lovelace))
 import PlutusLedgerApi.V1.Address (toPubKeyHash)
 import PlutusLedgerApi.V1.Value (flattenValue, gt, valueOf)
-import PlutusLedgerApi.V2
+import PlutusLedgerApi.V3
   ( Address (Address)
   , Credential (..)
   , CurrencySymbol
@@ -60,7 +65,6 @@ import PlutusLedgerApi.V2
   , PubKeyHash
   , Redeemer (..)
   , ScriptContext (..)
-  , ScriptPurpose (Spending)
   , ToData (..)
   , TokenName
   , TxInInfo (..)
@@ -71,7 +75,7 @@ import PlutusLedgerApi.V2
   , adaSymbol
   , adaToken
   , singleton
-  , toData
+  , toData, ScriptInfo (SpendingScript), emptyMintValue, TxId (TxId), ScriptPurpose (Spending)
   )
 import PlutusTx.These (These (..))
 import Marlowe.Testing.Transactions
@@ -86,7 +90,6 @@ import Marlowe.Testing.Transactions
   )
 import Marlowe.Testing.Contrib.PlutusTx.PlutusTransaction
   ( PlutusTransaction (..)
-  , datum
   , infoData
   , infoFee
   , infoInputs
@@ -94,24 +97,24 @@ import Marlowe.Testing.Contrib.PlutusTx.PlutusTransaction
   , infoSignatories
   , infoValidRange
   , redeemer
-  , scriptPurpose
+  , scriptInfo, infoRedeemers
   )
 import Marlowe.Testing.Reference
-  ( ReferencePath (..)
+  ( FixtureName (..)
+  , ReferencePath (..)
   , arbitraryReferenceTransaction
+  , readReferencePaths
+  , readReferencePathsFor
+  -- , referenceTransactions
   )
 import Marlowe.Testing.Semantics.Arbitrary
   ( arbitraryGoldenTransaction
   )
 import Marlowe.Testing.Contrib.Integer.Arbitrary (arbitraryPositiveInteger)
 import Marlowe.Testing.Semantics.Golden (GoldenTransaction)
-import System.Directory (listDirectory)
-import System.FilePath ((</>))
-import Paths_marlowe_plutus (getDataDir)
 import Test.Hspec
-  ( Spec
-  , describe
-  , runIO
+  ( describe
+  , SpecWith, Spec
   )
 import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck
@@ -120,6 +123,8 @@ import Test.QuickCheck
   , Property
   , Testable (property)
   , chooseInteger
+  , conjoin
+  , counterexample
   , forAll
   , frequency
   , listOf
@@ -133,14 +138,16 @@ import qualified Language.Marlowe.Plutus.Semantics as M (MarloweData (marlowePar
 import qualified Language.Marlowe.Plutus.Semantics.Types as M
   ( Party (Address)
   )
-import qualified PlutusLedgerApi.V1.Value as V (adaSymbol, adaToken, singleton)
+import qualified PlutusLedgerApi.V1.Value as V (singleton)
 import qualified PlutusTx.AssocMap as PlutusTxAM
 import qualified Language.Marlowe.Plutus.AssocMap as AM
 import qualified PlutusTx.Prelude as P
 import qualified Marlowe.Testing.Transactions as Transactions
 import Marlowe.Testing.Contrib.PlutusTx.Arbitrary (arbitraryAnyCurrencySymbol, arbitraryNonAdaCurrencySymbol)
 import Marlowe.Testing.Contrib.PlutusTx.Lens ((<><~))
-import Data.Aeson (eitherDecodeFileStrict)
+import Marlowe.Testing.Contrib.Data.Functor ((<@>))
+import qualified PlutusTx.Prelude as PlutusTx
+import qualified PlutusTx.AssocMap as PlusTxAM
 
 -- | Abstraction over a pair of Marlowe scripts (semantics + payout) and a way
 -- to run them on raw Plutus 'Data'.
@@ -157,33 +164,46 @@ data MarloweScripts = MarloweScripts
 
 type ArbitraryTransaction p a = StateT (PlutusTransaction p) Gen a
 
-specForScripts :: String -> MarloweScripts -> CheckPlutusLog -> Spec
-specForScripts version scripts checkPlutusLog = do
-  referencePaths <- runIO readReferencePaths
+newtype TestFailures = TestFailures Bool
+
+newtype Valid = Valid Bool
+
+newtype MakeInvalid = MakeInvalid Bool
+
+newtype AddNoise = AddNoise Bool
+
+newtype AllowMerkleization = AllowMerkleization Bool
+
+specForSemanticsScript :: String -> MarloweScripts -> [ReferencePath] -> TestFailures -> CheckPlutusLog -> Spec
+specForSemanticsScript version scripts referencePaths (TestFailures testFailures) checkPlutusLog = do
   describe ("Scripts version: \"" ++ version ++ "\"") do
     describe "Marlowe validator" do
       -- it "Should be a reasonable size" $ marloweValidatorSize scripts
       describe "Valid transactions" do
-        prop "Noiseless" $ checkSemanticsTransaction scripts mempty referencePaths noModify noModify noVeto True False True
-        prop "Noisy" $ checkSemanticsTransaction scripts mempty referencePaths noModify noModify noVeto True True True
-      prop "Constraint 2. Single Marlowe script input" $ checkDoubleInput scripts checkPlutusLog referencePaths
-      prop "Constraint 3. Single Marlowe output" $ checkMultipleOutput scripts checkPlutusLog referencePaths
-      prop "Constraint 4. No output to script on close" $ checkCloseOutput scripts checkPlutusLog referencePaths
+        prop "Noiseless" $ checkSemanticsTransaction scripts mempty referencePaths noModify noModify noVeto (Valid True) (AddNoise False) (AllowMerkleization True)
+        prop "Noisy" $ checkSemanticsTransaction scripts mempty referencePaths noModify noModify noVeto (Valid True) (AddNoise True) (AllowMerkleization True)
+      when testFailures $ do
+        prop "Constraint 2. Single Marlowe script input" $ checkDoubleInput scripts checkPlutusLog referencePaths
+        prop "Constraint 3. Single Marlowe output" $ checkMultipleOutput scripts checkPlutusLog referencePaths
+        prop "Constraint 4. No output to script on close" $ checkCloseOutput scripts checkPlutusLog referencePaths
 -- #ifdef CHECK_PRECONDITIONS
 --       prop "Constraint 5. Input value from script" $ checkValueInput scripts referencePaths
 -- #endif
-      prop "Constraint 6. Output value to script" $ checkValueOutput scripts checkPlutusLog referencePaths
-      prop "Constraint 9. Marlowe parameters" $ checkParamsOutput scripts checkPlutusLog referencePaths
-      prop "Constraint 10. Output state" $ checkStateOutput scripts checkPlutusLog referencePaths
-      prop "Constraint 11. Output contract" $ checkContractOutput scripts checkPlutusLog referencePaths
+        prop "Constraint 6. Output value to script" $ checkValueOutput scripts checkPlutusLog referencePaths
+        prop "Constraint 9. Marlowe parameters" $ checkParamsOutput scripts checkPlutusLog referencePaths
+        prop "Constraint 10. Output state" $ checkStateOutput scripts checkPlutusLog referencePaths
+        prop "Constraint 11. Output contract" $ checkContractOutput scripts checkPlutusLog referencePaths
+
       describe "Constraint 12. Merkleized continuations" do
-        prop "Valid merkleization" $ checkMerkleization scripts checkPlutusLog referencePaths True
-        prop "Invalid merkleization" $ checkMerkleization scripts checkPlutusLog referencePaths False
+        prop "Valid merkleization" $ checkMerkleization scripts checkPlutusLog referencePaths (MakeInvalid False)
+        when testFailures $
+          prop "Invalid merkleization" $ checkMerkleization scripts checkPlutusLog referencePaths (MakeInvalid True)
 -- #if defined(CHECK_PRECONDITIONS) && defined(CHECK_POSITIVE_BALANCES)
 --       prop "Constraint 13. Positive balances" $ checkPositiveAccounts scripts referencePaths
 -- #endif
-      prop "Constraint 14. Inputs authorized" $ checkAuthorization scripts checkPlutusLog referencePaths
-      prop "Constraint 15. Sufficient payment" $ checkPayment scripts checkPlutusLog referencePaths
+      when testFailures $ do
+        prop "Constraint 14. Inputs authorized" $ checkAuthorization scripts checkPlutusLog referencePaths
+        prop "Constraint 15. Sufficient payment" $ checkPayment scripts checkPlutusLog referencePaths
       prop "Constraint 18. Final balance" $ checkOutputConsistency scripts referencePaths
 -- #if defined(CHECK_PRECONDITIONS) && (defined(CHECK_DUPLICATE_ACCOUNTS) || defined(CHECK_DUPLICATE_CHOICES) || defined(CHECK_DUPLICATE_BINDINGS))
 --       prop "Constraint 19. No duplicates" $ checkInputDuplicates scripts referencePaths
@@ -199,13 +219,20 @@ specForScripts version scripts checkPlutusLog = do
 --              then "7bbd48635695786d0c63b7a42cd888d2327a7a9b2340b2f09229e9be"
 --              else "377325ad84a55ba0282d844dff2d5f0f18c33fd4a28a0a9d73c6f60d"
 --          )
+
+specForScripts :: String -> MarloweScripts -> TestFailures -> CheckPlutusLog -> IO (SpecWith ())
+specForScripts version scripts testFailures@(TestFailures tf) checkPlutusLog = do
+  referencePaths <- readReferencePaths
+  pure $ describe ("Scripts version: \"" ++ version ++ "\"") do
+    specForSemanticsScript version scripts referencePaths testFailures checkPlutusLog
     describe "Payout validator" do
       describe "Valid transactions" do
-        prop "Noiseless" $ checkPayoutTransaction scripts noModify noModify noVeto True False
-        prop "Noisy" $ checkPayoutTransaction scripts noModify noModify noVeto True True
-      describe "Constraint 17. Payment authorized" do
-        prop "Invalid authorization for withdrawal" $ checkWithdrawal scripts True
-        prop "Missing authorized withdrawal" $ checkWithdrawal scripts False
+        prop "Noiseless" $ checkPayoutTransaction scripts noModify noModify noVeto (Valid True) (AddNoise False)
+        prop "Noisy" $ checkPayoutTransaction scripts noModify noModify noVeto (Valid True) (AddNoise True)
+      when tf $ do
+        describe "Constraint 17. Payment authorized" do
+            prop "Invalid authorization for withdrawal" $ checkWithdrawal scripts True
+            prop "Missing authorized withdrawal" $ checkWithdrawal scripts False
 --      prop "Hash golden test" $
 --        checkValidatorHash
 --          payoutValidatorHash
@@ -218,27 +245,68 @@ specForScripts version scripts checkPlutusLog = do
 --          )
 
 
+specForFixture :: String -> FixtureName -> MarloweScripts -> TestFailures -> CheckPlutusLog -> IO (SpecWith ())
+specForFixture version fixtureName scripts testFailures checkPlutusLog = do
+  referencePaths <- readReferencePathsFor fixtureName
+  pure $ do
+    specForSemanticsScript version scripts referencePaths testFailures checkPlutusLog
+
+  -- FIXME: Is this good idea?
+  -- let nonTimeoutTransactions = filter hasInputs $ referenceTransactions referencePaths
+  -- pure $ describe ("Scripts version: \"" ++ version ++ "\" focused fixture: " ++ show fixtureName) do
+  --   describe "Marlowe validator" do
+  --     describe "Focused fixture scenarios" do
+  --       prop "Action path / noiseless / systematic" $
+  --         checkSemanticsGoldenTransactions scripts mempty nonTimeoutTransactions noModify noModify noVeto True False
+  --       prop "Action path / noisy / systematic" $
+  --         checkSemanticsGoldenTransactions scripts mempty nonTimeoutTransactions noModify noModify noVeto True True
+  --  where
+  --   hasInputs (_, _, TransactionInput{txInputs}, _) = not (null txInputs)
+
 {- HLINT ignore "Functor law" -}
 -- | Create a transaction generator for spending, with empty or default values.
+-- | Please not that consistency between `a` and the rest of the context is by
+-- | default broken.
 bareSpending :: a -> Gen (PlutusTransaction a)
 bareSpending p =
-  PlutusTransaction p (Datum $ toBuiltinData ()) (Redeemer $ toBuiltinData ())
+  PlutusTransaction p
     <$> ( ScriptContext
             <$> ( TxInfo
                     mempty
+                    -- ^ txInfoInputs
                     mempty
+                    -- ^ txInfoReferenceInputs
                     mempty
+                    -- ^ txInfoOutputs
+                    PlutusTx.zero
+                    -- ^ txInfoFee
+                    emptyMintValue
+                    -- ^ txInfoMint
                     mempty
-                    mempty
-                    mempty
+                    -- ^ txInfoTxCerts
                     PlutusTxAM.empty
+                    -- ^ txInfoWdrl
                     (Interval (LowerBound NegInf False) (UpperBound PosInf True))
+                    -- ^ txInfoValidRange
                     mempty
+                    -- ^ txInfoSignatories
                     PlutusTxAM.empty
+                    -- ^ txInfoRedeemers
                     PlutusTxAM.empty
-                    <$> arbitrary
+                    -- ^ txInfoData
+                    <$> (TxId <$> arbitrary)
+                    -- ^ txInfoId
+                    <@> PlutusTxAM.empty
+                    -- ^ txInfoVotes
+                    <@> mempty
+                    -- ^ txInfoProposalProcedures
+                    <@> Nothing
+                    -- ^ txInfoCurrentTreasuryAmount
+                    <@> Nothing
+                    -- ^ txInfoTreasuryDonation
                 )
-            <*> (Spending <$> arbitrary)
+            <@> (Redeemer $ toBuiltinData ())
+            <*> (SpendingScript <$> arbitrary <@> Nothing)
         )
 
 -- | Create a Marlowe semantics transaction, with mostly empty and default values.
@@ -272,16 +340,25 @@ inputToMarloweTxInput
 inputToMarloweTxInput (NormalInput content) = (Input content, [])
 inputToMarloweTxInput (MerkleizedInput content hash contract) = (MerkleizedTxInput content hash, [(DatumHash hash, Datum $ toBuiltinData contract)])
 
--- | Create script input for a Marlowe semantics transaction.
-makeScriptInput :: MarloweScripts -> ArbitraryTransaction SemanticsTransaction (TxInInfo, [(DatumHash, Datum)])
-makeScriptInput MarloweScripts{semanticsAddress} =
+newtype SetAsSpending = SetAsSpending Bool
+
+-- | Create script input for a Marlowe semantics transaction and optionally mutate
+-- | the script info to make the script context a spending one.
+makeScriptInput :: MarloweScripts -> Datum -> SetAsSpending -> ArbitraryTransaction SemanticsTransaction (TxInInfo, (DatumHash, Datum))
+makeScriptInput MarloweScripts{semanticsAddress} inDatum (SetAsSpending setAsSpending) =
   do
     inValue <- inputState `uses` totalValue
-    inDatum <- use datum
+    -- inDatum <- use datumGetter
     let inDatumHash = DatumHash $ dataHash inDatum
-    (,pure (inDatumHash, inDatum))
-      . flip TxInInfo (TxOut semanticsAddress inValue (OutputDatumHash inDatumHash) Nothing)
-      <$> lift arbitrary
+    -- pure (inDatumHash, inDatum))
+    txOutRef <- lift arbitrary
+    let
+      txInInfo = TxInInfo txOutRef (TxOut semanticsAddress inValue (OutputDatumHash inDatumHash) Nothing)
+    when setAsSpending $ do
+      let spendingInfo = SpendingScript txOutRef (Just inDatum)
+      scriptInfo .= spendingInfo
+
+    pure (txInInfo, (inDatumHash, inDatum))
 
 -- | Total the value in a Marlowe state.
 totalValue :: State -> Value
@@ -405,25 +482,27 @@ mappendPlutusTxAssocMapFirst = PlutusTxAM.unionWith const
 -- | Generate a valid Marlowe semantics transaction.
 validSemanticsTransaction
   :: MarloweScripts
-  -> Bool
+  -> AddNoise
   -- ^ Whether to add noise to the script context.
   -> ArbitraryTransaction SemanticsTransaction ()
   -- ^ The generator.
-validSemanticsTransaction scripts noisy =
+validSemanticsTransaction scripts (AddNoise addNoise) =
   do
-    -- The datum is `MarloweData`.
-    datum <~ makeSemanticsDatum <$> use Transactions.marloweParams <*> use inputState <*> use inputContract
+    datum <- makeSemanticsDatum <$> use Transactions.marloweParams <*> use inputState <*> use inputContract
+    -- -- The datum is `MarloweData`.
+    -- datum <~ makeSemanticsDatum <$> use Transactions.marloweParams <*> use inputState <*> use inputContract
 
     -- The redeemer is `MarloweInput`, but we also track the merkleizations.
     (marloweInput, merkleizations) <- input `uses` (second mconcat . unzip . fmap inputToMarloweTxInput . txInputs)
-    redeemer .= makeSemanticsRedeemer marloweInput
+    let
+      semanticsRedeemer = makeSemanticsRedeemer marloweInput
+    redeemer .= semanticsRedeemer
     infoData %= mappendPlutusTxAssocMapFirst (PlutusTxAM.unsafeFromList merkleizations)
 
     -- Add the spending from the script.
-    (inScript, inData) <- makeScriptInput scripts
+    (inScript, inData) <- makeScriptInput scripts datum (SetAsSpending True)
     infoInputs <>= [inScript]
-    infoData %= mappendPlutusTxAssocMapFirst (PlutusTxAM.unsafeFromList inData)
-    scriptPurpose .= Spending (txInInfoOutRef inScript)
+    infoData %= mappendPlutusTxAssocMapFirst (PlutusTxAM.unsafeFromList [inData])
 
     -- Add the role inputs.
     roleInputs <- fmap concat . mapM makeRoleIn . txInputs =<< use input
@@ -435,6 +514,14 @@ validSemanticsTransaction scripts noisy =
       concat <$> for txIns makeDeposit
 
     infoInputs <>= deposits
+    -- Add the redeemer to the redeemers info.
+    -- In general it is ignored.
+    infoRedeemers %= \redeemers -> do
+      let
+        TxInInfo txOutRef _ = inScript
+        spendingRedeemer = (Spending txOutRef, semanticsRedeemer)
+        redeemersList = PlusTxAM.toList redeemers
+      PlutusTxAM.unsafeFromList $ spendingRedeemer : redeemersList
 
     -- Add the script output.
     (outScript, outData) <- makeScriptOutput scripts
@@ -461,10 +548,10 @@ validSemanticsTransaction scripts noisy =
     infoValidRange .= Interval (LowerBound (Finite $ fst interval) True) (UpperBound (Finite $ snd interval) True)
 
     -- Set the fee.
-    infoFee <~ V.singleton V.adaSymbol V.adaToken <$> lift arbitraryPositiveInteger
+    infoFee <~ Lovelace <$> lift arbitraryPositiveInteger
 
     -- Add noise.
-    when noisy addNoise
+    when addNoise doAddNoise
 
     -- Shuffle.
     shuffleTransaction
@@ -479,22 +566,32 @@ arbitrarySemanticsTransaction
   -- ^ Modifications to make before building the valid transaction.
   -> ArbitraryTransaction SemanticsTransaction ()
   -- ^ Modifications to make after building the valid transaction.
-  -> Bool
+  -> AddNoise
   -- ^ Whether to add noise to the script context.
-  -> Bool
+  -> AllowMerkleization
   -- ^ Whether to allow merkleization.
   -> Gen (PlutusTransaction SemanticsTransaction)
   -- ^ The generator.
-arbitrarySemanticsTransaction scripts referencePaths modifyBefore modifyAfter noisy allowMerkleization =
+arbitrarySemanticsTransaction scripts referencePaths modifyBefore modifyAfter noisy (AllowMerkleization allowMerkleization) =
   do
     golden <-
       frequency
         [ (1, arbitraryGoldenTransaction allowMerkleization) -- Manually vetted transactions.
         , (5, arbitraryReferenceTransaction referencePaths) -- Transactions generated using `getAllInputs` and `computeTransaction`.
         ]
-    start <- bareSemanticsTransaction golden
-    (modifyBefore >> validSemanticsTransaction scripts noisy >> modifyAfter)
-      `execStateT` start
+    semanticsTransactionFromGolden scripts golden modifyBefore modifyAfter noisy
+
+semanticsTransactionFromGolden
+  :: MarloweScripts
+  -> GoldenTransaction
+  -> ArbitraryTransaction SemanticsTransaction ()
+  -> ArbitraryTransaction SemanticsTransaction ()
+  -> AddNoise
+  -> Gen (PlutusTransaction SemanticsTransaction)
+semanticsTransactionFromGolden scripts golden modifyBefore modifyAfter addNoise = do
+  start <- bareSemanticsTransaction golden
+  (modifyBefore >> validSemanticsTransaction scripts addNoise >> modifyAfter)
+    `execStateT` start
 
 -- | Create a Marlowe payout transaction, with mostly empty and default values.
 barePayoutTransaction :: Gen (PlutusTransaction PayoutTransaction)
@@ -507,13 +604,16 @@ barePayoutTransaction =
     bareSpending PayoutTransaction{..}
 
 -- | Create a script input for a Marlowe payout transaction.
-makePayoutIn :: MarloweScripts -> ArbitraryTransaction PayoutTransaction (TxInInfo, (DatumHash, Datum))
-makePayoutIn MarloweScripts{payoutAddress} =
+makePayoutIn :: MarloweScripts -> SetAsSpending -> ArbitraryTransaction PayoutTransaction (TxInInfo, (DatumHash, Datum))
+makePayoutIn MarloweScripts{payoutAddress} (SetAsSpending setAsSpending) =
   do
     txInInfoOutRef <- lift arbitrary
     inDatum <- ((Datum . toBuiltinData) .) . (,) <$> marloweParamsPayout `uses` rolesCurrency <*> use role
     let inDatumHash = DatumHash $ dataHash inDatum
     txInInfoResolved <- TxOut payoutAddress <$> use amount <*> pure (OutputDatumHash inDatumHash) <*> pure Nothing
+    when setAsSpending $ do
+      let spendingInfo = SpendingScript txInInfoOutRef (Just inDatum)
+      scriptInfo .= spendingInfo
     pure (TxInInfo{..}, (inDatumHash, inDatum))
 
 -- | Create a role input for a Marlowe payout transaction.
@@ -556,20 +656,16 @@ makePayoutSignatory _ = mempty
 validPayoutTransaction
   :: MarloweScripts
   -- ^ The scripts being tests.
-  -> Bool
+  -> AddNoise
   -- ^ Whether to add noise to the script context.
   -> ArbitraryTransaction PayoutTransaction ()
   -- ^ The generator.
-validPayoutTransaction scripts noisy =
+validPayoutTransaction scripts (AddNoise noisy) =
   do
     -- Add the script input.
-    (inScript, inData@(_, inDatum)) <- makePayoutIn scripts
+    (inScript, inData) <- makePayoutIn scripts (SetAsSpending True)
     infoInputs <>= [inScript]
     infoData %= mappendPlutusTxAssocMapFirst (PlutusTxAM.unsafeFromList [inData])
-    scriptPurpose .= Spending (txInInfoOutRef inScript)
-
-    -- The datum is the currency symbol and role name.
-    datum .= inDatum
 
     -- The redeemer is unit.
     redeemer .= Redeemer (toBuiltinData ())
@@ -587,10 +683,10 @@ validPayoutTransaction scripts noisy =
     infoSignatories <><~ (infoInputs `uses` concatMap makePayoutSignatory)
 
     -- Set the fee.
-    infoFee <~ V.singleton V.adaSymbol V.adaToken <$> lift arbitraryPositiveInteger
+    infoFee <~ Lovelace <$> lift arbitraryPositiveInteger
 
     -- Add noise.
-    when noisy addNoise'
+    when noisy doAddNoise'
 
     -- Shuffle.
     shuffleTransaction
@@ -610,8 +706,8 @@ isScriptTxIn TxInInfo{txInInfoResolved = TxOut{txOutAddress = Address (ScriptCre
 isScriptTxIn _ = False
 
 -- | Add noise to the inputs, outputs, and data in a Plutus transaction.
-addNoise :: ArbitraryTransaction SemanticsTransaction ()
-addNoise =
+doAddNoise :: ArbitraryTransaction SemanticsTransaction ()
+doAddNoise =
   do
     let isPayout (Payment _ (Party _) _ i) = i > 0
         isPayout _ = False
@@ -634,8 +730,8 @@ arbitraryDatumHashMap (MaxLength maxLength) = do
 
 
 -- | Add noise to the inputs, outputs, and data in a Plutus transaction.
-addNoise' :: ArbitraryTransaction PayoutTransaction ()
-addNoise' =
+doAddNoise' :: ArbitraryTransaction PayoutTransaction ()
+doAddNoise' =
   do
     infoInputs <><~ lift (arbitrary `suchThat` ((< 5) . length))
     infoOutputs <><~ lift (arbitrary `suchThat` ((< 5) . length))
@@ -674,14 +770,14 @@ arbitraryPayoutTransaction
   -- ^ Modifications to make before building the valid transaction.
   -> ArbitraryTransaction PayoutTransaction ()
   -- ^ Modifications to make after building the valid transaction.
-  -> Bool
+  -> AddNoise
   -- ^ Whether to add noise to the script context.
   -> Gen (PlutusTransaction PayoutTransaction)
   -- ^ The generator.
-arbitraryPayoutTransaction scripts modifyBefore modifyAfter noisy =
+arbitraryPayoutTransaction scripts modifyBefore modifyAfter addNoise =
   do
     start <- barePayoutTransaction
-    (modifyBefore >> validPayoutTransaction scripts noisy >> modifyAfter)
+    (modifyBefore >> validPayoutTransaction scripts addNoise >> modifyAfter)
       `execStateT` start
 
 -- | Do not modify a Plutus transaction.
@@ -706,22 +802,22 @@ checkSemanticsTransaction
   -- ^ Modifications to make after building the valid transaction.
   -> (PlutusTransaction SemanticsTransaction -> Bool)
   -- ^ Whether to discard the transaction from the testing.
-  -> Bool
+  -> Valid
   -- ^ Whether the transaction should test as valid.
-  -> Bool
+  -> AddNoise
   -- ^ Whether to add noise to the script context.
-  -> Bool
+  -> AllowMerkleization
   -- ^ Whether to allow merkleization.
   -> Property
   -- ^ The test property.
-checkSemanticsTransaction scripts requiredLog referencePaths modifyBefore modifyAfter condition valid noisy allowMerkleization =
+checkSemanticsTransaction scripts requiredLog referencePaths modifyBefore modifyAfter condition (Valid valid) addNoise allowMerkleization =
   property
     . forAll
-      ( arbitrarySemanticsTransaction scripts referencePaths modifyBefore modifyAfter noisy allowMerkleization
+      ( arbitrarySemanticsTransaction scripts referencePaths modifyBefore modifyAfter addNoise allowMerkleization
           `suchThat` condition
       )
     $ \PlutusTransaction{..} ->
-      case runSemantics scripts (toData _datum) (toData _redeemer) (toData _scriptContext) of
+      case runSemantics scripts (toData _scriptContext) of
         This e -> not valid || error (show e)
         These e l -> not valid && matchesPlutusLog l || error (show e <> ": " <> show l)
         That _ -> valid
@@ -729,6 +825,36 @@ checkSemanticsTransaction scripts requiredLog referencePaths modifyBefore modify
     matchesPlutusLog l = case requiredLog of
       Nothing -> True
       (Just rl) -> any (`elem` l) rl
+
+_checkSemanticsGoldenTransactions
+  :: MarloweScripts
+  -> Maybe LogOutput
+  -> [GoldenTransaction]
+  -> ArbitraryTransaction SemanticsTransaction ()
+  -> ArbitraryTransaction SemanticsTransaction ()
+  -> (PlutusTransaction SemanticsTransaction -> Bool)
+  -> Valid
+  -> AddNoise
+  -> Property
+_checkSemanticsGoldenTransactions scripts requiredLog goldens modifyBefore modifyAfter condition (Valid valid) noisy =
+  conjoin
+    [ counterexample (show golden) $
+        property
+          . forAll
+            ( semanticsTransactionFromGolden scripts golden modifyBefore modifyAfter noisy
+                `suchThat` condition
+            )
+          $ \PlutusTransaction{..} ->
+              case runSemantics scripts (toData _scriptContext) of
+                This e -> not valid || error (show e)
+                These e l -> not valid && matchesPlutusLog l || error (show e <> ": " <> show l)
+                That _ -> valid
+    | golden <- goldens
+    ]
+ where
+  matchesPlutusLog l = case requiredLog of
+    Nothing -> True
+    Just rl -> any (`elem` l) rl
 
 -- | Check that a payout transaction succeeds.
 checkPayoutTransaction
@@ -740,17 +866,17 @@ checkPayoutTransaction
   -- ^ Modifications to make after building the valid transaction.
   -> (PlutusTransaction PayoutTransaction -> Bool)
   -- ^ Whether to discard the transaction from the testing.
-  -> Bool
+  -> Valid
   -- ^ Whether the transaction should test as valid.
-  -> Bool
+  -> AddNoise
   -- ^ Whether to add noise to the script context.
   -> Property
   -- ^ The test property.
-checkPayoutTransaction scripts modifyBefore modifyAfter condition valid noisy =
+checkPayoutTransaction scripts modifyBefore modifyAfter condition (Valid valid) addNoise =
   property
-    . forAll (arbitraryPayoutTransaction scripts modifyBefore modifyAfter noisy `suchThat` condition)
+    . forAll (arbitraryPayoutTransaction scripts modifyBefore modifyAfter addNoise `suchThat` condition)
     $ \PlutusTransaction{..} ->
-      case runPayout scripts (toData _datum) (toData _redeemer) (toData _scriptContext) of
+      case runPayout scripts (toData _scriptContext) of
         This e -> not valid || error (show e)
         These e l -> not valid || error (show e <> ": " <> show l)
         That _ -> valid
@@ -778,7 +904,7 @@ checkDoubleInput scripts@MarloweScripts{semanticsAddress} (CheckPlutusLog checkP
       plutusLog = if checkPlutusLog
             then Just ["w"]
             else Nothing
-   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter noVeto False False False
+   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter noVeto (Valid False) (AddNoise False) (AllowMerkleization False)
 
 -- | Split a value in half.
 splitValue :: Value -> [Value]
@@ -821,7 +947,7 @@ checkMultipleOutput scripts@MarloweScripts{semanticsAddress} (CheckPlutusLog che
       plutusLog = if checkPlutusLog
             then Just ["o"]
             else Nothing
-   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter notCloses False False False
+   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter notCloses (Valid False) (AddNoise False) (AllowMerkleization False)
 
 -- | Check that validation fails if there is one Marlowe output upon close.
 checkCloseOutput :: MarloweScripts -> CheckPlutusLog -> [ReferencePath] -> Property
@@ -838,7 +964,7 @@ checkCloseOutput scripts@MarloweScripts{semanticsAddress} (CheckPlutusLog checkP
       plutusLog = if checkPlutusLog
             then Just ["c"]
             else Nothing
-   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter doesClose False False False
+   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter doesClose (Valid False) (AddNoise False) (AllowMerkleization False)
 
 -- #ifdef CHECK_PRECONDITIONS
 -- -- | Check that value input to a script matches its input state.
@@ -871,13 +997,13 @@ checkValueOutput scripts@MarloweScripts{semanticsAddress} (CheckPlutusLog checkP
       plutusLog = if checkPlutusLog
             then Just ["d"]
             else Nothing
-   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter notCloses False False False
+   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter notCloses (Valid False) (AddNoise False) (AllowMerkleization False)
 
 -- | Check the consistency of the output value with the output state.
 checkOutputConsistency :: MarloweScripts -> [ReferencePath] -> Property
 checkOutputConsistency scripts@MarloweScripts{semanticsAddress} referencePaths =
   property
-    . forAll (arbitrarySemanticsTransaction scripts referencePaths noModify noModify False True)
+    . forAll (arbitrarySemanticsTransaction scripts referencePaths noModify noModify (AddNoise False) (AllowMerkleization True))
     $ \tx ->
       let findOwnOutput (TxOut address value _ _)
             | address == semanticsAddress = value
@@ -886,7 +1012,7 @@ checkOutputConsistency scripts@MarloweScripts{semanticsAddress} referencePaths =
           finalBalance = totalBalance . accounts . txOutState $ tx ^. Transactions.output
           -- There is really no way to provoke this invalidity in a manner that isn't covered by other tests.
           valid = outValue == finalBalance
-       in checkSemanticsTransaction scripts Nothing referencePaths noModify noModify notCloses valid False False
+       in checkSemanticsTransaction scripts Nothing referencePaths noModify noModify notCloses (Valid valid) (AddNoise False) (AllowMerkleization False)
 
 -- #if defined(CHECK_PRECONDITIONS) && (defined(CHECK_DUPLICATE_ACCOUNTS) || defined(CHECK_DUPLICATE_CHOICES) || defined(CHECK_DUPLICATE_BINDINGS))
 -- -- | Add a duplicate entry to an association list.
@@ -965,7 +1091,7 @@ checkDatumOutput scripts (CheckPlutusLog checkPlutusLog) referencePaths perturb 
       plutusLog = if checkPlutusLog
             then Just ["d"]
             else Nothing
-   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter notCloses False False False
+   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter notCloses (Valid False) (AddNoise False) (AllowMerkleization False)
 
 -- | Check that other validators are forbidden during payments.
 checkOtherValidators :: MarloweScripts -> CheckPlutusLog -> [ReferencePath] -> Property
@@ -976,7 +1102,7 @@ checkOtherValidators scripts (CheckPlutusLog checkPlutusLog) referencePaths =
       plutusLog = if checkPlutusLog
             then Just ["z"]
             else Nothing
-   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter hasPayouts False False False
+   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter hasPayouts (Valid False) (AddNoise False) (AllowMerkleization False)
 
 makeScriptTxIn :: TxInInfo -> Gen TxInInfo
 makeScriptTxIn (TxInInfo outRef out) = TxInInfo outRef <$> makeScriptTxOut out
@@ -1027,8 +1153,8 @@ hasMerkleizedInput =
    in any isMerkleized . txInputs . (^. input)
 
 -- | Check than an invalid merkleization is rejected.
-checkMerkleization :: MarloweScripts -> CheckPlutusLog -> [ReferencePath] -> Bool -> Property
-checkMerkleization scripts (CheckPlutusLog checkPlutusLog) referencePaths valid =
+checkMerkleization :: MarloweScripts -> CheckPlutusLog -> [ReferencePath] -> MakeInvalid -> Property
+checkMerkleization scripts (CheckPlutusLog checkPlutusLog) referencePaths (MakeInvalid makeInvalid) =
   let -- Merkleized the contract and its input.
       modifyBefore = merkleize
       -- Extract the merkle hash, if any.
@@ -1036,16 +1162,14 @@ checkMerkleization scripts (CheckPlutusLog checkPlutusLog) referencePaths valid 
       merkleHash (MerkleizedInput _ hash _) = pure $ DatumHash hash
       -- Modify the contract if requested.
       modifyAfter =
-        if valid
-          then pure ()
-          else do
-            -- Remove the merkleized continuation datums for the input.
-            hashes <- input `uses` (concatMap merkleHash . txInputs)
-            infoData %= (PlutusTxAM.unsafeFromList . filter ((`notElem` hashes) . fst) . PlutusTxAM.toList)
+        when makeInvalid do
+          -- Remove the merkleized continuation datums for the input.
+          hashes <- input `uses` (concatMap merkleHash . txInputs)
+          infoData %= (PlutusTxAM.unsafeFromList . filter ((`notElem` hashes) . fst) . PlutusTxAM.toList)
       plutusLog = if checkPlutusLog
             then Just ["h"]
             else Nothing
-   in checkSemanticsTransaction scripts plutusLog referencePaths modifyBefore modifyAfter hasMerkleizedInput valid False False
+   in checkSemanticsTransaction scripts plutusLog referencePaths modifyBefore modifyAfter hasMerkleizedInput (Valid $ not makeInvalid) (AddNoise False) (AllowMerkleization False)
 
 -- #if defined(CHECK_PRECONDITIONS) && defined(CHECK_POSITIVE_BALANCES)
 -- -- | Check that non-positive accounts are rejected.
@@ -1110,7 +1234,7 @@ checkAuthorization scripts (CheckPlutusLog checkPlutusLog) referencePaths =
       plutusLog = if checkPlutusLog
             then Just ["s", "t"]
             else Nothing
-   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter hasAuthorizations False False False
+   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter hasAuthorizations (Valid False) (AddNoise False) (AllowMerkleization False)
 
 -- | Determine whether there are any external payments in a transaction.
 hasExternalPayments :: PlutusTransaction SemanticsTransaction -> Bool
@@ -1142,7 +1266,7 @@ checkPayment scripts@MarloweScripts{payoutAddress} (CheckPlutusLog checkPlutusLo
       plutusLog = if checkPlutusLog
             then Just ["p", "r"]
             else Nothing
-   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter hasExternalPayments False False False
+   in checkSemanticsTransaction scripts plutusLog referencePaths noModify modifyAfter hasExternalPayments (Valid False) (AddNoise False) (AllowMerkleization False)
 
 -- | Remove a role input UTxOs from the transaction.
 removeRoleIn :: ArbitraryTransaction PayoutTransaction ()
@@ -1184,8 +1308,8 @@ checkWithdrawal scripts mutate =
     noModify
     (if mutate then mutateRoleIn else removeRoleIn)
     noVeto
-    False
-    False
+    (Valid False)
+    (AddNoise False)
 
 -- | Check that a validator hash is correct.
 -- checkValidatorHash
@@ -1194,26 +1318,6 @@ checkWithdrawal scripts mutate =
 --   -> Property
 -- checkValidatorHash actual reference =
 --   property $ actual === reference
-
-referenceFolderIO :: IO FilePath
-referenceFolderIO = do
-  dataDir <- getDataDir
-  pure (dataDir </> "marlowe-testing" </> "reference" </> "data")
-
-readReferencePaths :: IO [ReferencePath]
-readReferencePaths = do
-  referenceFolder <- referenceFolderIO
-  pathFiles <-
-    fmap (referenceFolder </>)
-      . filter (".paths" `isSuffixOf`)
-      <$> listDirectory referenceFolder
-  fmap concat
-    . forM pathFiles
-    $ \pathFile ->
-      eitherDecodeFileStrict pathFile
-        >>= \case
-          Right paths -> pure $ filter (not . null . transactions) paths
-          Left msg -> error $ "Failed parsing " <> pathFile <> ": " <> msg <> "."
 
 -- -- FIXME: Investigate and drop unsafePerformIO if possible
 -- {-# NOINLINE unsafeDumpBenchmark #-}

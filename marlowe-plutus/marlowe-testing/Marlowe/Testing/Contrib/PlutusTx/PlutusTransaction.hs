@@ -8,15 +8,13 @@
 --
 
 -----------------------------------------------------------------------------
-
 -- | Types for tests of Marlowe's Plutus implementation.
 module Marlowe.Testing.Contrib.PlutusTx.PlutusTransaction (
   -- * Types
   PlutusTransaction (..),
 
   -- * Lenses
-  datum,
-  infoDCert,
+  datumGetter,
   infoData,
   infoFee,
   infoId,
@@ -31,13 +29,13 @@ module Marlowe.Testing.Contrib.PlutusTx.PlutusTransaction (
   parameters,
   redeemer,
   scriptContext,
-  scriptPurpose,
+  scriptInfo,
   txInfo,
 ) where
 
-import Control.Lens (Lens', lens)
-import PlutusLedgerApi.V2 (
-  DCert,
+import Control.Lens (Lens', lens, Getter)
+import PlutusLedgerApi.V2 (Lovelace, Credential)
+import PlutusLedgerApi.V3 (
   Datum,
   DatumHash,
   Map,
@@ -46,17 +44,16 @@ import PlutusLedgerApi.V2 (
   Redeemer,
   ScriptContext,
   ScriptPurpose,
-  StakingCredential,
   TxId,
   TxInInfo,
   TxInfo,
   TxOut,
-  Value,
+  ScriptInfo, MintValue,
  )
 import Marlowe.Testing.Contrib.PlutusTx.Lens (
-  scriptContextPurposeLens,
+  scriptContextInfoLens,
+  scriptContextRedeemerLens,
   scriptContextTxInfoLens,
-  txInfoDCertLens,
   txInfoDataLens,
   txInfoFeeLens,
   txInfoIdLens,
@@ -67,30 +64,46 @@ import Marlowe.Testing.Contrib.PlutusTx.Lens (
   txInfoReferenceInputsLens,
   txInfoSignatoriesLens,
   txInfoValidRangeLens,
-  txInfoWdrlLens,
+  txInfoWdrlLens, scriptInfoDatumGetter,
  )
+import qualified Data.Aeson as A
+import Marlowe.Testing.Contrib.PlutusTx.Debugging.Aeson (scriptContextToJSON)
+import Data.Text.Encoding (decodeUtf8)
+import qualified Data.Text as T
+import qualified Data.Yaml as Y
 
 -- | A Plutus transaction.
 data PlutusTransaction a = PlutusTransaction
   { _parameters :: a
   -- ^ Parameters providing context.
-  , _datum :: Datum
-  -- ^ The datum.
-  , _redeemer :: Redeemer
-  -- ^ The redeemer.
   , _scriptContext :: ScriptContext
   -- ^ The script context.
   }
-  deriving (Show)
+
+plutusTransactionToJSON
+  :: A.ToJSON a
+  => PlutusTransaction a
+  -> A.Value
+plutusTransactionToJSON PlutusTransaction{..} = do
+  A.object
+    [ "parameters" A..= A.toJSON _parameters
+    , "scriptContext" A..= scriptContextToJSON _scriptContext
+    ]
+
+instance A.ToJSON a => Show (PlutusTransaction a) where
+  show = T.unpack . decodeUtf8 .  Y.encode . plutusTransactionToJSON
 
 parameters :: Lens' (PlutusTransaction a) a
 parameters = lens _parameters $ \s x -> s{_parameters = x}
 
-datum :: Lens' (PlutusTransaction a) Datum
-datum = lens _datum $ \s x -> s{_datum = x}
+datumGetter :: Getter (PlutusTransaction a) (Maybe Datum)
+datumGetter = scriptContext . scriptContextInfoLens . scriptInfoDatumGetter
+
+scriptContextLens :: Lens' (PlutusTransaction a) ScriptContext
+scriptContextLens = lens _scriptContext $ \s x -> s{_scriptContext = x}
 
 redeemer :: Lens' (PlutusTransaction a) Redeemer
-redeemer = lens _redeemer $ \s x -> s{_redeemer = x}
+redeemer = scriptContextLens . scriptContextRedeemerLens
 
 scriptContext :: Lens' (PlutusTransaction a) ScriptContext
 scriptContext = lens _scriptContext $ \s x -> s{_scriptContext = x}
@@ -98,8 +111,8 @@ scriptContext = lens _scriptContext $ \s x -> s{_scriptContext = x}
 txInfo :: Lens' (PlutusTransaction a) TxInfo
 txInfo = scriptContext . scriptContextTxInfoLens
 
-scriptPurpose :: Lens' (PlutusTransaction a) ScriptPurpose
-scriptPurpose = scriptContext . scriptContextPurposeLens
+scriptInfo :: Lens' (PlutusTransaction a) ScriptInfo
+scriptInfo = scriptContext . scriptContextInfoLens
 
 infoInputs :: Lens' (PlutusTransaction a) [TxInInfo]
 infoInputs = scriptContext . scriptContextTxInfoLens . txInfoInputsLens
@@ -110,16 +123,13 @@ infoReferenceInputs = scriptContext . scriptContextTxInfoLens . txInfoReferenceI
 infoOutputs :: Lens' (PlutusTransaction a) [TxOut]
 infoOutputs = scriptContext . scriptContextTxInfoLens . txInfoOutputsLens
 
-infoFee :: Lens' (PlutusTransaction a) Value
+infoFee :: Lens' (PlutusTransaction a) Lovelace
 infoFee = scriptContext . scriptContextTxInfoLens . txInfoFeeLens
 
-infoMint :: Lens' (PlutusTransaction a) Value
+infoMint :: Lens' (PlutusTransaction a) MintValue
 infoMint = scriptContext . scriptContextTxInfoLens . txInfoMintLens
 
-infoDCert :: Lens' (PlutusTransaction a) [DCert]
-infoDCert = scriptContext . scriptContextTxInfoLens . txInfoDCertLens
-
-infoWdrl :: Lens' (PlutusTransaction a) (Map StakingCredential Integer)
+infoWdrl :: Lens' (PlutusTransaction a) (Map Credential Lovelace)
 infoWdrl = scriptContext . scriptContextTxInfoLens . txInfoWdrlLens
 
 infoValidRange :: Lens' (PlutusTransaction a) POSIXTimeRange

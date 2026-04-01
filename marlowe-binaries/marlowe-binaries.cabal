@@ -160,6 +160,9 @@ library
 
   exposed-modules:
     Language.Marlowe.Plutus.Binaries
+    Language.Marlowe.Plutus.Binaries.Core
+    Language.Marlowe.Plutus.Binaries.Devel
+    Language.Marlowe.Plutus.Binaries.Production
 
 test-suite marlowe-binaries-test
   import:             lang

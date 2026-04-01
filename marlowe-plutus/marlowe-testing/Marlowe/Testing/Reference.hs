@@ -17,6 +17,7 @@
 -- | Function to generate all valid transactions for contracts in JSON files.
 module Marlowe.Testing.Reference (
   -- * Types
+  FixtureName (..),
   ReferencePath (..),
   ReferenceTransaction (..),
 
@@ -25,9 +26,11 @@ module Marlowe.Testing.Reference (
 
   -- * Testing
   arbitraryReferenceTransaction,
+  referenceContractFiles,
+  referenceTransactions,
   readReferenceContracts,
   readReferencePaths,
-  referenceFolder,
+  readReferencePathsFor,
 ) where
 
 import Control.Monad (forM)
@@ -41,8 +44,8 @@ import Language.Marlowe.Plutus.Semantics (TransactionInput, TransactionOutput (.
 import Language.Marlowe.Plutus.Semantics.Types (Contract, State (..), ada, mkRoleByteString)
 import Language.Marlowe.Plutus.FindInputs (getAllInputs)
 import PlutusLedgerApi.V2 (POSIXTime)
-import System.Directory (listDirectory)
-import System.FilePath ((</>))
+import System.Directory (doesDirectoryExist, listDirectory)
+import System.FilePath ((</>), takeBaseName)
 
 import Language.Marlowe.Analysis.FSSemantics (SlotLength (..))
 import qualified Language.Marlowe.Plutus.AssocMap as AM (empty, singleton)
@@ -50,46 +53,77 @@ import Paths_marlowe_plutus (getDataDir)
 import Test.QuickCheck (Gen, elements)
 import Marlowe.Testing.Semantics.Golden (GoldenTransaction)
 
-referenceFolder :: FilePath
-referenceFolder = "reference" </> "data"
+newtype FixtureName = FixtureName String
+  deriving (Eq, Show)
+
+dataFilesWithSuffix :: String -> IO [FilePath]
+dataFilesWithSuffix suffix = do
+  dataDir <- getDataDir
+  go dataDir
+ where
+  go folder = do
+    entries <- listDirectory folder
+    fmap concat . forM entries $ \entry -> do
+      let path = folder </> entry
+      isDirectory <- doesDirectoryExist path
+      if isDirectory
+        then go path
+        else pure [path | suffix `isSuffixOf` path]
+
+referenceContractFiles :: IO [FilePath]
+referenceContractFiles = dataFilesWithSuffix ".contract"
 
 readReferenceContracts :: IO [(FilePath, Contract)]
-readReferenceContracts = readReferenceContracts' . (</> referenceFolder) =<< getDataDir
+readReferenceContracts = readReferenceContracts' =<< referenceContractFiles
 
-readReferenceContracts' :: FilePath -> IO [(FilePath, Contract)]
-readReferenceContracts' folder =
-  do
-    contractFiles <- fmap (folder </>) . filter (".contract" `isSuffixOf`) <$> listDirectory folder
-    forM contractFiles $
-      \contractFile ->
-        eitherDecodeFileStrict contractFile
-          >>= \case
-            Right contract -> pure (contractFile, contract)
-            Left msg -> error $ "Failed parsing " <> contractFile <> ": " <> msg <> "."
+readReferenceContracts' :: [FilePath] -> IO [(FilePath, Contract)]
+readReferenceContracts' contractFiles =
+  forM contractFiles $
+    \contractFile ->
+      eitherDecodeFileStrict contractFile
+        >>= \case
+          Right contract -> pure (contractFile, contract)
+          Left msg -> error $ "Failed parsing " <> contractFile <> ": " <> msg <> "."
 
 readReferencePaths :: IO [ReferencePath]
-readReferencePaths =
-  do
-    pathFiles <- fmap (referenceFolder </>) . filter (".paths" `isSuffixOf`) <$> listDirectory referenceFolder
-    fmap concat
-      . forM pathFiles
-      $ \pathFile ->
-        eitherDecodeFileStrict pathFile
-          >>= \case
-            Right paths -> pure $ filter (not . null . transactions) paths
-            Left msg -> error $ "Failed parsing " <> pathFile <> ": " <> msg <> "."
+readReferencePaths = do
+  pathFiles <- dataFilesWithSuffix ".paths"
+  -- let pathFiles = ["deposit.paths"]
+  readReferencePaths' pathFiles
+
+readReferencePathsFor :: FixtureName -> IO [ReferencePath]
+readReferencePathsFor (FixtureName fixtureName) = do
+  pathFiles <- filter ((== fixtureName) . takeBaseName) <$> dataFilesWithSuffix ".paths"
+  case pathFiles of
+    [] -> error $ "Failed locating fixture paths for " <> show fixtureName <> "."
+    [pathFile] -> readReferencePaths' [pathFile]
+    _ -> error $ "Ambiguous fixture paths for " <> show fixtureName <> ": " <> show pathFiles <> "."
+
+readReferencePaths' :: [FilePath] -> IO [ReferencePath]
+readReferencePaths' pathFiles =
+  fmap concat
+    . forM pathFiles
+    $ \pathFile ->
+      eitherDecodeFileStrict pathFile
+        >>= \case
+          Right paths -> pure $ filter (not . null . transactions) paths
+          Left msg -> error $ "Failed parsing " <> pathFile <> ": " <> msg <> "."
 
 arbitraryReferenceTransaction :: [ReferencePath] -> Gen GoldenTransaction
-arbitraryReferenceTransaction paths =
-  do
-    ReferencePath{..} <- elements paths
-    if length transactions > 1
-      then do
-        (ReferenceTransaction _ prior, ReferenceTransaction{..}) <- elements $ zip (init transactions) (tail transactions)
-        pure (txOutState prior, txOutContract prior, input, output)
-      else
-        let ReferenceTransaction{..} = head transactions
-         in pure (state, contract, input, output)
+arbitraryReferenceTransaction = elements . referenceTransactions
+
+referenceTransactions :: [ReferencePath] -> [GoldenTransaction]
+referenceTransactions = concatMap referencePathTransactions
+ where
+  referencePathTransactions ReferencePath{..}
+    | length transactions > 1 =
+        [ (txOutState prior, txOutContract prior, input, output)
+        | (ReferenceTransaction _ prior, ReferenceTransaction{..}) <- zip (init transactions) (tail transactions)
+        ]
+    | otherwise =
+        [ let ReferenceTransaction{..} = head transactions
+           in (state, contract, input, output)
+        ]
 
 data ReferencePath = ReferencePath
   { contract :: Contract

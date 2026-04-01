@@ -345,12 +345,6 @@ data TransactionInput = TransactionInput
 
 instance NFData TransactionInput
 
--- instance Pretty TransactionInput where
---   prettyFragment tInp = text "TransactionInput" PP.<> space PP.<> lbrace PP.<> line PP.<> txIntLine PP.<> line PP.<> txInpLine
---     where
---       txIntLine = hang 2 $ text "txInterval = " PP.<> prettyFragment (txInterval tInp) PP.<> comma
---       txInpLine = hang 2 $ text "txInputs = " PP.<> prettyFragment (txInputs tInp) PP.<> rbrace
-
 -- | Marlowe transaction output.
 data TransactionOutput
   = TransactionOutput

@@ -1,6 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Main (main) where
 
 import Control.Applicative ((<|>))
@@ -19,7 +16,7 @@ import qualified PlutusLedgerApi.V2 as PV2
 import qualified PlutusLedgerApi.V3 as PV3
 import qualified PlutusLedgerApi.Common as PLC
 
-import Language.Marlowe.Plutus.Binaries
+import Language.Marlowe.Plutus.Binaries.Devel
   ( marloweValidatorBytes
   , marloweValidatorHash
   , rolePayoutValidatorBytes
@@ -31,6 +28,7 @@ import Marlowe.Testing.Scripts
   ( MarloweScripts (..)
   , specForScripts
   , CheckPlutusLog (..)
+  , TestFailures (..)
   )
 import Marlowe.Testing.ProtocolParams (loadMainnetEvaluationContexts)
 import Control.Monad (when)
@@ -57,10 +55,11 @@ runTestSuite maybeFiles = do
     Right (mpv, ctxs) -> do
       for_ maybeFiles \(semanticsFile, payoutFile) -> do
         provided <- mkScripts mpv ctxs semanticsFile payoutFile
-        hspec do
-          specForScripts "Provided" provided (CheckPlutusLog False)
+        scriptsSpec <- specForScripts "Provided" provided (TestFailures True) (CheckPlutusLog False)
+        hspec scriptsSpec
+      develScriptsSpec <- specForScripts "Devel" (develScripts mpv ctxs) (TestFailures True) (CheckPlutusLog True)
       hspec do
-        specForScripts "Devel" (develScripts mpv ctxs) (CheckPlutusLog False)
+        develScriptsSpec
         binariesSpec
 
 main :: IO ()
@@ -153,6 +152,6 @@ evaluateBinary mpv ec bytes ctx =
              PV2.Verbose
              ec
              script
-             [ctx] of
+             ctx of
         (logs, Right _) -> That logs
-        (_, Left err)   -> This (show err)
+        (logs, Left err)   -> These (show err) logs

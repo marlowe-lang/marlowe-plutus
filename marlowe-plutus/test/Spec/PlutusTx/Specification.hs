@@ -15,7 +15,7 @@ module Spec.PlutusTx.Specification (
 import Data.Proxy (Proxy (..))
 import Language.Marlowe.Plutus.Semantics (MarloweData (..))
 import Language.Marlowe.Plutus.Scripts.Types (MarloweInput)
-import PlutusLedgerApi.V2 (
+import PlutusLedgerApi.V3 (
   BuiltinData (BuiltinData),
   Data (B, Constr, List),
   FromData (..),
