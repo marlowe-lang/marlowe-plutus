@@ -10,6 +10,7 @@ module Marlowe.Binaries.Api.Compile
 import Cardano.Api (File (File), PlutusScriptVersion (PlutusScriptV3), Script (PlutusScript), writeFileTextEnvelope)
 import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
 import Control.Monad (foldM)
+import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), object, (.=), (.:), withObject)
 import GHC.Generics (Generic)
 import Language.Marlowe.Plutus.Binaries.Devel qualified as Devel
 import Language.Marlowe.Plutus.Binaries.Production qualified as Production
@@ -23,10 +24,32 @@ data ScriptName
   | MarloweRolePayout
   deriving stock (Eq, Show, Generic)
 
+instance ToJSON ScriptName where
+  toJSON = \case
+    MarloweSemantics -> "marlowe-semantics"
+    MarloweRolePayout -> "marlowe-rolepayout"
+
+instance FromJSON ScriptName where
+  parseJSON = \case
+    "marlowe-semantics" -> pure MarloweSemantics
+    "marlowe-rolepayout" -> pure MarloweRolePayout
+    other -> fail $ "Expected 'marlowe-semantics' or 'marlowe-rolepayout', got: " <> show other
+
 data ScriptVariant
   = DevelScripts
   | ProductionScripts
   deriving stock (Eq, Show, Generic)
+
+instance ToJSON ScriptVariant where
+  toJSON = \case
+    DevelScripts -> "devel"
+    ProductionScripts -> "production"
+
+instance FromJSON ScriptVariant where
+  parseJSON = \case
+    "devel" -> pure DevelScripts
+    "production" -> pure ProductionScripts
+    other -> fail $ "Expected 'devel' or 'production', got: " <> show other
 
 data ScriptOutput = ScriptOutput
   { scriptName :: ScriptName
@@ -36,11 +59,41 @@ data ScriptOutput = ScriptOutput
   }
   deriving stock (Eq, Show, Generic)
 
+instance ToJSON ScriptOutput where
+  toJSON ScriptOutput{scriptName, scriptHash, scriptFile, hashFile} =
+    object
+      [ "scriptName" .= scriptName
+      , "scriptHash" .= scriptHash
+      , "scriptFile" .= scriptFile
+      , "hashFile" .= hashFile
+      ]
+
+instance FromJSON ScriptOutput where
+  parseJSON = withObject "ScriptOutput" $ \obj ->
+    ScriptOutput
+      <$> obj .: "scriptName"
+      <*> obj .: "scriptHash"
+      <*> obj .: "scriptFile"
+      <*> obj .: "hashFile"
+
 data CompileRequest = CompileRequest
   { requestVariant :: ScriptVariant
   , requestOutputDir :: FilePath
   }
   deriving stock (Eq, Show, Generic)
+
+instance ToJSON CompileRequest where
+  toJSON CompileRequest{requestVariant, requestOutputDir} =
+    object
+      [ "requestVariant" .= requestVariant
+      , "requestOutputDir" .= requestOutputDir
+      ]
+
+instance FromJSON CompileRequest where
+  parseJSON = withObject "CompileRequest" $ \obj ->
+    CompileRequest
+      <$> obj .: "requestVariant"
+      <*> obj .: "requestOutputDir"
 
 data CompileResponse = CompileResponse
   { responseVariant :: ScriptVariant
@@ -48,6 +101,21 @@ data CompileResponse = CompileResponse
   , responseScripts :: [ScriptOutput]
   }
   deriving stock (Eq, Show, Generic)
+
+instance ToJSON CompileResponse where
+  toJSON CompileResponse{responseVariant, responseOutputDir, responseScripts} =
+    object
+      [ "responseVariant" .= responseVariant
+      , "responseOutputDir" .= responseOutputDir
+      , "responseScripts" .= responseScripts
+      ]
+
+instance FromJSON CompileResponse where
+  parseJSON = withObject "CompileResponse" $ \obj ->
+    CompileResponse
+      <$> obj .: "responseVariant"
+      <*> obj .: "responseOutputDir"
+      <*> obj .: "responseScripts"
 
 type CompileError = String
 
