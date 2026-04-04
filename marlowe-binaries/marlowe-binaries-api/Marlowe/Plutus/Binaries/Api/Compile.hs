@@ -8,7 +8,7 @@ module Marlowe.Plutus.Binaries.Api.Compile
   ) where
 
 import Cardano.Api (File (File), PlutusScriptVersion (PlutusScriptV3), Script (PlutusScript), writeFileTextEnvelope)
-import Cardano.Api.Shelley (PlutusScript (PlutusScriptSerialised))
+import Cardano.Api.Plutus (PlutusScript (PlutusScriptSerialised))
 import Control.Monad (foldM)
 import Data.Aeson (FromJSON (parseJSON), ToJSON (toJSON), object, (.=), (.:), withObject)
 import GHC.Generics (Generic)

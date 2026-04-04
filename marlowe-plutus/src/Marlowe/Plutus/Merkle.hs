@@ -47,7 +47,7 @@ import Marlowe.Plutus.Semantics.Types (
   TimeInterval, Action,
  )
 import PlutusLedgerApi.V1 (DatumHash (..), toBuiltin, toData)
-import Cardano.Api.Shelley (fromPlutusData)
+import Cardano.Api.Plutus (fromPlutusData)
 import qualified Data.Map.Strict as M (Map, lookup, singleton)
 import PlutusLedgerApi.Common (ToData)
 import qualified PlutusTx.Prelude as P

@@ -9,7 +9,7 @@ import System.Environment (getArgs)
 import Test.Hspec (hspec)
 
 import qualified Cardano.Api as C
-import qualified Cardano.Api.Shelley as C
+import Cardano.Api.Plutus (PlutusScript (PlutusScriptSerialised))
 import PlutusTx.These (These (..))
 import qualified PlutusLedgerApi.V1.Address as PV1
 import qualified PlutusLedgerApi.V2 as PV2
@@ -74,7 +74,7 @@ readPlutusScriptFile _ filePath = do
   (script :: C.Script lang) <- withExceptT show $ ExceptT $ C.readFileTextEnvelope (C.File filePath)
   case script of
     C.SimpleScript {} -> error "Expected a Plutus script"
-    C.PlutusScript _ (C.PlutusScriptSerialised serialisedBytes) -> do
+    C.PlutusScript _ (PlutusScriptSerialised serialisedBytes) -> do
       let
         scriptHash = PV2.ScriptHash $ PLC.toBuiltin $ C.serialiseToRawBytes $ C.hashScript script
         address = PV1.scriptHashAddress scriptHash
@@ -82,6 +82,7 @@ readPlutusScriptFile _ filePath = do
             C.PlutusScriptV1 -> PLC.PlutusV1
             C.PlutusScriptV2 -> PLC.PlutusV2
             C.PlutusScriptV3 -> PLC.PlutusV3
+            C.PlutusScriptV4 -> error "Plutus V4 scripts are not supported"
       pure (address, serialisedBytes, language)
 
 -- | Build scripts from external text envelope files.

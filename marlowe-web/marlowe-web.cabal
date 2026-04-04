@@ -1,12 +1,12 @@
 cabal-version: 3.4
-name:          marlowe-transactions
+name:          marlowe-web
 version:       0.1.0.0
 license:       Apache-2.0
 build-type:    Simple
-maintainer:    tomasz.rybarczyk@marlowe-lang.org
+maintainer:    paluh (aka Tomasz Rybarczyk)
 stability:     experimental
-author:        paluh (aka Tomasz Rybarczyk)
-synopsis:      Marlowe pure transaction builders
+author:        Based on marlowe-runtime-web by Jamie Bertram
+synopsis:      Self-contained Marlowe Runtime Web API
 category:      Language
 license-files:
   LICENSE
@@ -77,7 +77,6 @@ library
     , errors
     , hashable
     , lens
-    , marlowe-binaries ^>=0.2
     , marlowe-plutus ^>=0.2
     , network-uri
     , nonempty-containers
@@ -86,11 +85,9 @@ library
     , plutus-core ^>=1.57
     , plutus-ledger-api ^>=1.57
     , plutus-tx ^>=1.57
-    , plutus-tx-plugin ^>=1.57
     , scientific
     , semialign
     , semigroups
-    , sop-extras
     , text
     , time
     , transformers
@@ -98,13 +95,10 @@ library
     , vector
 
   exposed-modules:
-    Marlowe.Plutus.Transactions
-    Language.Marlowe.Runtime.Cardano.Api
-    Language.Marlowe.Runtime.ChainSync.Api
-    Language.Marlowe.Runtime.Core.Api
-    Language.Marlowe.Runtime.Core.ScriptRegistry
-    Language.Marlowe.Runtime.Plutus.V2.Api
-    Language.Marlowe.Runtime.Transaction.Api
-    Language.Marlowe.Runtime.Transaction.BuildConstraints
-    Language.Marlowe.Runtime.Transaction.Constraints
-
+    Language.Marlowe.Runtime.Web.Core.Address
+    Language.Marlowe.Runtime.Web.Core.Base16
+    Language.Marlowe.Runtime.Web.Core.BlockHeader
+    Language.Marlowe.Runtime.Web.Core.MarloweVersion
+    Language.Marlowe.Runtime.Web.Core.NetworkId
+    Language.Marlowe.Runtime.Web.Core.Semantics.Schema
+    Language.Marlowe.Runtime.Web.Runtime.Types

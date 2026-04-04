@@ -100,8 +100,9 @@ instance (ToData k, ToData v) => ToData (Map k v) where
 -- encoded in the 'Data' is well-formed, i.e. 'fromBuiltinData' does not perform any
 -- deduplication of keys or of key-value pairs!
 instance (FromData k, FromData v) => FromData (Map k v) where
-  fromBuiltinData =
-    P.caseData'
+  fromBuiltinData d =
+    P.matchData'
+      d
       (\_ _ -> Nothing)
       (\es -> Map <$> traverseFromBuiltin es)
       (const Nothing)

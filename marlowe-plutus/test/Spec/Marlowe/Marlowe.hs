@@ -103,7 +103,7 @@ import Test.QuickCheck.Instances.ByteString ()
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, assertFailure, testCase, (@=?))
 import Test.Tasty.QuickCheck (Property, testProperty)
-import Cardano.Api.Internal.Address (StakeCredential(..))
+import Cardano.Api.Address (StakeCredential(..))
 
 -- | Set to `True` to print the JSON for the pangram contract.
 _PRINT_PANGRAM_JSON_ :: Bool
