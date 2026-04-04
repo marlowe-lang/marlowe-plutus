@@ -19,13 +19,16 @@ import Marlowe.Binaries.Api.Benchmark
       BenchmarkRequest(..),
       BenchmarkResponse(..),
       ResourceUsage(..),
+      ScenarioType(..),
       benchmarkScripts,
       generateBenchmarks,
       EvaluationError(..) )
+import Marlowe.Binaries.Api.Compile (CompileResponse(..), ScriptName(..), ScriptOutput(..))
 import Options.Applicative
   ( Parser
   , ParserInfo
   , ReadM
+  , auto
   , command
   , eitherReader
   , help
@@ -97,38 +100,65 @@ runCommandParser =
     )
     (progDesc "Run Marlowe benchmarks from a benchmark root directory.")
 
-newtype BenchmarkGenerateCommand = BenchmarkGenerateCommand (Maybe FilePath)
+data BenchmarkGenerateCommand = BenchmarkGenerateCommand
+  { scenarioDir :: Maybe FilePath
+  , scenarioType :: ScenarioType
+  , maxScenarios :: Maybe Int
+  }
 
 generateCommandParser :: ParserInfo BenchmarkGenerateCommand
 generateCommandParser =
   info
-    do
-      scenarioDir <- optional do
-            strOption
-              ( long "scenario-dir"
-                  <> metavar "DIR"
-                  <> help "Directory to write generated benchmark scenarios to. Defaults to a `scenarios` subdirectory of the packaged benchmark directory."
-              )
-      pure $ BenchmarkGenerateCommand scenarioDir
+    ( BenchmarkGenerateCommand
+        <$> optional do
+              strOption
+                ( long "scenario-dir"
+                    <> metavar "DIR"
+                    <> help "Directory to write generated benchmark scenarios to. Defaults to a `scenarios` subdirectory of the packaged benchmark directory."
+                )
+        <*> option readScenarioType
+          ( long "scenario-type"
+              <> metavar "golden|random"
+              <> value AllScenarios
+              <> showDefault
+              <> help "Type of scenarios to generate."
+          )
+        <*> optional do
+              option auto
+                ( long "max-scenarios"
+                    <> metavar "INT"
+                    <> help "Maximum number of scenarios to generate."
+                )
+    )
     (progDesc "Generate Marlowe benchmark scenarios.")
+
+readScenarioType :: ReadM ScenarioType
+readScenarioType = eitherReader $ \case
+  "golden" -> Right GoldenScenarios
+  "random" -> Right RandomScenarios
+  other -> Left $ "Unknown scenario type: " <> other <> ". Expected one of: golden, random."
 
 runRunCommand :: BenchmarkRunCommand -> IO ()
 runRunCommand cmd = do
   dataDir <- getDataDir
   (semScript, payScript) <- case (cmd.semanticsScriptFile, cmd.payoutScriptFile) of
     (Nothing, Nothing) -> do
-      -- Read Compile result from stdin and grab the binaries paths from there.
-      error "Not implemented yet"
+      input <- LBS8.getContents
+      case A.eitherDecode input of
+        Left err -> die $ "Failed to parse CompileResponse from stdin: " <> err
+        Right response -> do
+          let scripts = responseScripts response
+          case (findScript MarloweSemantics scripts, findScript MarloweRolePayout scripts) of
+            (Just sem, Just pay) -> pure (scriptFile sem, scriptFile pay)
+            _ -> die "CompileResponse missing required scripts"
     (Just s, Just p) -> pure (s, p)
     (_, _) -> die "Both semantics and payout script files must be provided, or neither to read them from stdin."
-
   benchmarkRootDir <- case cmd.benchmarkRootDir of
     Just dir -> pure dir
     Nothing -> pure $ dataDir </> "benchmarks"
   scenarioRootDir <- case cmd.scenarioRootDir of
     Just dir -> pure dir
     Nothing -> pure $ benchmarkRootDir </> "scenarios"
-
   let
     request =
         BenchmarkRequest
@@ -141,13 +171,16 @@ runRunCommand cmd = do
     Left err -> emitBenchmarkError cmd.messageFormat err
     Right response -> emitBenchmarkSummary cmd.messageFormat response
 
+findScript :: ScriptName -> [ScriptOutput] -> Maybe ScriptOutput
+findScript name = foldr (\s acc -> if scriptName s == name then Just s else acc) Nothing
+
 runGenerateCommand :: BenchmarkGenerateCommand -> IO ()
-runGenerateCommand (BenchmarkGenerateCommand scenarioRootDir) = do
+runGenerateCommand BenchmarkGenerateCommand{scenarioDir, scenarioType, maxScenarios} = do
   dataDir <- getDataDir
   let
-    rootDir = fromMaybe (dataDir </> "benchmarks") scenarioRootDir
+    rootDir = fromMaybe (dataDir </> "benchmarks") scenarioDir
   result <- runExceptT $ generateBenchmarks
-    (BenchmarkGenerateRequest rootDir)
+    (BenchmarkGenerateRequest rootDir scenarioType maxScenarios)
   case result of
     Left err -> emitBenchmarkError MessageFormatText err
     Right response -> emitGenerateSummary MessageFormatText response

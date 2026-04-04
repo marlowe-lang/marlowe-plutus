@@ -9,6 +9,7 @@ module Marlowe.Binaries.Api.Benchmark
   , BenchmarkGeneratedSuite(..)
   , EvaluationError(..)
   , ResourceUsage(..)
+  , ScenarioType(..)
   , benchmarkScripts
   , generateBenchmarks
   ) where
@@ -36,7 +37,7 @@ import Marlowe.Testing.Semantics.Golden
 import Marlowe.Testing.Reference (readReferencePaths, referenceTransactions)
 import Test.QuickCheck.Gen (Gen (MkGen))
 import Test.QuickCheck.Random (mkQCGen)
-import Data.Aeson (ToJSON(..), FromJSON, (.:), withObject, object, (.=))
+import Data.Aeson (FromJSON(..), ToJSON(..), (.:), (.=), (.:?), object, withObject)
 import qualified Data.ByteString.Lazy as BSL
 import Cardano.Crypto.Hash (hashWith)
 import Data.Text (Text)
@@ -122,9 +123,43 @@ exCpu budget = case PV2.exBudgetCPU budget of PV2.ExCPU amount -> toInteger $ un
 exMemory :: PV2.ExBudget -> Integer
 exMemory budget = case PV2.exBudgetMemory budget of PV2.ExMemory amount -> toInteger $ unSatInt amount
 
-newtype BenchmarkGenerateRequest = BenchmarkGenerateRequest { scenarioRootDir :: FilePath }
+data ScenarioType = AllScenarios | GoldenScenarios | RandomScenarios
   deriving stock (Eq, Show, Generic)
-  deriving newtype (FromJSON, ToJSON)
+
+instance ToJSON ScenarioType where
+  toJSON = \case
+    AllScenarios -> "all"
+    GoldenScenarios -> "golden"
+    RandomScenarios -> "random"
+
+instance FromJSON ScenarioType where
+  parseJSON = \case
+    "all" -> pure AllScenarios
+    "golden" -> pure GoldenScenarios
+    "random" -> pure RandomScenarios
+    other -> fail $ "Expected 'all', 'golden', or 'random', got: " <> show other
+
+data BenchmarkGenerateRequest = BenchmarkGenerateRequest
+  { scenarioRootDir :: FilePath
+  , scenarioType :: ScenarioType
+  , maxScenarios :: Maybe Int
+  }
+  deriving stock (Eq, Show, Generic)
+
+instance ToJSON BenchmarkGenerateRequest where
+  toJSON BenchmarkGenerateRequest{scenarioRootDir, scenarioType, maxScenarios} =
+    object
+      [ "scenarioRootDir" .= scenarioRootDir
+      , "scenarioType" .= scenarioType
+      , "maxScenarios" .= maxScenarios
+      ]
+
+instance FromJSON BenchmarkGenerateRequest where
+  parseJSON = withObject "BenchmarkGenerateRequest" $ \obj ->
+    BenchmarkGenerateRequest
+      <$> obj .: "scenarioRootDir"
+      <*> obj .: "scenarioType"
+      <*> obj .:? "maxScenarios"
 
 data BenchmarkGeneratedSuite = BenchmarkGeneratedSuite
   { generatedScenarioDir :: FilePath
@@ -154,15 +189,21 @@ newtype BenchmarkGenerateResponse = BenchmarkGenerateResponse
 generateBenchmarks :: BenchmarkGenerateRequest -> BenchmarkM BenchmarkGenerateResponse
 generateBenchmarks req = do
   referencePaths <- liftIO readReferencePaths
+  liftIO $ createDirectoryIfMissing True req.scenarioRootDir
   let
-    -- We use transactions generated using `getAllInputs` and `computeTransaction`
-    -- plus the manually vetted transactions from the golden suite.
     generated = referenceTransactions referencePaths
-    goldens = generated <> concat goldenTransactions
-    scenarios = BenchmarkScenario "" <$> goldens
+    goldens = concat goldenTransactions
+    allScenarios = case req.scenarioType of
+      AllScenarios -> generated <> goldens
+      GoldenScenarios -> goldens
+      RandomScenarios -> generated
+    limitedScenarios = case req.maxScenarios of
+      Just n -> take n allScenarios
+      Nothing -> allScenarios
+    scenarios = limitedScenarios
   scenariosIds <- for scenarios $ \scenario -> do
     let
-      scenarioId = mkScenarioId scenario
+      scenarioId = mkScenarioId $ BenchmarkScenario "" scenario
       scenarioIdHex = T.unpack $ scenarioId2Hex scenarioId
       scenarioPath = req.scenarioRootDir </> scenarioIdHex <> ".json"
     liftIO $ BSL.writeFile scenarioPath (A.encode scenario)
