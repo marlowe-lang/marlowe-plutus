@@ -12,6 +12,7 @@ module Marlowe.Plutus.Binaries.Api.Benchmark
   , ScenarioType(..)
   , benchmarkScripts
   , generateBenchmarks
+  , scenarioId2Hex
   ) where
 
 import Cardano.Crypto.Hash qualified as Hash

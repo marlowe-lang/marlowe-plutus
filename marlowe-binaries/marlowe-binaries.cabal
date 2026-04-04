@@ -232,6 +232,7 @@ executable marlowe-binaries
     , marlowe-binaries:marlowe-binaries-api
     , optparse-applicative
     , plutus-ledger-api ==1.45.0.0
+    , text
     , transformers
     , yaml
 

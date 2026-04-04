@@ -5,6 +5,7 @@ module Commands.Benchmark
   ) where
 
 import Control.Monad.Trans.Except (runExceptT)
+import Data.Text qualified as T
 import Data.Aeson qualified as A
 import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.Lazy.Char8 qualified as LBS8
@@ -22,7 +23,7 @@ import Marlowe.Plutus.Binaries.Api.Benchmark
       ScenarioType(..),
       benchmarkScripts,
       generateBenchmarks,
-      EvaluationError(..) )
+      EvaluationError(..), scenarioId2Hex )
 import Marlowe.Plutus.Binaries.Api.Compile (CompileResponse(..), ScriptName(..), ScriptOutput(..))
 import Options.Applicative
   ( Parser
@@ -194,6 +195,7 @@ emitBenchmarkSummary messageFormat response@BenchmarkResponse{benchmarkResults} 
  where
   printResult :: BenchmarkCaseResult -> IO ()
   printResult result = do
+    putStrLn $ "scenario: " <> (T.unpack $ scenarioId2Hex result.scenarioId)
     case result.result of
       Left err -> do
         putStrLn $ "  error: " <> case err of
@@ -203,6 +205,7 @@ emitBenchmarkSummary messageFormat response@BenchmarkResponse{benchmarkResults} 
         putStrLn $ "  cpu: " <> show usage.cpu
         putStrLn $ "  memory: " <> show usage.memory
         putStrLn $ "  logs: " <> show logs
+    putStrLn ""
 
 emitGenerateSummary :: MessageFormat -> BenchmarkGenerateResponse -> IO ()
 emitGenerateSummary messageFormat response@BenchmarkGenerateResponse{generatedBenchmarkSuites} =
