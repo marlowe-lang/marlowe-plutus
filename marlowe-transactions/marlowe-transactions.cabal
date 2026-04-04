@@ -68,11 +68,11 @@ library
     , bytestring
     , cardano-crypto-class
     , cardano-api
-    , marlowe-plutus ==0.2.0.0
-    , plutus-core ==1.45.0.0
-    , plutus-ledger-api ==1.45.0.0
-    , plutus-tx ==1.45.0.0
-    , plutus-tx-plugin ==1.45.0.0
+    , marlowe-plutus ^>=0.2
+    , plutus-core ^>=1.57
+    , plutus-ledger-api ^>=1.57
+    , plutus-tx ^>=1.57
+    , plutus-tx-plugin ^>=1.57
 
   exposed-modules:
     Language.Marlowe.Transactions.Core

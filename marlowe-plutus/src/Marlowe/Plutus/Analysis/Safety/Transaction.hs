@@ -78,7 +78,6 @@ import qualified Data.Set as S
 import Data.Traversable (for)
 import Marlowe.Plutus.Analysis.FSSemantics (SlotLength (..))
 import qualified PlutusLedgerApi.Common as P
-import qualified PlutusLedgerApi.Common.Versions as P
 import qualified PlutusLedgerApi.V2 as P hiding (evaluateScriptCounting)
 import qualified Marlowe.Plutus.AssocMap as AM
 import qualified PlutusTx.AssocMap as PlutusTxAM
