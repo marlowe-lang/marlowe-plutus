@@ -26,6 +26,11 @@ The Haskell/Plinth code is structured as follows:
 `marlowe-testing` contains shared testing utilities, reference fixtures, and the fixture-generation executable.
 See `marlowe-plutus/marlowe-testing/README.md` for details.
 
+### marlowe-binaries
+
+`marlowe-binaries` provides the CLI for compiling scripts and working with benchmark fixtures. For example, `cabal run marlowe-binaries -- compile --message-format json | cabal run marlowe-binaries -- benchmark generate --output-dir benchmarks` compiles the default production scripts, prints a JSON `CompileResponse`, and pipes it into benchmark generation.
+By default, `compile` writes scripts to `out/`, `benchmark generate` writes fixtures under `benchmarks/semantics` and `benchmarks/rolepayout`, and `benchmark run` reads from the packaged `benchmarks/` directory unless `--benchmark-dir` is provided.
+
 
 
 
@@ -58,15 +63,15 @@ Alternatively, you can compile with `nix` using `nix build .#marlowe-validators`
 
 ## Compiling the validators
 
-You can compile the validators using the following command:
+You can compile the validators with the CLI:
 
 ```bash
-nix build .#marlowe-validators
+cabal run marlowe-binaries -- compile
 ```
 
-This will build the project and run the `marlowe-validators` executable and
-output the compiled plutus scripts into local directory called `result`. This
-directory will contain two files:
+This writes the default production scripts to `out/`:
 
-- `marlowe-rolepayout.plutus` The compiled role payout validator as a JSON-encoded CBOR text-envelope.
-- `marlowe-semantics.plutus` The compiled marlowe validator as a JSON-encoded CBOR text-envelope.
+- `out/marlowe-rolepayout.plutus` - the role payout validator as a JSON-encoded CBOR text-envelope
+- `out/marlowe-semantics.plutus` - the Marlowe validator as a JSON-encoded CBOR text-envelope
+
+Use `--devel-scripts` to preserve tracing and `--message-format text|json|yaml` to control command output.

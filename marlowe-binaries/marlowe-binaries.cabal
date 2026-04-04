@@ -15,6 +15,7 @@ license-files:
 data-files:
   benchmarks/rolepayout/*.benchmark
   benchmarks/semantics/*.benchmark
+  data/mainnet-protocol-params.json
 
 source-repository head
   type:     git
@@ -24,11 +25,6 @@ flag defer-plugin-errors
   description:
     Defer errors from the plugin, useful for things like Haddock that can't handle it.
 
-  default:     False
-  manual:      True
-
-flag trace-plutus
-  description: Enable Plutus trace log for Marlowe validators.
   default:     False
   manual:      True
 
@@ -95,6 +91,7 @@ common lang
     DerivingStrategies
     DerivingVia
     DoAndIfThenElse
+    DuplicateRecordFields
     ExplicitForAll
     FlexibleContexts
     FlexibleInstances
@@ -104,6 +101,7 @@ common lang
     MultiParamTypeClasses
     NamedFieldPuns
     NumericUnderscores
+    OverloadedRecordDot
     OverloadedStrings
     PatternSynonyms
     RankNTypes
@@ -121,29 +119,11 @@ common lang
     -Wincomplete-uni-patterns -Wincomplete-record-updates
     -Wredundant-constraints -Widentities -Werror
 
-  if (flag(profile-plutus) || flag(trace-plutus))
+  if flag(profile-plutus)
     ghc-options: -fplugin-opt PlutusTx.Plugin:conservative-optimisation
 
   if flag(profile-plutus)
     ghc-options: -fplugin-opt PlutusTx.Plugin:profile-all
-
-  if flag(trace-plutus)
-    cpp-options: -DTRACE_PLUTUS
-
-  if flag(check-preconditions)
-    cpp-options: -DCHECK_PRECONDITIONS
-
-  if flag(check-positive-balances)
-    cpp-options: -DCHECK_POSITIVE_BALANCES
-
-  if flag(check-duplicate-accounts)
-    cpp-options: -DCHECK_DUPLICATE_ACCOUNTS
-
-  if flag(check-duplicate-choices)
-    cpp-options: -DCHECK_DUPLICATE_CHOICES
-
-  if flag(check-duplicate-bindings)
-    cpp-options: -DCHECK_DUPLICATE_BINDINGS
 
 library
   import:          lang
@@ -164,6 +144,43 @@ library
     Language.Marlowe.Plutus.Binaries.Devel
     Language.Marlowe.Plutus.Binaries.Production
 
+library marlowe-binaries-api
+  import:          lang
+  hs-source-dirs:  marlowe-binaries-api
+  visibility:      public
+  other-modules:
+    Paths_marlowe_binaries
+
+  exposed-modules:
+    Marlowe.Binaries.Api.Benchmark
+    Marlowe.Binaries.Api.Compile
+
+  other-modules:
+    Marlowe.Binaries.Api.Core
+
+  build-depends:
+    , aeson
+    , base16-aeson
+    , aeson-pretty
+    , base
+    , base16-bytestring
+    , bytestring
+    , cardano-api
+    , cardano-crypto-class
+    , serialise
+    , directory
+    , filepath
+    , marlowe-binaries
+    , marlowe-plutus:{marlowe-plutus, marlowe-testing}
+    , QuickCheck
+    , plutus-core ==1.45.0.0
+    , plutus-ledger-api ==1.45.0.0
+    , plutus-tx ==1.45.0.0
+    , scientific
+    , text
+    , transformers
+    , vector
+
 test-suite marlowe-binaries-test
   import:             lang
   type:               exitcode-stdio-1.0
@@ -180,6 +197,7 @@ test-suite marlowe-binaries-test
     , hspec
     , QuickCheck
     , cardano-api
+    , marlowe-binaries:marlowe-binaries-api
     , plutus-core ==1.45.0.0
     , plutus-ledger-api ==1.45.0.0
     , plutus-tx ==1.45.0.0
@@ -190,3 +208,30 @@ test-suite marlowe-binaries-test
     , transformers
 
   ghc-options:        -threaded
+
+executable marlowe-binaries
+  import:          lang
+  hs-source-dirs:  app
+  main-is:         Main.hs
+  other-modules:
+    Commands.Benchmark
+    Commands
+    Commands.Compile
+    Options
+    Paths_marlowe_binaries
+
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , base
+    , bytestring
+    , cardano-api
+    , directory
+    , filepath
+    , marlowe-binaries
+    , marlowe-binaries:marlowe-binaries-api
+    , optparse-applicative
+    , plutus-ledger-api ==1.45.0.0
+    , yaml
+
+  ghc-options: -threaded

@@ -33,12 +33,14 @@ import PlutusLedgerApi.Data.V3 (toBuiltin, fromData)
 import qualified Data.ByteString as BS
 import PlutusTx.These (These(..))
 import Marlowe.Testing.Scripts
-  ( CheckPlutusLog (..)
-  , FixtureName (..)
-  , MarloweScripts (..)
-  , specForFixture
-  , specForScripts, TestFailures(..)
-  )
+    ( CheckPlutusLog(..),
+      FixtureName(..),
+      MarloweScripts(..),
+      specForFixture,
+      specForScripts,
+      TestFailures(..),
+      SemanticsAddress(..),
+      RolePayoutAddress(..) )
 import Data.Traversable (for)
 
 -- | Timeout seconds for static analysis, which can take so much time on a complex contract
@@ -49,7 +51,6 @@ timeout = Just STATIC_ANALYSIS_TIMEOUT
 #else
 timeout = Nothing
 #endif
-
 
 -- | Entry point for the tests.
 main :: IO ()
@@ -63,8 +64,8 @@ main = do
     payoutValidatorHash = mkPsudoHash (5, 6, 7, 8)
     semanticsValidator = mkMarloweValidator payoutValidatorHash
     marloweScripts = MarloweScripts
-      { semanticsAddress = Address (ScriptCredential semanticsValidatorHash) Nothing
-      , payoutAddress = Address (ScriptCredential payoutValidatorHash) Nothing
+      { semanticsAddress = SemanticsAddress $ Address (ScriptCredential semanticsValidatorHash) Nothing
+      , rolePayoutAddress = RolePayoutAddress $ Address (ScriptCredential payoutValidatorHash) Nothing
       , runSemantics = \builtinData -> case fromData builtinData of
           Just scriptContext -> do
             let

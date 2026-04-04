@@ -25,6 +25,7 @@ module Marlowe.Testing.Transactions (
 ) where
 
 import Control.Lens (Lens', lens)
+import GHC.Generics (Generic)
 import Language.Marlowe.Plutus.Semantics (MarloweParams, TransactionInput, TransactionOutput)
 import Language.Marlowe.Plutus.Semantics.Types (Contract, State)
 import PlutusLedgerApi.V1 (TokenName (TokenName), Value, fromBuiltin)
@@ -45,7 +46,7 @@ data SemanticsTransaction = SemanticsTransaction
   , _output :: TransactionOutput
   -- ^ The transaction output.
   }
-  deriving (Show)
+  deriving stock (Show, Generic)
 
 paramsLens :: Lens' SemanticsTransaction MarloweParams
 paramsLens = lens _params $ \s x -> s{_params = x}
@@ -98,7 +99,7 @@ data PayoutTransaction = PayoutTransaction
   , _amount :: Value
   -- ^ The value paid.
   }
-  deriving (Show)
+  deriving stock (Show, Generic)
 
 paramsLens' :: Lens' PayoutTransaction MarloweParams
 paramsLens' = lens _params' $ \s x -> s{_params' = x}

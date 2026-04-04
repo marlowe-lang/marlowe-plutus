@@ -9,6 +9,7 @@ import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.Environment (getArgs)
 import System.FilePath ((<.>), (</>), dropExtension)
 
+-- Creates paths files for the contract files
 main :: IO ()
 main = do
   targets0 <- getArgs
