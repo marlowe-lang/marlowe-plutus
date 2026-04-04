@@ -1,5 +1,15 @@
 module Marlowe.Binaries.Api.Benchmark
-  ( benchmarkScripts
+  ( BenchmarkRequest(..)
+  , BenchmarkResponse(..)
+  , BenchmarkCaseResult(..)
+  , BenchmarkScenario(..)
+  , BenchmarkScenarioId(..)
+  , BenchmarkGenerateRequest(..)
+  , BenchmarkGenerateResponse(..)
+  , BenchmarkGeneratedSuite(..)
+  , EvaluationError(..)
+  , ResourceUsage(..)
+  , benchmarkScripts
   , generateBenchmarks
   ) where
 
@@ -112,7 +122,7 @@ exCpu budget = case PV2.exBudgetCPU budget of PV2.ExCPU amount -> toInteger $ un
 exMemory :: PV2.ExBudget -> Integer
 exMemory budget = case PV2.exBudgetMemory budget of PV2.ExMemory amount -> toInteger $ unSatInt amount
 
-newtype BenchmarkGenerateRequest = BenchmarkGenerateRequest { generateScenarioRootDir :: FilePath }
+newtype BenchmarkGenerateRequest = BenchmarkGenerateRequest { scenarioRootDir :: FilePath }
   deriving stock (Eq, Show, Generic)
   deriving newtype (FromJSON, ToJSON)
 
@@ -154,11 +164,11 @@ generateBenchmarks req = do
     let
       scenarioId = mkScenarioId scenario
       scenarioIdHex = T.unpack $ scenarioId2Hex scenarioId
-      scenarioPath = req.generateScenarioRootDir </> scenarioIdHex <> ".json"
+      scenarioPath = req.scenarioRootDir </> scenarioIdHex <> ".json"
     liftIO $ BSL.writeFile scenarioPath (A.encode scenario)
     pure scenarioId
   pure $ BenchmarkGenerateResponse
-    [BenchmarkGeneratedSuite req.generateScenarioRootDir scenariosIds]
+    [BenchmarkGeneratedSuite req.scenarioRootDir scenariosIds]
 
 data BenchmarkRequest = BenchmarkRequest
   { benchmarkRootDir :: FilePath

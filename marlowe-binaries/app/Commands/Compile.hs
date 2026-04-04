@@ -5,7 +5,7 @@ import Data.Aeson.Encode.Pretty qualified as A
 import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Yaml qualified as Y
-import Marlowe.Binaries.Api.Compile (CompileError (..), CompileRequest (..), CompileResponse (..), ScriptOutput (..), ScriptVariant (..), compileScripts)
+import Marlowe.Binaries.Api.Compile (CompileRequest (..), CompileResponse (..), ScriptOutput (..), ScriptVariant (..), compileScripts)
 import Options.Applicative (
   Parser,
   ParserInfo,
@@ -113,9 +113,9 @@ emitSummary messageFormat response@CompileResponse{responseVariant, responseOutp
     putStrLn $ "  wrote " <> scriptFile script
     putStrLn $ "  hash  " <> scriptHash script
 
-emitError :: MessageFormat -> CompileError -> IO a
-emitError messageFormat err@CompileError{errorMessage} =
+emitError :: MessageFormat -> String -> IO a
+emitError messageFormat err =
   case messageFormat of
-    MessageFormatText -> die errorMessage
+    MessageFormatText -> die err
     MessageFormatJson -> LBS8.putStrLn (A.encodePretty err) >> die "compile command failed"
     MessageFormatYaml -> BS8.putStrLn (Y.encode err) >> die "compile command failed"

@@ -1,5 +1,10 @@
 module Marlowe.Binaries.Api.Compile
   ( compileScripts
+  , CompileRequest(..)
+  , CompileResponse(..)
+  , ScriptName(..)
+  , ScriptVariant(..)
+  , ScriptOutput(..)
   ) where
 
 import Cardano.Api (File (File), PlutusScriptVersion (PlutusScriptV3), Script (PlutusScript), writeFileTextEnvelope)
@@ -44,10 +49,7 @@ data CompileResponse = CompileResponse
   }
   deriving stock (Eq, Show, Generic)
 
-newtype CompileError = CompileError
-  { errorMessage :: String
-  }
-  deriving stock (Eq, Show, Generic)
+type CompileError = String
 
 data ScriptArtifacts = ScriptArtifacts
   { name :: ScriptName
@@ -85,7 +87,7 @@ writeArtifact CompileRequest{requestOutputDir} ScriptArtifacts{name, hash, bytes
       Nothing
       (PlutusScript PlutusScriptV3 (PlutusScriptSerialised bytes))
   case writeResult of
-    Left err -> pure . Left . CompileError $ show err
+    Left err -> pure . Left $ show err
     Right () -> do
       writeFile hashFile (scriptHash <> "\n")
       pure $ Right ScriptOutput{scriptName = name, scriptHash, scriptFile, hashFile}
