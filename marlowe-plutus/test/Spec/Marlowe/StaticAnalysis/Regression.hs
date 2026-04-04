@@ -20,7 +20,7 @@ import Prelude
 
 import Data.Either (fromRight, isRight)
 import Data.Maybe (isNothing)
-import Language.Marlowe.Plutus.Semantics.Types
+import Marlowe.Plutus.Semantics.Types
     ( Action(..),
       Case(..),
       Contract(..),
@@ -28,10 +28,10 @@ import Language.Marlowe.Plutus.Semantics.Types
       Payee(..),
       Value(..),
       ada, ValueId(..) )
-import Language.Marlowe.Analysis.FSSemantics (SlotLength (..), warningsTrace)
-import Marlowe.Testing.Common (alicePk)
+import Marlowe.Plutus.Analysis.FSSemantics (SlotLength (..), warningsTrace)
+import Marlowe.Plutus.Testing.Common (alicePk)
 import Test.Tasty.HUnit (assertBool, assertEqual, testCase)
-import Language.Marlowe.Plutus.Semantics (TransactionWarning(..))
+import Marlowe.Plutus.Semantics (TransactionWarning(..))
 
 isTransactionPartialPay :: TransactionWarning -> Bool
 isTransactionPartialPay (TransactionPartialPay{}) = True

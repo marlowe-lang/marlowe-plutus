@@ -9,11 +9,11 @@ module Spec.Marlowe.Semantics.Next.Contract.When.Deposit (
 
 import Data.List (nubBy)
 import Data.Types.Isomorphic (Injective (..), Iso)
-import Language.Marlowe.Plutus.Next.Applicables.CanDeposit (CanDeposit (..))
-import Language.Marlowe.Plutus.Next.Indexed (Indexed (..))
-import Language.Marlowe.Plutus.Next.IsMerkleizedContinuation (IsMerkleizedContinuation)
-import Language.Marlowe.Plutus.Semantics (evalValue)
-import Language.Marlowe.Plutus.Semantics.Types (
+import Marlowe.Plutus.Next.Applicables.CanDeposit (CanDeposit (..))
+import Marlowe.Plutus.Next.Indexed (Indexed (..))
+import Marlowe.Plutus.Next.IsMerkleizedContinuation (IsMerkleizedContinuation)
+import Marlowe.Plutus.Semantics (evalValue)
+import Marlowe.Plutus.Semantics.Types (
   AccountId,
   Action (Deposit),
   Case,
@@ -23,7 +23,7 @@ import Language.Marlowe.Plutus.Semantics.Types (
   State,
   Token,
  )
-import Marlowe.Testing.Semantics.Arbitrary ()
+import Marlowe.Plutus.Testing.Semantics.Arbitrary ()
 import Spec.Marlowe.Semantics.Next.Contract.When (indexedCaseActions)
 
 data EvaluatedDeposit

@@ -13,8 +13,8 @@ module Spec.PlutusTx.Specification (
 ) where
 
 import Data.Proxy (Proxy (..))
-import Language.Marlowe.Plutus.Semantics (MarloweData (..))
-import Language.Marlowe.Plutus.Scripts.Types (MarloweInput)
+import Marlowe.Plutus.Semantics (MarloweData (..))
+import Marlowe.Plutus.Scripts.Types (MarloweInput)
 import PlutusLedgerApi.V3 (
   BuiltinData (BuiltinData),
   Data (B, Constr, List),
@@ -23,8 +23,8 @@ import PlutusLedgerApi.V3 (
   ToData (..),
   TokenName,
  )
-import Marlowe.Testing.Contrib.PlutusTx.Arbitrary ()
-import Marlowe.Testing.Semantics.Arbitrary ()
+import Marlowe.Plutus.Testing.Contrib.PlutusTx.Arbitrary ()
+import Marlowe.Plutus.Testing.Semantics.Arbitrary ()
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (
   Arbitrary (..),

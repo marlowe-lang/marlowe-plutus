@@ -45,6 +45,11 @@ package marlowe-plutus
   tests: True
   ghc-options: -Werror
 
+-- Our desired versions after the bump:
+-- constraints:
+--   , cardano-api ^>=10.23
+--   , plutus-core ^>=1.57
+--   , plutus-ledger-api ^>=1.57
 
 constraints:
     cardano-api ^>=10.16

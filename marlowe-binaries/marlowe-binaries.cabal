@@ -139,10 +139,10 @@ library
     , plutus-tx-plugin ==1.45.0.0
 
   exposed-modules:
-    Language.Marlowe.Plutus.Binaries
-    Language.Marlowe.Plutus.Binaries.Core
-    Language.Marlowe.Plutus.Binaries.Devel
-    Language.Marlowe.Plutus.Binaries.Production
+    Marlowe.Plutus.Binaries
+    Marlowe.Plutus.Binaries.Core
+    Marlowe.Plutus.Binaries.Devel
+    Marlowe.Plutus.Binaries.Production
 
 library marlowe-binaries-api
   import:          lang
@@ -152,11 +152,11 @@ library marlowe-binaries-api
     Paths_marlowe_binaries
 
   exposed-modules:
-    Marlowe.Binaries.Api.Benchmark
-    Marlowe.Binaries.Api.Compile
+    Marlowe.Plutus.Binaries.Api.Benchmark
+    Marlowe.Plutus.Binaries.Api.Compile
 
   other-modules:
-    Marlowe.Binaries.Api.Core
+    Marlowe.Plutus.Binaries.Api.Core
 
   build-depends:
     , aeson
@@ -187,7 +187,7 @@ test-suite marlowe-binaries-test
   main-is:            Main.hs
   hs-source-dirs:     test
   other-modules:
-    Language.Marlowe.Plutus.BinariesSpec
+    Marlowe.Plutus.BinariesSpec
 
   build-depends:
     , base

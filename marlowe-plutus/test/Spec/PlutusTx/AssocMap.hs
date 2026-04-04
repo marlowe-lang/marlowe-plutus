@@ -10,13 +10,13 @@ module Spec.PlutusTx.AssocMap (
   tests,
 ) where
 
-import Marlowe.Testing.Semantics.Arbitrary (arbitraryAssocMap)
-import Marlowe.Testing.Semantics.AssocMap (assocMapDelete, assocMapEq, assocMapInsert, assocMapLookup, assocMapMember)
+import Marlowe.Plutus.Testing.Semantics.Arbitrary (arbitraryAssocMap)
+import Marlowe.Plutus.Testing.Semantics.AssocMap (assocMapDelete, assocMapEq, assocMapInsert, assocMapLookup, assocMapMember)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (Arbitrary (..), Gen, Property, elements, forAll, property, testProperty)
 
 -- FIXME: We work with a fork of AssocMap until the instances are fixed upstream.
-import qualified Language.Marlowe.Plutus.AssocMap as AM (
+import qualified Marlowe.Plutus.AssocMap as AM (
   Map,
   delete,
   empty,

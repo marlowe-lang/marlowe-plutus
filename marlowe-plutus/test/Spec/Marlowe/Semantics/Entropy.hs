@@ -17,15 +17,15 @@ module Spec.Marlowe.Semantics.Entropy (
 ) where
 
 import Data.List (group, sort)
-import Language.Marlowe.Plutus.AssocMap as AM
-import Language.Marlowe.Plutus.Semantics.Types (Accounts, ChoiceId, ChosenNum, Party, Token, ValueId)
+import Marlowe.Plutus.AssocMap as AM
+import Marlowe.Plutus.Semantics.Types (Accounts, ChoiceId, ChosenNum, Party, Token, ValueId)
 import PlutusLedgerApi.V2 (PubKeyHash, TokenName)
-import Marlowe.Testing.Semantics.Arbitrary (arbitraryChoiceName)
+import Marlowe.Plutus.Testing.Semantics.Arbitrary (arbitraryChoiceName)
 
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, testCase)
 import Test.Tasty.QuickCheck (Arbitrary (arbitrary), Gen, generate, resize)
-import Marlowe.Testing.Contrib.PlutusTx.Arbitrary (arbitraryAnyCurrencySymbol)
+import Marlowe.Plutus.Testing.Contrib.PlutusTx.Arbitrary (arbitraryAnyCurrencySymbol)
 
 
 -- | Check the entropy of an arbitrary instance.

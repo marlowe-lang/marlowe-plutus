@@ -42,14 +42,14 @@ import Language.Haskell.Interpreter (
   set,
   setImports,
  )
-import Language.Marlowe.Analysis.FSSemantics (SlotLength (SlotLength), warningsTrace)
-import Language.Marlowe.Plutus.Semantics (
+import Marlowe.Plutus.Analysis.FSSemantics (SlotLength (SlotLength), warningsTrace)
+import Marlowe.Plutus.Semantics (
   TransactionInput (TransactionInput, txInputs, txInterval),
   TransactionOutput (TransactionOutput, txOutState),
   computeTransaction,
   evalValue,
  )
-import Language.Marlowe.Plutus.Semantics.Types (
+import Marlowe.Plutus.Semantics.Types (
   Action (Choice, Deposit),
   Bound (Bound),
   Case (Case),
@@ -69,23 +69,23 @@ import Language.Marlowe.Plutus.Semantics.Types (
   mkTokenNameUtf8,
   unsafeMkCurrencySymbolHex, Input, Token (Token),
  )
-import Language.Marlowe.Plutus.Semantics.Types.Address (
+import Marlowe.Plutus.Semantics.Types.Address (
   deserialiseAddress,
   deserialiseAddressBech32,
   mainnet,
   serialiseAddress,
   serialiseAddressBech32,
  )
-import Language.Marlowe.Plutus.AssocMap as AM
-import Language.Marlowe.Plutus.Foldings (extractNonMerkleizedContractRoles)
+import Marlowe.Plutus.AssocMap as AM
+import Marlowe.Plutus.Foldings (extractNonMerkleizedContractRoles)
 import qualified PlutusLedgerApi.V1 as PV1
 import qualified PlutusLedgerApi.V1.Credential as Credential
 import PlutusLedgerApi.V2 (POSIXTime (POSIXTime))
 import qualified PlutusTx.Prelude as P
 import qualified PlutusTx.Ratio as P
-import Marlowe.Testing.Common (alicePk, amount, contractGen, pangramContract, shrinkContract, valueGen)
-import Marlowe.Testing.Semantics.Arbitrary ()
-import Marlowe.Testing.Contrib.PlutusTx.Arbitrary ()
+import Marlowe.Plutus.Testing.Common (alicePk, amount, contractGen, pangramContract, shrinkContract, valueGen)
+import Marlowe.Plutus.Testing.Semantics.Arbitrary ()
+import Marlowe.Plutus.Testing.Contrib.PlutusTx.Arbitrary ()
 import System.Timeout (timeout)
 import Test.QuickCheck (
   arbitrary,

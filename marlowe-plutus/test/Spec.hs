@@ -27,12 +27,12 @@ import qualified Spec.Marlowe.Service.Isabelle (tests)
 import qualified Spec.Marlowe.StaticAnalysis (tests)
 import qualified Spec.PlutusTx (tests)
 import PlutusLedgerApi.V3 (Address(..), ScriptHash (ScriptHash), Credential (..))
-import Language.Marlowe.Plutus.Scripts
+import Marlowe.Plutus.Scripts
     ( mkMarloweValidator, mkRolePayoutValidator )
 import PlutusLedgerApi.Data.V3 (toBuiltin, fromData)
 import qualified Data.ByteString as BS
 import PlutusTx.These (These(..))
-import Marlowe.Testing.Scripts
+import Marlowe.Plutus.Testing.Scripts
     ( CheckPlutusLog(..),
       FixtureName(..),
       MarloweScripts(..),

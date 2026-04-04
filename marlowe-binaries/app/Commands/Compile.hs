@@ -5,7 +5,7 @@ import Data.Aeson.Encode.Pretty qualified as A
 import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Yaml qualified as Y
-import Marlowe.Binaries.Api.Compile (CompileRequest (..), CompileResponse (..), ScriptOutput (..), ScriptVariant (..), compileScripts)
+import Marlowe.Plutus.Binaries.Api.Compile (CompileRequest (..), CompileResponse (..), ScriptOutput (..), ScriptVariant (..), compileScripts)
 import Options.Applicative (
   Parser,
   ParserInfo,

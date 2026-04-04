@@ -15,7 +15,7 @@ module Spec.Marlowe.Service.Isabelle (
   tests,
 ) where
 
-import Marlowe.Testing.Service (handleValues)
+import Marlowe.Plutus.Testing.Service (handleValues)
 import Test.Tasty (TestTree, testGroup)
 
 import qualified Data.Aeson as A

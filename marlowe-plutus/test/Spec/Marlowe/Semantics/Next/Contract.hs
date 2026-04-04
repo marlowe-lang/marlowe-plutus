@@ -6,9 +6,9 @@ module Spec.Marlowe.Semantics.Next.Contract (
   isReducibleToClose,
 ) where
 
-import Language.Marlowe.Plutus.Semantics (ReduceResult (ContractQuiescent), fixInterval, reduceContractUntilQuiescent)
-import Language.Marlowe.Plutus.Semantics.Types (Contract (Close), Environment (..), IntervalResult (..), State)
-import Marlowe.Testing.Semantics.Arbitrary ()
+import Marlowe.Plutus.Semantics (ReduceResult (ContractQuiescent), fixInterval, reduceContractUntilQuiescent)
+import Marlowe.Plutus.Semantics.Types (Contract (Close), Environment (..), IntervalResult (..), State)
+import Marlowe.Plutus.Testing.Semantics.Arbitrary ()
 
 isIrreducible :: Environment -> State -> Contract -> Bool
 isIrreducible environment' state contract =

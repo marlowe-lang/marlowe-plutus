@@ -6,7 +6,7 @@ module Spec.Marlowe.Semantics.Next.Common.Isomorphism (
 ) where
 
 import Data.Types.Isomorphic (Injective (..), Iso)
-import Language.Marlowe.Plutus.Next.Indexed
+import Marlowe.Plutus.Next.Indexed
 
 instance (Injective a b) => Injective (Indexed a) (Indexed b) where
   to (Indexed caseIndex a) = Indexed caseIndex (to a)

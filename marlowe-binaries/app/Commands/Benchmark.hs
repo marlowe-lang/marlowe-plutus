@@ -11,7 +11,7 @@ import Data.ByteString.Lazy.Char8 qualified as LBS8
 import Data.Foldable (fold)
 import Data.Maybe (fromMaybe)
 import Data.Yaml qualified as Y
-import Marlowe.Binaries.Api.Benchmark
+import Marlowe.Plutus.Binaries.Api.Benchmark
     ( BenchmarkCaseResult(..),
       BenchmarkGenerateRequest(..),
       BenchmarkGenerateResponse(..),
@@ -23,7 +23,7 @@ import Marlowe.Binaries.Api.Benchmark
       benchmarkScripts,
       generateBenchmarks,
       EvaluationError(..) )
-import Marlowe.Binaries.Api.Compile (CompileResponse(..), ScriptName(..), ScriptOutput(..))
+import Marlowe.Plutus.Binaries.Api.Compile (CompileResponse(..), ScriptName(..), ScriptOutput(..))
 import Options.Applicative
   ( Parser
   , ParserInfo

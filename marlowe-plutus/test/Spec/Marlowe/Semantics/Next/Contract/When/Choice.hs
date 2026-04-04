@@ -7,11 +7,11 @@ module Spec.Marlowe.Semantics.Next.Contract.When.Choice (
 ) where
 
 import Data.Types.Isomorphic (Injective (..))
-import qualified Language.Marlowe.Plutus.Next.Applicables.CanChoose as Semantics
-import Language.Marlowe.Plutus.Next.Indexed (Indexed (..), getIndexedValue)
-import Language.Marlowe.Plutus.Next.IsMerkleizedContinuation (IsMerkleizedContinuation)
-import Language.Marlowe.Plutus.Semantics.Types (Action (Choice), Bound, Case, ChoiceId, Contract, Environment, State)
-import Marlowe.Testing.Semantics.Arbitrary ()
+import qualified Marlowe.Plutus.Next.Applicables.CanChoose as Semantics
+import Marlowe.Plutus.Next.Indexed (Indexed (..), getIndexedValue)
+import Marlowe.Plutus.Next.IsMerkleizedContinuation (IsMerkleizedContinuation)
+import Marlowe.Plutus.Semantics.Types (Action (Choice), Bound, Case, ChoiceId, Contract, Environment, State)
+import Marlowe.Plutus.Testing.Semantics.Arbitrary ()
 import Spec.Marlowe.Semantics.Next.Contract.When (indexedCaseActions)
 
 data Choice' = Choice'

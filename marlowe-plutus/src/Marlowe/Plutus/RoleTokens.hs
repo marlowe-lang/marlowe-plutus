@@ -1,0 +1,121 @@
+{-# LANGUAGE NoImplicitPrelude #-}
+
+module Marlowe.Plutus.RoleTokens where
+
+-- {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
+-- {-# OPTIONS_GHC -fno-omit-interface-pragmas #-}
+-- {-# OPTIONS_GHC -fno-specialise #-}
+-- 
+-- -- {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:defer-errors #-}
+-- -- {-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.0.0 #-}
+-- 
+-- module Marlowe.Plutus.RoleTokens (
+--   -- * Minting
+--   MintAction (..),
+--   RoleTokens,
+--   mkRoleTokens,
+--   mkRoleTokensHash,
+--   policy,
+-- ) where
+-- 
+-- import Marlowe.Plutus.RoleTokens.Types (
+--   MintAction (..),
+--   RoleTokens,
+--   RoleTokensHash,
+--   mkRoleTokens,
+--   mkRoleTokensHash,
+--  )
+-- import PlutusCore.Version (plcVersion200)
+-- import PlutusTx (CompiledCode)
+-- import PlutusTx.List (all)
+-- import PlutusTx.Prelude (
+--   Bool,
+--   BuiltinData,
+--   Eq ((==)),
+--   Semigroup ((<>)),
+--   check,
+--   fromMaybe,
+--   isNothing,
+--   traceIfFalse,
+--   ($),
+--   (&&),
+--   (.),
+--   (>>=), BuiltinUnit,
+--  )
+-- 
+-- import qualified PlutusLedgerApi.V2 as PV2
+-- import qualified PlutusLedgerApi.V2.Contexts as PV2
+-- import qualified PlutusTx
+-- import qualified Marlowe.Plutus.AssocMap as AssocMap
+-- import qualified Prelude as Haskell
+-- 
+-- -- | One shot policy which encodes the `txOutRef` and tokens minting in its hash.
+-- -- In theory this currency can be reused across multiple Marlowe Contracts when the precise
+-- -- token distribution is not so important to the participant but rather a possible token
+-- -- redundancy or uniqueness.
+-- mkPolicy
+--   :: RoleTokensHash
+--   -> PV2.TxOutRef
+--   -> MintAction
+--   -> PV2.ScriptContext
+--   -> Bool
+-- mkPolicy roleTokensHash seedInput action context =
+--   case action of
+--     Mint -> validateMinting roleTokensHash seedInput context
+--     Burn -> validateBurning context
+-- 
+-- {-# INLINEABLE validateMinting #-}
+-- validateMinting :: RoleTokensHash -> PV2.TxOutRef -> PV2.ScriptContext -> Bool
+-- validateMinting roleTokens seedInput context =
+--   traceIfFalse "Mint failed"
+--     $ seedInputIsConsumed
+--     && roleTokensAreMinted
+--   where
+--     PV2.ScriptContext{scriptContextTxInfo = txInfo} = context
+--     ownCurrency = PV2.ownCurrencySymbol context
+-- 
+--     seedInputIsConsumed = do
+--       let PV2.TxOutRef txId txIx = seedInput
+--       PV2.spendsOutput txInfo txId txIx
+-- 
+--     roleTokensAreMinted :: Bool
+--     roleTokensAreMinted = txMintedRoleTokens == roleTokens
+--       where
+--         txMintedRoleTokens = do
+--           let tokensMap = fromMaybe AssocMap.empty . AssocMap.lookup ownCurrency . PV2.getValue . PV2.txInfoMint $ txInfo
+--           mkRoleTokensHash . mkRoleTokens . AssocMap.toList $ tokensMap
+-- 
+-- {-# INLINEABLE validateBurning #-}
+-- validateBurning :: PV2.ScriptContext -> Bool
+-- validateBurning context = do
+--   traceIfFalse "Burn failed" allBurned
+--   where
+--     ownCurrency = PV2.ownCurrencySymbol context
+--     -- Allow only burning here
+--     allBurned = missingFromOutputsValue ownCurrency context
+-- 
+-- {-# INLINEABLE missingFromOutputsValue #-}
+-- missingFromOutputsValue :: PV2.CurrencySymbol -> PV2.ScriptContext -> Bool
+-- missingFromOutputsValue currencySymbol PV2.ScriptContext{scriptContextTxInfo} = do
+--   let PV2.TxInfo{txInfoOutputs} = scriptContextTxInfo
+--       missingFromOutputValue PV2.TxOut{txOutValue} = isNothing . AssocMap.lookup currencySymbol . PV2.getValue $ txOutValue
+--   all missingFromOutputValue txInfoOutputs
+-- 
+-- -- Extracted from plutus-ledger
+-- 
+-- -- | Signature of an untyped minting policy script.
+-- type MintingPolicyFn = BuiltinData -> BuiltinData -> BuiltinUnit
+-- 
+-- {-# INLINEABLE wrapMintingPolicy #-}
+-- 
+-- -- | Turns typed function into a minting policy which can be used
+-- -- on the chain.
+-- wrapMintingPolicy
+--   :: (PV2.UnsafeFromData redeemer, PV2.UnsafeFromData context)
+--   => (redeemer -> context -> Bool)
+--   -> MintingPolicyFn
+-- wrapMintingPolicy f r c =
+--   PlutusTx.Prelude.check (f redeemer context)
+--   where
+--     redeemer = PV2.unsafeFromBuiltinData r
+--     context = PV2.unsafeFromBuiltinData c

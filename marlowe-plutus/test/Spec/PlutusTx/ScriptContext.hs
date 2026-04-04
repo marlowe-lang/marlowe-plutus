@@ -23,7 +23,7 @@ import PlutusLedgerApi.V3 (
   TxOut (TxOut, txOutAddress, txOutValue),
  )
 import PlutusLedgerApi.V3.Contexts (findDatum, findDatumHash, txSignedBy, valuePaidTo, valueSpent)
-import Marlowe.Testing.Contrib.PlutusTx.Arbitrary ()
+import Marlowe.Plutus.Testing.Contrib.PlutusTx.Arbitrary ()
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (Arbitrary (..), Property, elements, forAll, property, suchThat, testProperty)
 
