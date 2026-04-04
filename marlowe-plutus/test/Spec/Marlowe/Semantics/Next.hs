@@ -14,16 +14,16 @@ import qualified Data.Aeson as Aeson
 import Data.Function (on)
 import Data.Semigroup (All (..))
 import GHC.Generics (Generic)
-import Language.Marlowe.Plutus.Next (Next (..), next)
-import Language.Marlowe.Plutus.Next.Applicables (
+import Marlowe.Plutus.Next (Next (..), next)
+import Marlowe.Plutus.Next.Applicables (
   ApplicableInputs (choices, deposits, notifyMaybe),
   emptyApplicables,
   mkApplicablesWhen,
  )
-import Language.Marlowe.Plutus.Next.Applicables.CanChoose (compactAdjoinedBounds, overlaps)
-import Language.Marlowe.Plutus.Next.CanReduce (CanReduce (..))
-import Language.Marlowe.Plutus.Next.Indexed (getCaseIndex, sameIndexedValue)
-import Language.Marlowe.Plutus.Semantics.Types (
+import Marlowe.Plutus.Next.Applicables.CanChoose (compactAdjoinedBounds, overlaps)
+import Marlowe.Plutus.Next.CanReduce (CanReduce (..))
+import Marlowe.Plutus.Next.Indexed (getCaseIndex, sameIndexedValue)
+import Marlowe.Plutus.Semantics.Types (
   Action (..),
   State (State, minTime),
   Value (..),
@@ -33,13 +33,13 @@ import Language.Marlowe.Plutus.Semantics.Types (
   TimeInterval,
   getAction,
  )
-import Language.Marlowe.Plutus.Semantics (
+import Marlowe.Plutus.Semantics (
   evalObservation,
   evalValue,
   )
 import qualified PlutusLedgerApi.V2 as PV2
-import Marlowe.Testing.Contrib.Integer.Arbitrary (arbitraryNonnegativeInteger)
-import Marlowe.Testing.Contrib.PlutusTx.Arbitrary ()
+import Marlowe.Plutus.Testing.Contrib.Integer.Arbitrary (arbitraryNonnegativeInteger)
+import Marlowe.Plutus.Testing.Contrib.PlutusTx.Arbitrary ()
 import Spec.Marlowe.Semantics.Next.Common.Isomorphism ()
 import Spec.Marlowe.Semantics.Next.Common.QuickCheck (forAllSuchThat)
 import Spec.Marlowe.Semantics.Next.Common.Tuple (uncurry3)

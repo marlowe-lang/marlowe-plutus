@@ -14,8 +14,8 @@ module Spec.Marlowe.Semantics.Next.Contract.Generator (
   anyWithAtLeastOneNotifyTrue,
 ) where
 
-import Language.Marlowe.Plutus.Semantics (evalObservation)
-import Language.Marlowe.Plutus.Semantics.Types (
+import Marlowe.Plutus.Semantics (evalObservation)
+import Marlowe.Plutus.Semantics.Types (
   Action (Choice, Deposit, Notify),
   Bound (Bound),
   Case (Case),
@@ -24,7 +24,7 @@ import Language.Marlowe.Plutus.Semantics.Types (
   Environment,
   State, mkRoleUtf8,
  )
-import Marlowe.Testing.Semantics.Arbitrary ()
+import Marlowe.Plutus.Testing.Semantics.Arbitrary ()
 import Test.QuickCheck (Arbitrary (arbitrary), Gen, listOf, listOf1, shuffle, suchThat)
 
 import Data.List (nub)

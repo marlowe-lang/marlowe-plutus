@@ -8,7 +8,7 @@ module Spec.Marlowe.Semantics.Path.Tests (
   tests,
 ) where
 
-import Language.Marlowe.Plutus.Semantics (
+import Marlowe.Plutus.Semantics (
   ApplyAllResult (..),
   ReduceResult (..),
   applyAllInputs,
@@ -16,9 +16,9 @@ import Language.Marlowe.Plutus.Semantics (
   evalValue,
   reduceContractUntilQuiescent,
  )
-import Language.Marlowe.Plutus.Semantics.Types
-import Language.Marlowe.Plutus.AssocMap as AM
-import Marlowe.Testing.Semantics.Path
+import Marlowe.Plutus.Semantics.Types
+import Marlowe.Plutus.AssocMap as AM
+import Marlowe.Plutus.Testing.Semantics.Path
 import Test.QuickCheck
 import Test.Tasty (TestName, TestTree, testGroup)
 import Test.Tasty.QuickCheck (testProperty)

@@ -9,22 +9,23 @@ import System.Environment (getArgs)
 import Test.Hspec (hspec)
 
 import qualified Cardano.Api as C
+import qualified Cardano.Api.Shelley as C
 import PlutusTx.These (These (..))
 import qualified PlutusLedgerApi.V1.Address as PV1
 import qualified PlutusLedgerApi.V2 as PV2
 import qualified PlutusLedgerApi.V3 as PV3
 import qualified PlutusLedgerApi.Common as PLC
-import Control.Monad.Trans.Except (ExceptT(..), withExceptT)
+import Control.Monad.Trans.Except (ExceptT(..), runExceptT, withExceptT)
 
-import Language.Marlowe.Plutus.Binaries.Devel
+import Marlowe.Plutus.Binaries.Devel
   ( marloweValidatorBytes
   , marloweValidatorHash
   , rolePayoutValidatorBytes
   , rolePayoutValidatorHash
   )
 
-import Language.Marlowe.Plutus.BinariesSpec (binariesSpec)
-import Marlowe.Testing.Scripts
+import Marlowe.Plutus.BinariesSpec (binariesSpec)
+import Marlowe.Plutus.Testing.Scripts
   ( MarloweScripts (..)
   , SemanticsAddress(..)
   , RolePayoutAddress(..)
@@ -32,7 +33,7 @@ import Marlowe.Testing.Scripts
   , CheckPlutusLog (..)
   , TestFailures (..)
   )
-import Marlowe.Testing.ProtocolParams (EvaluationContexts(..), loadMainnetEvaluationContexts)
+import Marlowe.Plutus.Testing.ProtocolParams (EvaluationContexts(..), loadMainnetEvaluationContexts)
 
 -- | Evaluate serialized Plutus script using counting evaluator.
 evaluateBinary

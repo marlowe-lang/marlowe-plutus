@@ -31,8 +31,8 @@ import Data.Function (on)
 import Data.List (sort)
 import qualified Data.List as List
 import Data.Tuple (swap)
-import Language.Marlowe.Plutus.Merkle (MerkleizedContract (MerkleizedContract), deepMerkleize, merkleizeInputs, dataHash)
-import Language.Marlowe.Plutus.Semantics (
+import Marlowe.Plutus.Merkle (MerkleizedContract (MerkleizedContract), deepMerkleize, merkleizeInputs, dataHash)
+import Marlowe.Plutus.Semantics (
   Payment (..),
   TransactionError (TEAmbiguousTimeIntervalError, TEApplyNoMatchError, TEIntervalError, TEUselessTransaction),
   TransactionInput (..),
@@ -42,7 +42,7 @@ import Language.Marlowe.Plutus.Semantics (
   evalObservation,
   evalValue,
  )
-import Language.Marlowe.Plutus.Semantics.Types (
+import Marlowe.Plutus.Semantics.Types (
   AccountId,
   Accounts,
   Action (Choice, Deposit, Notify),
@@ -65,13 +65,13 @@ import Language.Marlowe.Plutus.Semantics.Types (
   getAction,
   getInputContent,
  )
-import Language.Marlowe.Plutus.FindInputs (getAllInputs)
+import Marlowe.Plutus.FindInputs (getAllInputs)
 import PlutusLedgerApi.V2 (CurrencySymbol, POSIXTime (..), TokenName, toBuiltinData)
-import Marlowe.Testing.Contrib.Integer.Arbitrary (
+import Marlowe.Plutus.Testing.Contrib.Integer.Arbitrary (
   arbitraryNonnegativeInteger,
   arbitraryPositiveInteger,
   )
-import Marlowe.Testing.Semantics.Arbitrary (
+import Marlowe.Plutus.Testing.Semantics.Arbitrary (
   Context,
   SemiArbitrary (semiArbitrary),
   arbitraryContractWeighted,
@@ -84,7 +84,7 @@ import Marlowe.Testing.Semantics.Arbitrary (
   letContractWeights,
   whenContractWeights,
  )
-import Marlowe.Testing.Semantics.AssocMap (assocMapEq, assocMapInsert, assocMapLookup)
+import Marlowe.Plutus.Testing.Semantics.AssocMap (assocMapEq, assocMapInsert, assocMapLookup)
 
 import System.IO.Unsafe (unsafePerformIO)
 import Test.Tasty (TestTree, testGroup)
@@ -108,8 +108,8 @@ import Test.Tasty.QuickCheck (
  )
 
 import Control.Monad.Writer (runWriter)
-import Language.Marlowe.Analysis.FSSemantics (SlotLength (SlotLength))
-import qualified Language.Marlowe.Plutus.AssocMap as AM
+import Marlowe.Plutus.Analysis.FSSemantics (SlotLength (SlotLength))
+import qualified Marlowe.Plutus.AssocMap as AM
 
 -- | Record of choices.
 type Choices = AM.Map ChoiceId ChosenNum

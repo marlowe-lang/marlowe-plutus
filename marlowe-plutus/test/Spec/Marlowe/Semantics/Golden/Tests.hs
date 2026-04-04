@@ -16,20 +16,20 @@ module Spec.Marlowe.Semantics.Golden.Tests (
 ) where
 
 import Data.List (intercalate)
-import Language.Marlowe.Plutus.Semantics (TransactionOutput (..), playTrace)
-import Language.Marlowe.Plutus.Semantics.Types (Contract)
-import Language.Marlowe.Plutus.FindInputs (getAllInputs)
+import Marlowe.Plutus.Semantics (TransactionOutput (..), playTrace)
+import Marlowe.Plutus.Semantics.Types (Contract)
+import Marlowe.Plutus.FindInputs (getAllInputs)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (assertBool, testCase)
 
-import Language.Marlowe.Analysis.FSSemantics (SlotLength (..))
-import Marlowe.Testing.Semantics.Golden (GoldenCase)
-import qualified Marlowe.Testing.Semantics.Golden.Escrow as Escrow (contract, invalids, valids)
-import qualified Marlowe.Testing.Semantics.Golden.Negative as Negative (contract, invalids, valids)
-import qualified Marlowe.Testing.Semantics.Golden.Pangram as Pangram (contract, invalids, valids)
-import qualified Marlowe.Testing.Semantics.Golden.Swap as Swap (contract, invalids, valids)
-import qualified Marlowe.Testing.Semantics.Golden.Trivial as Trivial (contract, invalids, valids)
-import qualified Marlowe.Testing.Semantics.Golden.ZeroCouponBond as ZCB (contract, invalids, valids)
+import Marlowe.Plutus.Analysis.FSSemantics (SlotLength (..))
+import Marlowe.Plutus.Testing.Semantics.Golden (GoldenCase)
+import qualified Marlowe.Plutus.Testing.Semantics.Golden.Escrow as Escrow (contract, invalids, valids)
+import qualified Marlowe.Plutus.Testing.Semantics.Golden.Negative as Negative (contract, invalids, valids)
+import qualified Marlowe.Plutus.Testing.Semantics.Golden.Pangram as Pangram (contract, invalids, valids)
+import qualified Marlowe.Plutus.Testing.Semantics.Golden.Swap as Swap (contract, invalids, valids)
+import qualified Marlowe.Plutus.Testing.Semantics.Golden.Trivial as Trivial (contract, invalids, valids)
+import qualified Marlowe.Plutus.Testing.Semantics.Golden.ZeroCouponBond as ZCB (contract, invalids, valids)
 
 -- | Set to `True` to print the paths through the golden contracts.
 _GENERATE_TEST_CASES_ :: Bool

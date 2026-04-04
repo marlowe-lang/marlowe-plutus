@@ -6,11 +6,11 @@ module Spec.Marlowe.Semantics.Next.Contract.When (
 
 import Data.Bifunctor (first)
 import Data.List.Index
-import Language.Marlowe.Plutus.Next.Indexed
-import Language.Marlowe.Plutus.Next.IsMerkleizedContinuation
-import Language.Marlowe.Plutus.Semantics (ReduceResult (ContractQuiescent), reduceContractUntilQuiescent)
-import Language.Marlowe.Plutus.Semantics.Types (Action, Case (..), Contract (When), Environment, State, Timeout)
-import Marlowe.Testing.Semantics.Arbitrary ()
+import Marlowe.Plutus.Next.Indexed
+import Marlowe.Plutus.Next.IsMerkleizedContinuation
+import Marlowe.Plutus.Semantics (ReduceResult (ContractQuiescent), reduceContractUntilQuiescent)
+import Marlowe.Plutus.Semantics.Types (Action, Case (..), Contract (When), Environment, State, Timeout)
+import Marlowe.Plutus.Testing.Semantics.Arbitrary ()
 import PlutusLedgerApi.Common (ToData, UnsafeFromData)
 
 data When' = When' {indexedActions :: [Indexed (IsMerkleizedContinuation, Action)], timeout :: Timeout}

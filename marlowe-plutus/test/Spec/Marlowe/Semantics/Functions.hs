@@ -10,14 +10,14 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
 
--- | Tests of implementation functions for `Language.Marlowe.Plutus.Semantics.computeTransaction` of Marlowe semantics.
+-- | Tests of implementation functions for `Marlowe.Plutus.Semantics.computeTransaction` of Marlowe semantics.
 module Spec.Marlowe.Semantics.Functions (
   -- * Testing
   tests,
 ) where
 
 import Data.Maybe (fromMaybe, isNothing)
-import Language.Marlowe.Plutus.Semantics (
+import Marlowe.Plutus.Semantics (
   ApplyAction (AppliedAction, NotAppliedAction),
   ApplyResult (Applied, ApplyNoMatchError),
   ApplyWarning (ApplyNoWarning, ApplyNonPositiveDeposit),
@@ -44,7 +44,7 @@ import Language.Marlowe.Plutus.Semantics (
   refundOne,
   updateMoneyInAccount,
  )
-import Language.Marlowe.Plutus.Semantics.Types (
+import Marlowe.Plutus.Semantics.Types (
   Action (Choice, Deposit, Notify),
   Case (Case, MerkleizedCase),
   Contract (Assert, Close, If, Let, Pay, When),
@@ -58,10 +58,10 @@ import Language.Marlowe.Plutus.Semantics.Types (
   State (..),
   Value (..),
  )
-import qualified Language.Marlowe.Plutus.Semantics.Types as S
-import Language.Marlowe.Plutus.FindInputs (getAllInputs)
+import qualified Marlowe.Plutus.Semantics.Types as S
+import Marlowe.Plutus.FindInputs (getAllInputs)
 import PlutusLedgerApi.V2 (POSIXTime (..))
-import Marlowe.Testing.Semantics.Arbitrary (
+import Marlowe.Plutus.Testing.Semantics.Arbitrary (
   SemiArbitrary (semiArbitrary),
   arbitraryAssocMap,
   arbitraryContractWeighted,
@@ -71,9 +71,9 @@ import Marlowe.Testing.Semantics.Arbitrary (
   choiceNotInBounds,
   whenContractWeights,
  )
-import Marlowe.Testing.Semantics.AssocMap (assocMapAdd, assocMapEq, assocMapInsert)
+import Marlowe.Plutus.Testing.Semantics.AssocMap (assocMapAdd, assocMapEq, assocMapInsert)
 
-import Marlowe.Testing.Semantics.Util (stateEq, truncatedDivide)
+import Marlowe.Plutus.Testing.Semantics.Util (stateEq, truncatedDivide)
 import Test.QuickCheck.Monadic (monadicIO, pick, run)
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (Assertion, assertBool, testCase)
@@ -90,8 +90,8 @@ import Test.Tasty.QuickCheck (
   testProperty,
  )
 
-import Language.Marlowe.Analysis.FSSemantics (SlotLength (SlotLength))
-import Language.Marlowe.Plutus.AssocMap as AM (
+import Marlowe.Plutus.Analysis.FSSemantics (SlotLength (SlotLength))
+import Marlowe.Plutus.AssocMap as AM (
   delete,
   empty,
   filter,
@@ -103,7 +103,7 @@ import Language.Marlowe.Plutus.AssocMap as AM (
   toList,
   unsafeFromList,
  )
-import Language.Marlowe.Plutus.Merkle (dataHash)
+import Marlowe.Plutus.Merkle (dataHash)
 import qualified PlutusTx.List as List
 
 -- | Run the tests.
@@ -233,7 +233,7 @@ forAll'
   -- ^ The result of multiple applications of the test.
 forAll' = flip forAllShrink shrink
 
--- | Test the `Language.Marlowe.Plutus.Semantics.fixInterval` function by
+-- | Test the `Marlowe.Plutus.Semantics.fixInterval` function by
 --   generating arbitrary valid and invalid intervals and checking that
 --   results or errors re reported correctly.
 checkFixInterval
@@ -288,7 +288,7 @@ checkValue gen f =
     forAll' gen' $ \(environment, state, x) ->
       f (evalValue environment state) (evalObservation environment state) environment state x
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.AvailableMoney` according to
+-- | Test `Marlowe.Plutus.Semantics.Types.AvailableMoney` according to
 --   whether the account is indeed present in the state.
 checkAvailableMoney
   :: Bool
@@ -306,35 +306,35 @@ checkAvailableMoney isElement =
               Nothing -> eval x == 0
               Just x' -> eval x == x'
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.Constant` by evaluating
+-- | Test `Marlowe.Plutus.Semantics.Types.Constant` by evaluating
 --   the value.
 checkConstant :: Property
 checkConstant =
   checkValue (const . const $ arbitrary) $ \eval _ _ _ x ->
     eval (Constant x) == x
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.NegValue` by evaluating
+-- | Test `Marlowe.Plutus.Semantics.Types.NegValue` by evaluating
 --   the value.
 checkNegValue :: Property
 checkNegValue =
   checkValue (const . const $ arbitrary) $ \eval _ _ _ x ->
     eval (NegValue x) == -eval x
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.AddValue` by evaluating
+-- | Test `Marlowe.Plutus.Semantics.Types.AddValue` by evaluating
 --   the values.
 checkAddValue :: Property
 checkAddValue =
   checkValue (const $ const arbitrary) $ \eval _ _ _ (x, y) ->
     eval (AddValue x y) == eval x + eval y
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.SubValue` by evaluating
+-- | Test `Marlowe.Plutus.Semantics.Types.SubValue` by evaluating
 --   the values.
 checkSubValue :: Property
 checkSubValue =
   checkValue (const $ const arbitrary) $ \eval _ _ _ (x, y) ->
     eval (SubValue x y) == eval x - eval y
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.MulValue` by evaluating
+-- | Test `Marlowe.Plutus.Semantics.Types.MulValue` by evaluating
 --   the values.
 checkMulValue :: Property
 checkMulValue =
@@ -350,38 +350,38 @@ mockEnv = do
 emptyState :: State
 emptyState = S.emptyState 0
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.DivValue` for 0/0.
+-- | Test `Marlowe.Plutus.Semantics.Types.DivValue` for 0/0.
 checkDivValueNumeratorDenominatorZero :: Assertion
 checkDivValueNumeratorDenominatorZero =
   assertBool "DivValue 0 0 = 0" $
     evalValue mockEnv emptyState (DivValue (Constant 0) (Constant 0)) == 0
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.DivValue` for zero numerator.
+-- | Test `Marlowe.Plutus.Semantics.Types.DivValue` for zero numerator.
 checkDivValueNumeratorZero :: Property
 checkDivValueNumeratorZero =
   checkValue (const . const $ arbitrary) $ \eval _ _ _ x ->
     eval (DivValue (Constant 0) x) == 0
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.DivValue` for zero denominator.
+-- | Test `Marlowe.Plutus.Semantics.Types.DivValue` for zero denominator.
 checkDivValueDenominatorZero :: Property
 checkDivValueDenominatorZero =
   checkValue (const . const $ arbitrary) $ \eval _ _ _ x ->
     eval (DivValue x (Constant 0)) == 0
 
--- | Test ` Language.Marlowe.Plutus.Semantics.Types.DivValue . Language.Marlowe.Plutus.Semantics.Types.MulValue`.
+-- | Test ` Marlowe.Plutus.Semantics.Types.DivValue . Marlowe.Plutus.Semantics.Types.MulValue`.
 checkDivValueMultiple :: Property
 checkDivValueMultiple =
   checkValue (const $ const arbitrary) $ \eval _ _ _ (x, n) ->
     eval (DivValue (MulValue x n) n) == eval x || eval n == 0
 
--- | Test rounding of `Language.Marlowe.Plutus.Semantics.Types.DivValue` by evaluating
+-- | Test rounding of `Marlowe.Plutus.Semantics.Types.DivValue` by evaluating
 --   the values and comparing to `truncatedDivide`.
 checkDivValueRounding :: Property
 checkDivValueRounding =
   checkValue (const $ const arbitrary) $ \eval _ _ _ (x, y) ->
     eval (DivValue x y) == eval x `truncatedDivide` eval y || eval y == 0
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.ChoiceValue` depending
+-- | Test `Marlowe.Plutus.Semantics.Types.ChoiceValue` depending
 --   upon whether the choice has indeed been made.
 checkChoiceValue
   :: Bool
@@ -399,21 +399,21 @@ checkChoiceValue isElement =
               Nothing -> eval x == 0
               Just x' -> eval x == x'
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.TimeIntervalStart` by
+-- | Test `Marlowe.Plutus.Semantics.Types.TimeIntervalStart` by
 --   evaluating the value in the context of the environment.
 checkTimeIntervalStart :: Property
 checkTimeIntervalStart =
   checkValue (const . const $ pure ()) $ \eval _ Environment{timeInterval} _ () ->
     POSIXTime (eval TimeIntervalStart) == fst timeInterval
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.TimeIntervalEnd` by
+-- | Test `Marlowe.Plutus.Semantics.Types.TimeIntervalEnd` by
 --   evaluating the value in the context of the environment.
 checkTimeIntervalEnd :: Property
 checkTimeIntervalEnd =
   checkValue (const . const $ pure ()) $ \eval _ Environment{timeInterval} _ () ->
     POSIXTime (eval TimeIntervalEnd) == snd timeInterval
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.UseValue` by
+-- | Test `Marlowe.Plutus.Semantics.Types.UseValue` by
 --   evaluating the value in the context of the state, for both its
 --   presence and absence.
 checkUseValue
@@ -432,35 +432,35 @@ checkUseValue isElement =
               Nothing -> eval x == 0
               Just x' -> eval x == x'
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.Cond` by comparison
+-- | Test `Marlowe.Plutus.Semantics.Types.Cond` by comparison
 --   to Haskell.
 checkCond :: Property
 checkCond =
   checkValue (const $ const arbitrary) $ \eval eval' _ _ (condition, thenValue, elseValue) ->
     eval (Cond condition thenValue elseValue) == (if eval' condition then eval thenValue else eval elseValue)
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.AndObs` by comparison
+-- | Test `Marlowe.Plutus.Semantics.Types.AndObs` by comparison
 --   to Haskell.
 checkAndObs :: Property
 checkAndObs =
   checkValue (const $ const arbitrary) $ \_ eval _ _ (x, y) ->
     eval (AndObs x y) == (eval x && eval y)
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.OrObs` by comparison
+-- | Test `Marlowe.Plutus.Semantics.Types.OrObs` by comparison
 --   to Haskell.
 checkOrObs :: Property
 checkOrObs =
   checkValue (const $ const arbitrary) $ \_ eval _ _ (x, y) ->
     eval (OrObs x y) == (eval x || eval y)
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.NotObs` by comparison
+-- | Test `Marlowe.Plutus.Semantics.Types.NotObs` by comparison
 --   to Haskell.
 checkNotObs :: Property
 checkNotObs =
   checkValue (const . const $ arbitrary) $ \_ eval _ _ x ->
     eval (NotObs x) == not (eval x)
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.ChoseSomething` according
+-- | Test `Marlowe.Plutus.Semantics.Types.ChoseSomething` according
 --   to whether the choice has been made in the state.
 checkChoseSomething
   :: Bool
@@ -476,49 +476,49 @@ checkChoseSomething isElement =
         let x = ChoseSomething choice
          in choice `AM.member` choices == eval x
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.ValueGE`
+-- | Test `Marlowe.Plutus.Semantics.Types.ValueGE`
 --   by comparison to Haskell semantics.
 checkValueGE :: Property
 checkValueGE =
   checkValue (const $ const arbitrary) $ \eval eval' _ _ (x, y) ->
     eval' (ValueGE x y) == (eval x >= eval y)
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.ValueGT`
+-- | Test `Marlowe.Plutus.Semantics.Types.ValueGT`
 --   by comparison to Haskell semantics.
 checkValueGT :: Property
 checkValueGT =
   checkValue (const $ const arbitrary) $ \eval eval' _ _ (x, y) ->
     eval' (ValueGT x y) == (eval x > eval y)
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.ValueLT`
+-- | Test `Marlowe.Plutus.Semantics.Types.ValueLT`
 --   by comparison to Haskell semantics.
 checkValueLT :: Property
 checkValueLT =
   checkValue (const $ const arbitrary) $ \eval eval' _ _ (x, y) ->
     eval' (ValueLT x y) == (eval x < eval y)
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.ValueLE`
+-- | Test `Marlowe.Plutus.Semantics.Types.ValueLE`
 --   by comparison to Haskell semantics.
 checkValueLE :: Property
 checkValueLE =
   checkValue (const $ const arbitrary) $ \eval eval' _ _ (x, y) ->
     eval' (ValueLE x y) == (eval x <= eval y)
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.ValueEQ`
+-- | Test `Marlowe.Plutus.Semantics.Types.ValueEQ`
 --   by comparison to Haskell semantics.
 checkValueEQ :: Property
 checkValueEQ =
   checkValue (const $ const arbitrary) $ \eval eval' _ _ (x, y) ->
     eval' (ValueEQ x y) == (eval x == eval y)
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.TrueObs`
+-- | Test `Marlowe.Plutus.Semantics.Types.TrueObs`
 --   by comparison to Haskell semantics.
 checkTrueObs :: Assertion
 checkTrueObs =
   assertBool "TrueObs is true." $
     evalObservation mockEnv emptyState TrueObs
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.FalseObs`
+-- | Test `Marlowe.Plutus.Semantics.Types.FalseObs`
 --   by comparison to Haskell semantics.
 checkFalseObs :: Assertion
 checkFalseObs =
@@ -544,7 +544,7 @@ checkApplyActionMismatch = property $ do
       NotAppliedAction -> True
       _ -> False
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.IDeposit` for a `Language.Marlowe.Plutus.Semantics.Types.Deposit`.
+-- | Test `Marlowe.Plutus.Semantics.Types.IDeposit` for a `Marlowe.Plutus.Semantics.Types.Deposit`.
 checkIDeposit
   :: Maybe Bool
   -- ^ Whether the accounts match.
@@ -598,7 +598,7 @@ checkIDeposit accountMatches partyMatches tokenMatches amountMatches = property 
               && token == token'
               && amount == amount''
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.IChoice` for a `Language.Marlowe.Plutus.Semantics.Types.Choice`.
+-- | Test `Marlowe.Plutus.Semantics.Types.IChoice` for a `Marlowe.Plutus.Semantics.Types.Choice`.
 checkIChoice
   :: Maybe Bool
   -- ^ Whether the choice identifiers match.
@@ -624,7 +624,7 @@ checkIChoice choiceMatches choiceInBounds = property $ do
           AppliedAction ApplyNoWarning state' -> match && newState == state'
           AppliedAction _ state' -> state == state'
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.INotify` for a `Language.Marlowe.Plutus.Semantics.Types.Notify`.
+-- | Test `Marlowe.Plutus.Semantics.Types.INotify` for a `Marlowe.Plutus.Semantics.Types.Notify`.
 checkINotify :: Property
 checkINotify = property $ do
   let gen = do
@@ -639,7 +639,7 @@ checkINotify = property $ do
           AppliedAction _ _ -> False
           NotAppliedAction -> not result
 
--- | Test `Language.Marlowe.Plutus.Semantics.refundOne`, given a condition on the number of accounts.
+-- | Test `Marlowe.Plutus.Semantics.refundOne`, given a condition on the number of accounts.
 checkRefundOne
   :: (Int -> Bool)
   -- ^ A filtering condition for number of accounts in the test case.
@@ -654,7 +654,7 @@ checkRefundOne f =
         (_, Nothing) -> False
         (_, Just ((party, token, amount), accounts'')) -> accounts' `assocMapEq` assocMapInsert (party, token) amount accounts''
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.refundOne` for a non-positive amount.
+-- | Test `Marlowe.Plutus.Semantics.Types.refundOne` for a non-positive amount.
 checkRefundOneNotPositive :: Property
 checkRefundOneNotPositive =
   property $
@@ -666,7 +666,7 @@ checkRefundOneNotPositive =
             (Nothing, Nothing) -> True
             _ -> False
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.moneyInAccount`.
+-- | Test `Marlowe.Plutus.Semantics.Types.moneyInAccount`.
 checkMoneyInAccount :: Property
 checkMoneyInAccount =
   property $ do
@@ -677,7 +677,7 @@ checkMoneyInAccount =
     forAll' gen $ \((account, token), accounts') ->
       fromMaybe 0 ((account, token) `AM.lookup` accounts') == moneyInAccount account token accounts'
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.updateMoneyInAccount`.
+-- | Test `Marlowe.Plutus.Semantics.Types.updateMoneyInAccount`.
 checkUpdateMoneyInAccount :: Property
 checkUpdateMoneyInAccount =
   property $ do
@@ -689,7 +689,7 @@ checkUpdateMoneyInAccount =
       let newAccounts = AM.filter (> 0) $ assocMapInsert (account, token) amount accounts'
        in newAccounts `assocMapEq` updateMoneyInAccount account token amount accounts'
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.addMoneyToAccount`.
+-- | Test `Marlowe.Plutus.Semantics.Types.addMoneyToAccount`.
 checkAddMoneyToAccount :: Property
 checkAddMoneyToAccount =
   property $ do
@@ -704,7 +704,7 @@ checkAddMoneyToAccount =
             then newAccounts `assocMapEq` accounts''
             else accounts' `assocMapEq` accounts''
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.giveMoney`.
+-- | Test `Marlowe.Plutus.Semantics.Types.giveMoney`.
 checkGiveMoney :: Property
 checkGiveMoney =
   property $ do
@@ -730,7 +730,7 @@ checkGiveMoney =
                   else amount <= 0
               _ -> False
 
--- | Test `Language.Marlowe.Plutus.Semantics.reduceContractStep` for a `Language.Marlowe.Plutus.Semantics.Types.Close`.
+-- | Test `Marlowe.Plutus.Semantics.reduceContractStep` for a `Marlowe.Plutus.Semantics.Types.Close`.
 checkReduceContractStepClose :: Property
 checkReduceContractStepClose =
   property $ do
@@ -747,7 +747,7 @@ checkReduceContractStepClose =
             Reduced ReduceNoWarning (ReduceWithPayment payment) state' contract' -> checkPayment payment state' contract'
             _ -> False
 
--- | Test `Language.Marlowe.Plutus.Semantics.reduceContractStep` for a `Language.Marlowe.Plutus.Semantics.Types.Pay`.
+-- | Test `Marlowe.Plutus.Semantics.reduceContractStep` for a `Marlowe.Plutus.Semantics.Types.Pay`.
 checkReduceContractStepPay :: Property
 checkReduceContractStepPay =
   property $ do
@@ -815,7 +815,7 @@ checkReduceContractStepPay =
                 && contract' == contract
             _ -> False
 
--- | Test `Language.Marlowe.Plutus.Semantics.reduceContractStep` for an `Language.Marlowe.Plutus.Semantics.Types.If`.
+-- | Test `Marlowe.Plutus.Semantics.reduceContractStep` for an `Marlowe.Plutus.Semantics.Types.If`.
 checkReduceContractStepIf :: Property
 checkReduceContractStepIf =
   property $ do
@@ -825,7 +825,7 @@ checkReduceContractStepIf =
             Reduced ReduceNoWarning ReduceNoPayment state' contract' -> state == state' && (if passed then thenContract else elseContract) == contract'
             _ -> False
 
--- | Test `Language.Marlowe.Plutus.Semantics.Types.reduceContractStep` for a `Language.Marlowe.Plutus.Semantics.Types.When`.
+-- | Test `Marlowe.Plutus.Semantics.Types.reduceContractStep` for a `Marlowe.Plutus.Semantics.Types.When`.
 checkReduceContractStepWhen :: Property
 checkReduceContractStepWhen =
   property $ do
@@ -837,7 +837,7 @@ checkReduceContractStepWhen =
             Reduced ReduceNoWarning ReduceNoPayment state' contract' -> afterwards && contract == contract' && state == state'
             _ -> not before && not afterwards
 
--- | Test `Language.Marlowe.Plutus.Semantics.reduceContractStep` for a `Language.Marlowe.Plutus.Semantics.Types.Let`.
+-- | Test `Marlowe.Plutus.Semantics.reduceContractStep` for a `Marlowe.Plutus.Semantics.Types.Let`.
 checkReduceContractStepLet :: Property
 checkReduceContractStepLet =
   property $ do
@@ -856,7 +856,7 @@ checkReduceContractStepLet =
                 && x == x'
             _ -> False
 
--- | Test `Language.Marlowe.Plutus.Semantics.reduceContractStep` for an `Language.Marlowe.Plutus.Semantics.Types.Assert`.
+-- | Test `Marlowe.Plutus.Semantics.reduceContractStep` for an `Marlowe.Plutus.Semantics.Types.Assert`.
 checkReduceContractStepAssert :: Property
 checkReduceContractStepAssert =
   property $ do
@@ -867,7 +867,7 @@ checkReduceContractStepAssert =
             Reduced ReduceAssertionFailed ReduceNoPayment state' contract' -> not passed && state == state' && contract == contract'
             _ -> False
 
--- | Test `Language.Marlowe.Plutus.Semantics.reduceContractStepUntilQuiescent`.
+-- | Test `Marlowe.Plutus.Semantics.reduceContractStepUntilQuiescent`.
 checkReduceContractUntilQuiescent :: Property
 checkReduceContractUntilQuiescent =
   property $ do
@@ -878,7 +878,7 @@ checkReduceContractUntilQuiescent =
         ContractQuiescent{} -> False
         RRAmbiguousTimeIntervalError -> True
 
--- | Test `Language.Marlowe.Plutus.Semantics.getContinuation`.
+-- | Test `Marlowe.Plutus.Semantics.getContinuation`.
 checkGetContinuation :: Property
 checkGetContinuation =
   property $ do
@@ -905,7 +905,7 @@ checkGetContinuation =
         (MerkleizedInput{}, Case{}, Nothing) -> True
         _ -> False
 
--- | Test `Language.Marlowe.Plutus.Semantics.applyCases`.
+-- | Test `Marlowe.Plutus.Semantics.applyCases`.
 checkApplyCases :: Property
 checkApplyCases =
   property $ do
@@ -923,7 +923,7 @@ checkApplyCases =
           _ -> False
         _ -> True
 
--- | Test `Language.Marlowe.Plutus.Semantics.applyInput`.
+-- | Test `Marlowe.Plutus.Semantics.applyInput`.
 checkApplyInput :: Property
 checkApplyInput =
   property $ do
@@ -933,7 +933,7 @@ checkApplyInput =
         (_, ApplyNoMatchError) -> True
         e -> error $ show e
 
--- | Test `Language.Marlowe.Plutus.Semantics.computeTransaction` against static analysis cases that should succeed.
+-- | Test `Marlowe.Plutus.Semantics.computeTransaction` against static analysis cases that should succeed.
 checkComputeTransaction :: Property
 checkComputeTransaction =
   monadicIO $ do
@@ -946,7 +946,7 @@ checkComputeTransaction =
     either (error . ("`getAllInputs` failed with " <>) . show) (all play)
       <$> run (getAllInputs slotLength contract Nothing)
 
--- | Test `Language.Marlowe.Plutus.Semantics.playTrace` somewhat tautologically ☹️.
+-- | Test `Marlowe.Plutus.Semantics.playTrace` somewhat tautologically ☹️.
 checkPlayTrace :: Property
 checkPlayTrace =
   property $ do

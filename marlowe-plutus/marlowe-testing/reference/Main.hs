@@ -4,7 +4,7 @@ module Main (main) where
 
 import Control.Monad.Except (runExceptT)
 import Data.List (isSuffixOf)
-import Marlowe.Testing.Reference (processContract, referenceContractFiles)
+import Marlowe.Plutus.Testing.Reference (processContract, referenceContractFiles)
 import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
 import System.Environment (getArgs)
 import System.FilePath ((<.>), (</>), dropExtension)
