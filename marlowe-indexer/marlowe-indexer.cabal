@@ -1,20 +1,13 @@
 cabal-version: 3.4
-name:          marlowe-transactions
+name:          marlowe-indexer
 version:       0.1.0.0
 license:       Apache-2.0
 build-type:    Simple
-maintainer:    tomasz.rybarczyk@marlowe-lang.org
+maintainer:    marlowe@marlowe-lang.org
 stability:     experimental
-author:        paluh (aka Tomasz Rybarczyk)
-synopsis:      Marlowe pure transaction builders
+author:        Marlowe Team
+synopsis:      Marlowe Runtime Indexer Database Layer
 category:      Language
-license-files:
-  LICENSE
-  NOTICE
-
-source-repository head
-  type:     git
-  location: https://github.com/marlowe-lang/marlowe-plutus
 
 common lang
   default-language:   Haskell2010
@@ -34,6 +27,7 @@ common lang
     DerivingStrategies
     DerivingVia
     DoAndIfThenElse
+    DuplicateRecordFields
     ExplicitForAll
     FlexibleContexts
     FlexibleInstances
@@ -44,6 +38,7 @@ common lang
     NamedFieldPuns
     NumericUnderscores
     OverloadedStrings
+    OverloadedRecordDot
     PatternSynonyms
     RankNTypes
     RecordWildCards
@@ -62,49 +57,27 @@ common lang
 
 library
   import:          lang
-  hs-source-dirs:  src
+  hs-source-dirs:  .
   build-depends:
-    , aeson
-    , base
+    , base >=4.9 && <5
+    , binary
     , bytestring
-    , cardano-api
-    , cardano-crypto-class
-    , cardano-ledger-alonzo
-    , cardano-ledger-api
-    , cardano-ledger-core
     , containers
-    , deepseq
-    , errors
-    , hashable
-    , lens
-    , marlowe-binaries ^>=0.2
-    , marlowe-plutus ^>=0.2
-    , network-uri
-    , nonempty-containers
-    , ouroboros-consensus
-    , ouroboros-network-api
-    , plutus-core ^>=1.57
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
-    , plutus-tx-plugin ^>=1.57
-    , scientific
-    , semialign
-    , semigroups
-    , sop-extras
+    , hasql
+    , hasql-th >=0.5
+    , hasql-transaction
     , text
     , time
-    , transformers
-    , unordered-containers
     , vector
+    , marlowe-plutus
 
   exposed-modules:
-    Marlowe.Plutus.Transactions
-    Language.Marlowe.Runtime.Cardano.Api
     Language.Marlowe.Runtime.ChainSync.Api
     Language.Marlowe.Runtime.Core.Api
-    Language.Marlowe.Runtime.Core.ScriptRegistry
-    Language.Marlowe.Runtime.Plutus.V2.Api
-    Language.Marlowe.Runtime.Transaction.Api
-    Language.Marlowe.Runtime.Transaction.BuildConstraints
-    Language.Marlowe.Runtime.Transaction.Constraints
-
+    Language.Marlowe.Runtime.History.Api
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitBlocks
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetMarloweUTxO
+    Language.Marlowe.Runtime.Indexer.Party
+    Language.Marlowe.Runtime.Indexer.Types
