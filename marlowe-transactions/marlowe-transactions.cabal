@@ -108,3 +108,30 @@ library
     Language.Marlowe.Runtime.Transaction.BuildConstraints
     Language.Marlowe.Runtime.Transaction.Constraints
 
+test-suite test
+  import:          lang
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs:  test
+  other-modules:
+    Language.Marlowe.Runtime.Transaction.BuildConstraintsSpec
+  build-depends:
+    , base
+    , bytestring
+    , cardano-api
+    , cardano-crypto-class
+    , containers
+    , deepseq
+    , hspec
+    , marlowe-plutus
+    , marlowe-transactions
+    , nonempty-containers
+    , ouroboros-consensus
+    , plutus-ledger-api
+    , plutus-tx
+    , QuickCheck
+    , quickcheck-instances
+    , text
+    , time
+    , transformers
+

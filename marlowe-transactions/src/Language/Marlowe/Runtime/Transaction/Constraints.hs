@@ -8,6 +8,9 @@ module Language.Marlowe.Runtime.Transaction.Constraints (
   TxConstraints (..),
   WalletContext (..),
   PayoutContext (..),
+  MarloweInputConstraints(..),
+  MarloweOutputConstraints(..),
+  RoleTokenConstraints(..),
   mustConsumeMarloweOutput,
   mustDistributeRoleToken,
   mustMintRoleToken,
@@ -20,9 +23,10 @@ module Language.Marlowe.Runtime.Transaction.Constraints (
   requiresSignature,
 ) where
 
-import Language.Marlowe.Runtime.ChainSync.Api
+import Language.Marlowe.Runtime.ChainSync.Api hiding (Datum)
 import Data.Map (Map)
 import Language.Marlowe.Runtime.Core.Api (IsMarloweVersion(..), MarloweVersionTag, MarloweTransactionMetadata(..))
+import qualified Language.Marlowe.Runtime.Core.Api as Core
 import Language.Marlowe.Runtime.Transaction.Api (ConstraintError(..))
 
 data TxConstraints era (v :: MarloweVersionTag) = TxConstraints
@@ -96,28 +100,28 @@ data HelperScriptInfo = HelperScriptInfo
 data HelperScriptState = HelperScriptState
 
 mustConsumeMarloweOutput :: forall v era. IsMarloweVersion v => SlotNo -> SlotNo -> Inputs v -> TxConstraints era v
-mustConsumeMarloweOutput = error "stub"
+mustConsumeMarloweOutput _ _ _ = mempty
 
 mustDistributeRoleToken :: a -> b -> c -> TxConstraints era v
-mustDistributeRoleToken = error "stub"
+mustDistributeRoleToken _ _ _ = mempty
 
 mustMintRoleToken :: a -> b -> c -> d -> e -> TxConstraints era v
-mustMintRoleToken = error "stub"
+mustMintRoleToken _ _ _ _ _ = mempty
 
 mustPayToAddress :: a -> b -> TxConstraints era v
-mustPayToAddress = error "stub"
+mustPayToAddress _ _ = mempty
 
 mustPayToRole :: a -> b -> TxConstraints era v
-mustPayToRole = error "stub"
+mustPayToRole _ _ = mempty
 
-mustSendMarloweOutput :: a -> b -> TxConstraints era v
-mustSendMarloweOutput = error "stub"
+mustSendMarloweOutput :: TxOutAssets -> Core.Datum v -> TxConstraints era v
+mustSendMarloweOutput _ _ = mempty
 
 mustSpendRoleToken :: a -> TxConstraints era v
-mustSpendRoleToken = error "stub"
+mustSpendRoleToken _ = mempty
 
-mustConsumePayout :: a -> TxConstraints era v
-mustConsumePayout = error "stub"
+mustConsumePayout :: TxOutRef -> TxConstraints era v
+mustConsumePayout _ = mempty
 
 data WithdrawConstraintError = WithdrawConstraintError ConstraintError
 
@@ -133,5 +137,5 @@ requiresMetadata metadataConstraints = TxConstraints
   , metadataConstraints
   }
 
-requiresSignature :: a -> TxConstraints era v
-requiresSignature = error "stub"
+requiresSignature :: PaymentKeyHash -> TxConstraints era v
+requiresSignature _ = mempty

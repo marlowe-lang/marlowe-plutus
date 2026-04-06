@@ -116,4 +116,4 @@ getTokenQuantities :: Mint -> NEMap TokenName Quantity
 getTokenQuantities (Mint mintMap) = fmap (fold . roleTokenRecipients) mintMap
 
 mkAccounts :: Map Account TxOutAssets -> Either () Accounts
-mkAccounts = error "stub"
+mkAccounts = Right . Accounts
