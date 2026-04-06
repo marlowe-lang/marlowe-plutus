@@ -23,6 +23,7 @@ module Language.Marlowe.Runtime.Transaction.Api (
 ) where
 
 import Language.Marlowe.Runtime.ChainSync.Api
+import Data.Set (Set)
 import Language.Marlowe.Runtime.Core.ScriptRegistry (HelperScript(..))
 import Marlowe.Plutus.Semantics (TransactionError)
 import qualified Data.Aeson as Aeson
@@ -60,7 +61,9 @@ data ApplyInputsError
   | ApplyInputsConstraintsBuildupFailed ApplyInputsConstraintsBuildupError
   deriving (Show, Eq)
 data CoinSelectionError
-  = NoCollateralFound
+  = NoCollateralFound (Set TxOutRef)
+  | InsufficientLovelace Integer Integer
+  | InsufficientTokens Tokens
   deriving (Show, Eq)
 data CreateBuildupError
   = MintingUtxoSelectionFailed
@@ -122,8 +125,24 @@ data WithdrawError
   deriving (Show, Eq)
 
 data ConstraintError
-  = PayoutNotFound TxOutRef
+  = MintingUtxoNotFound TxOutRef
+  | RoleTokenNotFound AssetId
+  | ToCardanoError
+  | MissingMarloweInput
+  | PayoutNotFound TxOutRef
   | InvalidPayoutDatum TxOutRef (Maybe Datum)
+  | InvalidHelperDatum TxOutRef (Maybe Datum)
+  | InvalidPayoutScriptAddress TxOutRef Address
+  | InvalidTokenQuantity AssetId Quantity
+  | CalculateMinUtxoFailed String
+  | CoinSelectionFailed CoinSelectionError
+  | BalancingError String
+  | MarloweInputInWithdraw
+  | MarloweOutputInWithdraw
+  | PayoutOutputInWithdraw
+  | PayoutInputInCreateOrApply
+  | UnknownPayoutScript ScriptHash
+  | HelperScriptNotFound TokenName
   deriving (Show, Eq)
 
 encodeRoleTokenMetadata :: a -> b
