@@ -17,11 +17,16 @@ index-state:
 
 packages:
   marlowe-binaries
+  marlowe-indexer
   marlowe-plutus
   marlowe-transactions
+  marlowe-transactions-test
+  marlowe-web
   libs/base16-aeson
   libs/multiplate
   -- libs/sqlite-simple
+
+tests: True
 
 tests: True
 
@@ -32,6 +37,9 @@ test-show-details: direct
 package marlowe-plutus
   tests: True
   ghc-options: -Werror
+
+package postgresql-libpq
+  flags: +use-pkg-config
 
 constraints:
     cardano-api ^>=10.23
@@ -54,3 +62,9 @@ source-repository-package
   location: https://github.com/palas/haskell-lmdb-mock.git
   tag: c8d61e6eee03ee271e7768c0576110da885aec48
   --sha256: sha256-+gB1MmM6qRApz1p7tFsdvKoAWDrYB4a+bJ9Djm6ieYI=
+
+-- hasql-th 0.5 with ByteString -> Text fix (issue #36)
+source-repository-package
+  type: git
+  location: https://github.com/nikita-volkov/hasql-th
+  tag: 8dad116eb3ba13ba5c9d0c6e5d12d231a1cc4c83

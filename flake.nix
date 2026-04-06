@@ -64,9 +64,11 @@
         #   # ghc9102.compiler-nix-name = "ghc9102";
         #   # ghc9122.compiler-nix-name = "ghc9122";
         # };
-        # modules = [{
-        #   packages = {};
-        # }];
+        modules = [{
+          packages = {
+            postgresql-libpq.flags."use-pkg-config" = pkgs.stdenv.hostPlatform.isMusl;
+          };
+        }];
       });
 
       utils = import ./nix/utils.nix { inherit pkgs lib; };
@@ -100,7 +102,10 @@
         # "aarch64-darwin" = defaultHydraJobs;
       };
       hydraJobs = utils.flattenDerivationTree "-" hydraJobsPerSystem.${system};
-      packages = { };
+      packages = {
+        # NOTE this is important or the static builds will fail with:
+        # Error: pg_config not found
+      };
       projectFlake = project.flake {};
     in {
       inherit packages;

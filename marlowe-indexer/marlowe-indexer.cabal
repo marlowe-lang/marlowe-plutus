@@ -81,3 +81,24 @@ library
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetMarloweUTxO
     Language.Marlowe.Runtime.Indexer.Party
     Language.Marlowe.Runtime.Indexer.Types
+
+test-suite marlowe-indexer-test
+  import:          lang
+  type:            exitcode-stdio-1.0
+  hs-source-dirs:  test
+  main-is:         Main.hs
+  other-modules:   Test
+  build-depends:
+    , base >=4.9 && <5
+    , bytestring
+    , containers
+    , hasql
+    , hasql-th >=0.5
+    , hasql-transaction
+    , HUnit
+    , text
+    , time
+    , marlowe-indexer
+    , temporary
+    , transformers
+

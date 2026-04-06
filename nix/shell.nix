@@ -44,6 +44,39 @@ let
       };
     };
   };
+  commonPackages = [
+    tools.cabal
+    tools.cabal-fmt
+    tools.fourmolu
+    tools.haskell-language-server
+    tools.haskell-language-server.package.components.exes.haskell-language-server-wrapper
+    tools.hlint
+    tools.implicit-hie
+    tools.stylish-haskell
+
+    pkgs.act
+    pkgs.bash
+    pkgs.bzip2
+    pkgs.cacert
+    pkgs.coreutils
+    pkgs.curl
+    pkgs.fd
+    pkgs.gawk
+    pkgs.git
+    pkgs.gnused
+    pkgs.jq
+    pkgs.nixpkgs-fmt
+    pkgs.perl
+    pkgs.postgresql
+    pkgs.postgresql.lib
+    pkgs.postgresql.dev
+    pkgs.python3
+    pkgs.ripgrep
+    pkgs.shellcheck
+    pkgs.which
+    pkgs.z3
+    pkgs.zlib
+  ];
   cryptoShell = project.shellFor {
     packages = p: [p.cardano-crypto-class];
     withHoogle = false;
@@ -76,58 +109,17 @@ let
       "/home/paluh/.local/bin/cabal-plan"          # also include the classic cabal dir (safe)
       "/home/paluh/.local/bin/ghcid"          # also include the classic cabal dir (safe)
     ];
-    extraPkgs = cryptoShell.nativeBuildInputs ++ cryptoShell.buildInputs ++ [
-      # (builtins.trace (lib.concatStringsSep ", " (lib.attrNames project.hsPkgs.cardano-crypto-class.components.library)) project)
-      # (builtins.trace (lib.concatStringsSep ", " cryptoShell.nativeBuildInputs) cryptoShell)
-      # pkgs.haskell-nix.compiler.${ghc}
-
-      tools.cabal
-      tools.cabal-fmt
-      tools.fourmolu
-      tools.haskell-language-server
-      tools.haskell-language-server.package.components.exes.haskell-language-server-wrapper
-      tools.hlint
-      tools.implicit-hie
-      tools.stylish-haskell
-
-      pkgs.coreutils
-      pkgs.fd
-      pkgs.git
-      pkgs.gnused
-      pkgs.jq
-      pkgs.perl
-      pkgs.python3
-      pkgs.ripgrep
-      pkgs.z3
+    # (builtins.trace (lib.concatStringsSep ", " (lib.attrNames project.hsPkgs.cardano-crypto-class.components.library)) project)
+    # (builtins.trace (lib.concatStringsSep ", " cryptoShell.nativeBuildInputs) cryptoShell)
+    # pkgs.haskell-nix.compiler.${ghc}
+    extraPkgs = cryptoShell.nativeBuildInputs ++ cryptoShell.buildInputs ++ commonPackages ++ [
     ];
   };
 
   shell = project.shellFor {
     name = "marlowe-plutus-${project.args.compiler-nix-name}";
 
-    buildInputs = [
-      tools.cabal
-      tools.cabal-fmt
-      tools.fourmolu
-      tools.haskell-language-server
-      tools.haskell-language-server.package.components.exes.haskell-language-server-wrapper
-      tools.hlint
-      tools.implicit-hie
-      tools.stylish-haskell
-
-      pkgs.shellcheck
-      pkgs.nixpkgs-fmt
-      pkgs.github-cli
-      pkgs.act
-      pkgs.bzip2
-      pkgs.gawk
-      pkgs.zlib
-      pkgs.z3
-      pkgs.cacert
-      pkgs.curl
-      pkgs.bash
-      pkgs.git
-      pkgs.which
+    buildInputs = commonPackages ++ [
       (inputs.jailed-agents.lib.${pkgs.system}.makeJailedOpencode {
         inherit (commonJail) baseJailOptions extraPkgs extraReadwriteDirs;
       })
