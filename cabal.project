@@ -20,13 +20,10 @@ packages:
   marlowe-indexer
   marlowe-plutus
   marlowe-transactions
-  marlowe-transactions-test
   marlowe-web
   libs/base16-aeson
   libs/multiplate
   -- libs/sqlite-simple
-
-tests: True
 
 tests: True
 

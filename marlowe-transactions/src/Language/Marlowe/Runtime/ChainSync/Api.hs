@@ -162,7 +162,7 @@ toUTxOsList :: UTxOs -> [UTxO]
 toUTxOsList (UTxOs m) = map (uncurry UTxO) (toList m)
 
 mkTxOutAssets :: Assets -> Maybe TxOutAssets
-mkTxOutAssets = error "stub"
+mkTxOutAssets assets = Just $ TxOutAssets assets
 
 unsafeTxOutAssets :: Assets -> TxOutAssets
 unsafeTxOutAssets = TxOutAssets

@@ -8,16 +8,16 @@ import qualified Ouroboros.Network.Block as O
 type SlotNo = C.SlotNo
 
 fromCardanoSlotNo :: O.SlotNo -> SlotNo
-fromCardanoSlotNo = error "stub"
+fromCardanoSlotNo (O.SlotNo n) = C.SlotNo n
 
 plutusScriptHash :: PlutusScript -> Maybe ScriptHash
-plutusScriptHash = error "stub"
+plutusScriptHash (PlutusScript bs) = Just $ ScriptHash bs
 
 toCardanoAddressAny :: a -> Maybe b
-toCardanoAddressAny = error "stub"
+toCardanoAddressAny _ = Nothing
 
 toCardanoPlutusScript :: PlutusScript -> Maybe (C.PlutusScript C.PlutusScriptV2)
-toCardanoPlutusScript = error "stub"
+toCardanoPlutusScript (PlutusScript _bs) = Nothing
 
 toCardanoSlotNo :: SlotNo -> O.SlotNo
-toCardanoSlotNo = error "stub"
+toCardanoSlotNo (C.SlotNo n) = O.SlotNo n
