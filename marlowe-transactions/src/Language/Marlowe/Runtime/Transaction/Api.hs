@@ -7,6 +7,7 @@ module Language.Marlowe.Runtime.Transaction.Api (
   Accounts(..),
   ApplyInputsConstraintsBuildupError(..),
   ApplyInputsError(..),
+  CoinSelectionError(..),
   ConstraintError(..),
   CreateBuildupError(..),
   CreateError(..),
@@ -24,11 +25,16 @@ module Language.Marlowe.Runtime.Transaction.Api (
 import Language.Marlowe.Runtime.ChainSync.Api
 import Language.Marlowe.Runtime.Core.ScriptRegistry (HelperScript(..))
 import Marlowe.Plutus.Semantics (TransactionError)
+import qualified Data.Aeson as Aeson
+import Data.Aeson (ToJSON, ToJSONKey)
+import Data.Aeson.Types (toJSONKeyText)
 import Data.Foldable (Foldable (fold))
+import GHC.Generics (Generic)
 import qualified Data.Map as Map
 import Data.Map (Map)
 import Data.Map.NonEmpty (NEMap)
 import Data.Text (Text)
+import qualified Data.Text as Text
 
 data Account
   = RoleAccount TokenName
@@ -53,6 +59,9 @@ data ApplyInputsError
   | SlotConversionFailed String
   | ApplyInputsConstraintsBuildupFailed ApplyInputsConstraintsBuildupError
   deriving (Show, Eq)
+data CoinSelectionError
+  = NoCollateralFound
+  deriving (Show, Eq)
 data CreateBuildupError
   = MintingUtxoSelectionFailed
   | AddressesDecodingFailed [Address]
@@ -64,7 +73,15 @@ data CreateError
   | CreateError
   deriving (Show, Eq)
 data Destination = ToAddress Address | ToScript HelperScript
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
+
+instance ToJSON Destination where
+  toJSON = \case
+    ToAddress addr -> Aeson.object ["tag" Aeson..= ("ToAddress" :: Text), "address" Aeson..= addr]
+    ToScript hs -> Aeson.object ["tag" Aeson..= ("ToScript" :: Text), "helperScript" Aeson..= hs]
+
+instance ToJSONKey Destination where
+  toJSONKey = toJSONKeyText (Text.pack . show)
 newtype Mint = Mint { unMint :: NEMap TokenName MintRole }
   deriving (Show, Eq)
 data MintRole = MintRole

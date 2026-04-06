@@ -79,6 +79,7 @@ library
     , lens
     , marlowe-binaries ^>=0.2
     , marlowe-plutus ^>=0.2
+    , microlens
     , network-uri
     , nonempty-containers
     , ouroboros-consensus
@@ -92,6 +93,7 @@ library
     , semigroups
     , sop-extras
     , text
+    , these
     , time
     , transformers
     , unordered-containers
@@ -100,6 +102,7 @@ library
   exposed-modules:
     Marlowe.Plutus.Transactions
     Language.Marlowe.Runtime.Cardano.Api
+    Language.Marlowe.Runtime.Cardano.Feature
     Language.Marlowe.Runtime.ChainSync.Api
     Language.Marlowe.Runtime.Core.Api
     Language.Marlowe.Runtime.Core.ScriptRegistry

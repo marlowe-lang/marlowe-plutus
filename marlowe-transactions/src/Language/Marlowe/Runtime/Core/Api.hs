@@ -17,6 +17,7 @@ import qualified Marlowe.Plutus.Semantics as PlutusSemantics
 import qualified Marlowe.Plutus.Semantics.Types as V1
 import Language.Marlowe.Runtime.ChainSync.Api hiding (Datum)
 import qualified Language.Marlowe.Runtime.ChainSync.Api as Chain
+import qualified PlutusLedgerApi.V1 as Plutus
 
 data MarloweVersionTag = V1
 
@@ -72,5 +73,27 @@ instance IsMarloweVersion 'V1 where
 fromChainPayoutDatum :: MarloweVersion v -> Chain.Datum -> Maybe (PayoutDatum v)
 fromChainPayoutDatum = error "stub"
 
+toChainPayoutDatum :: MarloweVersion v -> PayoutDatum v -> Chain.Datum
+toChainPayoutDatum = \case
+  MarloweV1 -> \case
+    Chain.AssetId policyId tokenName -> do
+      let currencySymbol = Plutus.currencySymbol . unPolicyId $ policyId
+          tokenName' = V1.TokenName . Plutus.toBuiltin . Chain.unTokenName $ tokenName
+      Chain.toDatum (currencySymbol, tokenName')
+
 withMarloweVersion :: MarloweVersion v -> a -> a
 withMarloweVersion = const id
+
+emptyMarloweTransactionMetadata :: MarloweTransactionMetadata
+emptyMarloweTransactionMetadata = mempty
+
+encodeMarloweTransactionMetadata :: MarloweTransactionMetadata -> Maybe ()
+encodeMarloweTransactionMetadata = marloweMetadata
+
+toChainDatum :: MarloweVersion v -> Datum v -> Chain.Datum
+toChainDatum = \case
+  MarloweV1 -> Chain.toDatum
+
+fromChainDatum :: MarloweVersion v -> Chain.Datum -> Maybe (Datum v)
+fromChainDatum = \case
+  MarloweV1 -> Chain.fromDatum
