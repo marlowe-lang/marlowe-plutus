@@ -106,6 +106,9 @@ data AssetId = AssetId
 
 instance ToJSON AssetId where
   toJSON (AssetId p t) = Aeson.String $ Text.pack $ show (p, t)
+
+instance ToJSONKey AssetId where
+  toJSONKey = toJSONKeyText (Text.pack . show)
 newtype PaymentKeyHash = PaymentKeyHash { unPaymentKeyHash :: ByteString }
   deriving (Show, Eq, Ord)
 newtype PolicyId = PolicyId { unPolicyId :: ByteString }
