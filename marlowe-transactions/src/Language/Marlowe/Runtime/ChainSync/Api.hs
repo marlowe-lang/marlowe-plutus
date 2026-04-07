@@ -57,6 +57,7 @@ import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeLatin1)
 import Data.Word (Word64)
+import GHC.Generics (Generic)
 import Ouroboros.Consensus.HardFork.History (Summary(..))
 import qualified PlutusLedgerApi.V1 as Plutus
 
@@ -64,13 +65,13 @@ newtype ScriptHash = ScriptHash { unScriptHash :: ByteString }
   deriving (Show, Eq, Ord)
 
 newtype DatumHash = DatumHash { unDatumHash :: ByteString }
-  deriving (Show, Eq)
-
-newtype Address = Address { unAddress :: ByteString }
   deriving (Show, Eq, Ord)
 
+newtype Address = Address { unAddress :: ByteString }
+  deriving (Show, Eq, Ord, Generic)
+
 newtype PlutusScript = PlutusScript { unPlutusScript :: ByteString }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
 
 data Datum
   = Constr Integer [Datum]
@@ -78,13 +79,13 @@ data Datum
   | List [Datum]
   | I Integer
   | B ByteString
-  deriving (Show, Eq)
+  deriving stock (Show, Eq, Ord, Generic)
 
 newtype TxId = TxId { unTxId :: ByteString }
-  deriving (Show, Eq, Ord)
+  deriving stock (Show, Eq, Ord, Generic)
 
 newtype TxIx = TxIx { unTxIx :: Word64 }
-  deriving (Show, Eq, Ord)
+  deriving stock (Show, Eq, Ord, Generic)
 
 data TxOutRef = TxOutRef
   { txOutRefId :: TxId
@@ -110,21 +111,36 @@ instance ToJSON AssetId where
 instance ToJSONKey AssetId where
   toJSONKey = toJSONKeyText (Text.pack . show)
 newtype PaymentKeyHash = PaymentKeyHash { unPaymentKeyHash :: ByteString }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass ToJSON
 newtype PolicyId = PolicyId { unPolicyId :: ByteString }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 instance IsString PolicyId where
   fromString = PolicyId . BS.pack . map (toEnum . fromEnum)
+
+instance ToJSON PolicyId where
+  toJSON (PolicyId bs) = Aeson.String $ decodeLatin1 bs
 newtype TokenName = TokenName { unTokenName :: ByteString }
-  deriving (Show, Eq, Ord)
+  deriving stock (Show, Eq, Ord, Generic)
+
+instance IsString TokenName where
+  fromString = TokenName . BS.pack . map (toEnum . fromEnum)
+
+instance ToJSON TokenName where
+  toJSON (TokenName bs) = Aeson.String $ decodeLatin1 bs
+
+instance ToJSONKey TokenName where
+  toJSONKey = toJSONKeyText $ decodeLatin1 . unTokenName
 
 newtype Lovelace = Lovelace { unLovelace :: Integer }
-  deriving (Show, Eq, Ord)
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving anyclass (ToJSON)
 newtype Tokens = Tokens { unTokens :: Map AssetId Quantity }
-  deriving (Show, Eq)
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving anyclass (ToJSON, ToJSONKey)
 newtype Quantity = Quantity { unQuantity :: Integer }
-  deriving (Show, Eq, Ord)
+  deriving stock (Show, Eq, Ord, Generic)
 
 instance ToJSON Quantity where
   toJSON (Quantity q) = Aeson.toJSON q
@@ -147,14 +163,12 @@ instance Semigroup Lovelace where
 instance Monoid Lovelace where
   mempty = Lovelace 0
 
-instance Ord Tokens where
-  compare (Tokens t1) (Tokens t2) = compare (Map.toList t1) (Map.toList t2)
-
 data Assets = Assets
   { ada :: Lovelace
   , tokens :: Tokens
   }
-  deriving (Show, Eq)
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving anyclass (ToJSON)
 
 data TransactionOutput = TransactionOutput
   { address :: Address
@@ -162,13 +176,14 @@ data TransactionOutput = TransactionOutput
   , datumHash :: Maybe DatumHash
   , datum :: Maybe Datum
   }
-  deriving (Show, Eq)
+  deriving stock (Show, Eq, Ord, Generic)
 
 instance ToJSON TransactionOutput where
   toJSON TransactionOutput{address} = Aeson.String $ Text.pack $ show address
 
 newtype TxOutAssets = TxOutAssets {unTxOutAssets :: Assets}
-  deriving (Show, Eq)
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving anyclass (ToJSON)
 
 instance Semigroup TxOutAssets where
   TxOutAssets a <> TxOutAssets b = TxOutAssets $ Assets
@@ -183,10 +198,10 @@ data UTxO = UTxO
   { txOutRef :: TxOutRef
   , transactionOutput :: TransactionOutput
   }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
 
 newtype UTxOs = UTxOs { unUTxOs :: Map TxOutRef TransactionOutput }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
 
 instance ToJSON UTxOs where
   toJSON (UTxOs utxos) = Aeson.toJSON (Map.size utxos)
@@ -197,10 +212,12 @@ data Metadata
   | MetadataNumber Integer
   | MetadataBytes ByteString
   | MetadataText Text
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (ToJSON, ToJSONKey)
 
 newtype TransactionMetadata = TransactionMetadata { unTransactionMetadata :: Map Word64 Metadata }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (ToJSON, ToJSONKey)
 
 instance Semigroup TransactionMetadata where
   TransactionMetadata a <> TransactionMetadata b = TransactionMetadata $ Map.union a b
@@ -211,8 +228,8 @@ instance Monoid TransactionMetadata where
 pattern TxOutAssetsContent :: Assets -> TxOutAssets
 pattern TxOutAssetsContent assets = TxOutAssets assets
 
-toUTxOTuple :: UTxO -> [(TxOutRef, TransactionOutput)]
-toUTxOTuple (UTxO ref out) = [(ref, out)]
+toUTxOTuple :: UTxO -> (TxOutRef, TransactionOutput)
+toUTxOTuple (UTxO txOutRef transactionOutput) = (txOutRef, transactionOutput)
 
 toUTxOsList :: UTxOs -> [UTxO]
 toUTxOsList (UTxOs m) = map (uncurry UTxO) (toList m)

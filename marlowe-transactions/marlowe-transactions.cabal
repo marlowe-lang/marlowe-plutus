@@ -123,6 +123,7 @@ test-suite test
     , bytestring
     , cardano-api
     , cardano-crypto-class
+    , convex-mockchain
     , containers
     , deepseq
     , hspec
@@ -130,6 +131,7 @@ test-suite test
     , marlowe-transactions
     , nonempty-containers
     , ouroboros-consensus
+    , ouroboros-network-api
     , plutus-ledger-api
     , plutus-tx
     , QuickCheck

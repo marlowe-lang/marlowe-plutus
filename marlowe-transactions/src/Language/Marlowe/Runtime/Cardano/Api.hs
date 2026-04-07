@@ -10,8 +10,10 @@ module Language.Marlowe.Runtime.Cardano.Api where
 import Cardano.Api (getScriptData, unsafeHashableScriptData)
 import qualified Cardano.Api as C
 import Cardano.Api.Value (valueFromList, valueToList)
+import Control.Applicative (Alternative ((<|>)))
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.Foldable (fold)
+import Data.Proxy (Proxy (Proxy))
 import qualified Data.Map as Map
 import Data.Maybe (mapMaybe)
 import Debug.Trace (traceShow)
@@ -38,6 +40,23 @@ babbageEraOnwardsToShelleyBasedEra = \case
 
 toCardanoScriptHash :: ScriptHash -> Maybe C.ScriptHash
 toCardanoScriptHash = hush . C.deserialiseFromRawBytes C.AsScriptHash . unScriptHash
+
+fromCardanoScriptHash :: C.ScriptHash -> ScriptHash
+fromCardanoScriptHash = ScriptHash . C.serialiseToRawBytes
+
+toCardanoPlutusScript :: forall lang. (C.HasTypeProxy lang) => PlutusScript -> Maybe (C.PlutusScript lang)
+toCardanoPlutusScript = hush . C.deserialiseFromRawBytes (C.proxyToAsType (Proxy :: Proxy (C.PlutusScript lang))) . unPlutusScript
+
+fromCardanoPlutusScript :: forall lang. (C.HasTypeProxy lang) => C.PlutusScript lang -> PlutusScript
+fromCardanoPlutusScript = PlutusScript . C.serialiseToRawBytes
+
+plutusScriptHash :: PlutusScript -> Maybe ScriptHash
+plutusScriptHash ps = hashPlutusScript C.PlutusScriptV2 <|> hashPlutusScript C.PlutusScriptV1
+  where
+    hashPlutusScript :: C.IsPlutusScriptLanguage lang => C.PlutusScriptVersion lang -> Maybe ScriptHash
+    hashPlutusScript pv = do
+      script <- C.PlutusScript pv <$> toCardanoPlutusScript ps
+      pure . fromCardanoScriptHash . C.hashScript $ script
 
 toCardanoDatumHash :: DatumHash -> Maybe (C.Hash C.ScriptData)
 toCardanoDatumHash = hush . C.deserialiseFromRawBytes (C.AsHash C.AsScriptData) . unDatumHash

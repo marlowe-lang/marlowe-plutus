@@ -47,6 +47,7 @@ import Cardano.Api (
   unsafeHashableScriptData,
  )
 import qualified Cardano.Api as C
+import GHC.Exts (fromList, toList)
 import Cardano.Api.Ledger (ppPricesL)
 import qualified Cardano.Api.Ledger as Ledger
 import Cardano.Api.Plutus (fromAlonzoExUnits)
@@ -61,10 +62,10 @@ import Control.Monad (forM, unless, when, (<=<))
 import Control.Monad.Trans.Class (MonadTrans (..))
 import Data.Aeson (ToJSON (toJSON), (.=))
 import qualified Data.Aeson as A
-import Data.Crosswalk (Crosswalk (sequenceL))
 import Data.Foldable (Foldable (fold))
 import Data.Function (on)
 import Data.Functor ((<&>))
+import Data.Either (partitionEithers)
 import Data.List (delete, find, minimumBy, nub)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -89,9 +90,7 @@ import Language.Marlowe.Runtime.Cardano.Api (
   fromCardanoTxIn,
   toCardanoAddressInEra,
   toCardanoPaymentKeyHash,
-  toCardanoPolicyId,
   toCardanoScriptData,
-  toCardanoScriptHash,
   toCardanoTxIn,
   toCardanoTxOut,
   toCardanoTxOut',
@@ -573,7 +572,7 @@ adjustOutputForMinUtxo era protocol (C.TxOut address txOrigValue datum script) =
   let origValue = C.txOutValueToValue txOrigValue
       adjustedForCalculateMin = ensureAtLeastHalfAnAda origValue
       txOut' = C.TxOut address (mkTxOutValue era adjustedForCalculateMin) datum script
-  let minLovelace = C.calculateMinimumUTxO (C.maryEraOnwardsToShelleyBasedEra era) txOut' $ C.unLedgerProtocolParameters protocol
+  let minLovelace = C.calculateMinimumUTxO (C.convert era) (C.unLedgerProtocolParameters protocol) txOut'
   let deficit =
         if minLovelace > C.selectLovelace origValue
           then minLovelace <> (negate $ C.selectLovelace origValue)
@@ -668,10 +667,8 @@ findMinUtxo era protocol (chAddress, mbDatum, origValue) =
             mbDatum
 
     dummyTxOut <- makeTxOut maryEraOnwards chAddress datum revisedValue C.ReferenceScriptNone
-    pure
-      . C.lovelaceToValue
-      . C.calculateMinimumUTxO (babbageEraOnwardsToShelleyBasedEra era) dummyTxOut
-      $ C.unLedgerProtocolParameters protocol
+    let minLovelace = C.calculateMinimumUTxO (babbageEraOnwardsToShelleyBasedEra era) (C.unLedgerProtocolParameters protocol) dummyTxOut
+    pure $ C.lovelaceToValue minLovelace
 
 -- | Ensure that the minimum UTxO requirement is satisfied for outputs.
 ensureMinUtxo
@@ -702,7 +699,7 @@ makeTxOut era address datum value referenceScript = do
   cardanoAddress <-
     note
       (CalculateMinUtxoFailed $ "Unable to convert address: " <> show address)
-      $ C.anyAddressInShelleyBasedEra (C.maryEraOnwardsToShelleyBasedEra era) <$> Chain.toCardanoAddressAny address
+      $ C.anyAddressInShelleyBasedEra (C.convert era) <$> Chain.toCardanoAddressAny address
   Right $
     C.TxOut
       cardanoAddress
@@ -765,9 +762,11 @@ selectCoins era protocol marloweVersion scriptCtx walletCtx@WalletContext{..} he
         hasPlutusScriptWitness :: (C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn era)) -> Bool
         hasPlutusScriptWitness (_, C.BuildTxWith (C.ScriptWitness _ witness)) = isPlutusScriptWitness witness
         hasPlutusScriptWitness _ = False
-        hasPlutusMinting = case C.txMintValue txBodyContent of
-          C.TxMintNone -> False
-          C.TxMintValue _ _ (C.BuildTxWith policies) -> any isPlutusScriptWitness $ Map.elems policies
+        hasPlutusMinting = any isPlutusScriptWitness' $ C.indexTxMintValue $ C.txMintValue txBodyContent
+        isPlutusScriptWitness' :: (C.ScriptWitnessIndex, C.PolicyId, C.PolicyAssets, C.BuildTxWith C.BuildTx (C.ScriptWitness C.WitCtxMint era)) -> Bool
+        isPlutusScriptWitness' (_, _, _, C.BuildTxWith sw) = case sw of
+          C.PlutusScriptWitness{} -> True
+          _ -> False
      in -- TODO: Support Babbage-style collateral, where multiple UTxOs are used and change is made.
         if hasPlutusMinting || any hasPlutusScriptWitness (C.txIns txBodyContent)
           then case filter
@@ -794,9 +793,7 @@ selectCoins era protocol marloweVersion scriptCtx walletCtx@WalletContext{..} he
       inputTxIns = map fst $ C.txIns txBodyContent
       inputsFromBody = foldMap (txOutToValue . snd) $ filter (flip elem inputTxIns . fst) utxos
 
-      mintValue = case C.txMintValue txBodyContent of
-        C.TxMintValue _ value _ -> value
-        _ -> mempty
+      mintValue = C.txMintValueToValue $ C.txMintValue txBodyContent
 
       -- Find the net additional input that is needed; the extra input we need to find, worst case
       targetSelectionValue :: C.Value
@@ -812,7 +809,7 @@ selectCoins era protocol marloweVersion scriptCtx walletCtx@WalletContext{..} he
         let delta :: [C.Quantity]
             delta =
               fmap snd
-                . C.valueToList
+                . toList
                 . deleteLovelace
                 $ candidate <> C.negateValue required
             excess :: Int
@@ -826,8 +823,8 @@ selectCoins era protocol marloweVersion scriptCtx walletCtx@WalletContext{..} he
     . Left
     . CoinSelectionFailed
     $ do
-      let missingValues = C.valueToList $ targetSelectionValue <> C.negateValue universe
-          missingTokens = tokensFromCardanoValue $ C.valueFromList $ filter ((> C.Quantity 0) . snd) missingValues
+      let missingValues = toList $ targetSelectionValue <> C.negateValue universe
+          missingTokens = tokensFromCardanoValue $ fromList $ filter ((> C.Quantity 0) . snd) missingValues
       InsufficientTokens missingTokens
 
   -- Ensure that coin selection for lovelace is possible.
@@ -876,7 +873,7 @@ selectCoins era protocol marloweVersion scriptCtx walletCtx@WalletContext{..} he
             candidates' = delete next candidates
             -- Ignore negative quantities.
             filterPositive :: C.Value -> C.Value
-            filterPositive = C.valueFromList . filter ((> 0) . snd) . C.valueToList
+            filterPositive = fromList . filter ((> 0) . snd) . toList
             -- Compute the remaining requirement.
             required' :: C.Value
             required' = filterPositive $ required <> C.negateValue (txOutToValue $ snd next)
@@ -985,7 +982,7 @@ balanceTx era systemStart eraHistory protocol marloweVersion scriptCtx walletCtx
                 Nothing
         case dummyTxOut of
           -- Correct for a negative balance in cases where execution units, and hence fees, have increased.
-          Left (C.TxBodyErrorBalanceNegative delta) -> do
+          Left (C.TxBodyErrorBalanceNegative delta _) -> do
             balancingLoop (counter - 1) (C.lovelaceToValue delta <> changeValue)
           Left err -> Left . BalancingError $ show err
           Right balanced@(C.BalancedTxBody C.TxBodyContent{txFee = fee} _ _ _) -> do
@@ -1007,9 +1004,7 @@ balanceTx era systemStart eraHistory protocol marloweVersion scriptCtx walletCtx
           . C.unUTxO -- 2. extract the Map inside C.UTxO
           $ utxos -- 1. :: C.UTxO C.BabbageEra
       totalOut = foldMap txOutToValue txOuts
-      totalMint = case txMintValue of
-        C.TxMintValue _ value _ -> value
-        _ -> mempty
+      totalMint = C.txMintValueToValue txMintValue
 
       -- Initial setup is `fee = 0` - we output all the difference as a change and expect balancing error ;-)
       initialChange = totalIn <> totalMint <> C.negateValue totalOut
@@ -1068,7 +1063,7 @@ allUtxos era marloweVersion scriptCtx WalletContext{..} HelpersContext{..} inclu
       mkReferenceUtxo ReferenceScriptUtxo{..} =
         (,)
           <$> toCardanoTxIn txOutRef
-          <*> toCardanoTxOut' maryEraOnwards txOut (Just . C.toScriptInAnyLang $ C.PlutusScript C.PlutusScriptV2 script)
+          <*> toCardanoTxOut' maryEraOnwards txOut (Just script)
 
       -- UTxOs for helper scripts.
       helperUTxO HelperScriptState{helperUTxO = Just (helperTxOutRef, helperTransactionOutput)} =
@@ -1127,6 +1122,7 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
     allegraEraOnwards = case era of
       C.BabbageEraOnwardsBabbage -> C.AllegraEraOnwardsBabbage
       C.BabbageEraOnwardsConway -> C.AllegraEraOnwardsConway
+      C.BabbageEraOnwardsDijkstra -> C.AllegraEraOnwardsDijkstra
 
     maryEraOnwards :: C.MaryEraOnwards era
     maryEraOnwards = babbageEraOnwardsToMaryEraOnwards era
@@ -1166,11 +1162,11 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
           note ToCardanoError $
             C.PReferenceScript
               <$> toCardanoTxIn (txOutRef marloweScriptUTxO)
-              <*> (Just <$> toCardanoScriptHash marloweScriptHash)
         let plutusScriptV2InEra :: C.ScriptLanguageInEra C.PlutusScriptV2 era
             plutusScriptV2InEra = case era of
               C.BabbageEraOnwardsBabbage -> C.PlutusScriptV2InBabbage
               C.BabbageEraOnwardsConway -> C.PlutusScriptV2InConway
+              C.BabbageEraOnwardsDijkstra -> C.PlutusScriptV2InDijkstra
 
             scriptWitness =
               C.PlutusScriptWitness
@@ -1201,17 +1197,17 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
               case credential of
                 Chain.ScriptCredential hash -> pure hash
                 _ -> Nothing
-            cardanoScriptHash <- note ToCardanoError $ toCardanoScriptHash scriptHash
             payoutDatum <- note (InvalidPayoutDatum payoutRef datum) $ fromChainPayoutDatum marloweVersion =<< datum
             txIn <- note ToCardanoError $ toCardanoTxIn payoutRef
             referenceScriptOutput <-
               note (UnknownPayoutScript scriptHash) $ Map.lookup scriptHash payoutScriptOutputs
             referenceScriptTxIn <- note ToCardanoError $ toCardanoTxIn $ ScriptRegistry.txOutRef referenceScriptOutput
-            let plutusScriptOrRefInput = C.PReferenceScript referenceScriptTxIn $ Just cardanoScriptHash
+            let plutusScriptOrRefInput = C.PReferenceScript referenceScriptTxIn
                 plutusScriptV2InEra :: C.ScriptLanguageInEra C.PlutusScriptV2 era
                 plutusScriptV2InEra = case era of
                   C.BabbageEraOnwardsBabbage -> C.PlutusScriptV2InBabbage
                   C.BabbageEraOnwardsConway -> C.PlutusScriptV2InConway
+                  C.BabbageEraOnwardsDijkstra -> C.PlutusScriptV2InDijkstra
                 scriptWitness =
                   C.PlutusScriptWitness
                     plutusScriptV2InEra
@@ -1241,25 +1237,19 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
         , helperRoles
         )
 
-    solveTxInsReference :: Set Chain.ScriptHash -> Set C.TxIn -> Either ConstraintError (C.TxInsReference era)
+    solveTxInsReference :: Set Chain.ScriptHash -> Set C.TxIn -> Either ConstraintError (C.TxInsReference C.BuildTx era)
     solveTxInsReference requiredPayoutScriptHashes helperTxInReferences =
-      maybe (pure C.TxInsReferenceNone) (fmap (C.TxInsReference era) . sequence)
-      -- sequenceL is from the 'Crosswalk' type class. It behaves similarly to
-      -- 'sequenceA' except that it uses 'Align' semantics instead of
-      -- 'Applicative' semantics for merging results. Here is an example of the
-      -- difference this makes in practice:
-      --
-      -- sequenceL :: (Crosswalk t  , Align f      ) => t (f a) -> f (t a)
-      -- sequenceA :: (Traversable t, Applicative m) => t (f a) -> f (t a)
-      --
-      -- sequenceA [Nothing, Just 2, Just 1] = Nothing
-      -- sequenceA [Nothing, Nothing, Nothing] = Nothing
-      -- sequenceL [Nothing, Just 2, Just 1] = Just [2, 1]
-      -- sequenceL [Nothing, Nothing, Nothing] = Nothing
-      $
-        sequenceL $
-          marloweTxInReference
-            : (payoutTxInReferences requiredPayoutScriptHashes <> (pure . pure <$> Set.toList helperTxInReferences))
+      let items :: [Maybe (Either ConstraintError C.TxIn)]
+          items = marloweTxInReference : payoutTxInReferences requiredPayoutScriptHashes <> (pure . pure <$> Set.toList helperTxInReferences)
+          sequenced :: Maybe (Either ConstraintError [C.TxIn])
+          sequenced = case traverse id items of
+            Nothing -> Nothing
+            Just es -> case partitionEithers es of
+              ([], rights) -> Just $ Right rights
+              (lefts, _) -> Just $ Left $ head lefts
+      in maybe (pure C.TxInsReferenceNone) (\case
+            Left err -> Left err
+            Right txIns -> Right $ C.TxInsReference era txIns $ C.BuildTxWith mempty) sequenced
 
     -- Only include the marlowe reference script if we are consuming a marlowe
     -- input.
@@ -1311,14 +1301,14 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
             let HelperScriptInfo{..} = helperScriptInfo
                 Chain.TransactionOutput{datum} = helperTransactionOutput
             txIn <- note ToCardanoError $ toCardanoTxIn helperTxOutRef
-            cardanoScriptHash <- note ToCardanoError $ toCardanoScriptHash helperScriptHash
             helperDatum <- note (InvalidHelperDatum helperTxOutRef datum) $ toCardanoScriptData <$> datum
             referenceScriptTxIn <- note ToCardanoError $ toCardanoTxIn $ ScriptRegistry.txOutRef helperScriptUTxO
-            let plutusScriptOrRefInput = C.PReferenceScript referenceScriptTxIn $ Just cardanoScriptHash
+            let plutusScriptOrRefInput = C.PReferenceScript referenceScriptTxIn
                 plutusScriptV2InEra :: C.ScriptLanguageInEra C.PlutusScriptV2 era
                 plutusScriptV2InEra = case era of
                   C.BabbageEraOnwardsBabbage -> C.PlutusScriptV2InBabbage
                   C.BabbageEraOnwardsConway -> C.PlutusScriptV2InConway
+                  C.BabbageEraOnwardsDijkstra -> C.PlutusScriptV2InDijkstra
                 scriptWitness =
                   C.PlutusScriptWitness
                     plutusScriptV2InEra
@@ -1452,16 +1442,10 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
       where
         go witness thread distribution = do
           let tokens = maybe id (flip Map.insert (Chain.Quantity 1)) thread $ fold <$> distribution
-          let assetIds = Map.keysSet tokens
-          policyIds <-
-            note ToCardanoError $
-              Set.fromAscList
-                <$> traverse (toCardanoPolicyId . Chain.policyId) (Set.toAscList assetIds)
           value <- note ToCardanoError $ tokensToCardanoValue $ Chain.Tokens tokens
-          pure $
-            C.TxMintValue maryEraOnwards value $
-              C.BuildTxWith $
-                Map.fromSet (const witness) policyIds
+          let policyAssetsMap = C.valueToPolicyAssets value
+              mintValues = [(pid, assets, C.BuildTxWith witness) | (pid, assets) <- Map.toList policyAssetsMap]
+          pure $ C.mkTxMintValue maryEraOnwards mintValues
 
 demoteDestination :: Map Destination Chain.Quantity -> Maybe (Map Chain.Address Chain.Quantity)
 demoteDestination dist =
@@ -1478,3 +1462,4 @@ mkTxOutValue C.MaryEraOnwardsMary = C.TxOutValueShelleyBased C.ShelleyBasedEraMa
 mkTxOutValue C.MaryEraOnwardsAlonzo = C.TxOutValueShelleyBased C.ShelleyBasedEraAlonzo . C.toLedgerValue C.MaryEraOnwardsAlonzo
 mkTxOutValue C.MaryEraOnwardsBabbage = C.TxOutValueShelleyBased C.ShelleyBasedEraBabbage . C.toLedgerValue C.MaryEraOnwardsBabbage
 mkTxOutValue C.MaryEraOnwardsConway = C.TxOutValueShelleyBased C.ShelleyBasedEraConway . C.toLedgerValue C.MaryEraOnwardsConway
+mkTxOutValue C.MaryEraOnwardsDijkstra = C.TxOutValueShelleyBased C.ShelleyBasedEraDijkstra . C.toLedgerValue C.MaryEraOnwardsDijkstra

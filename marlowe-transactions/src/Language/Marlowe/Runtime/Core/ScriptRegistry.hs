@@ -1,25 +1,20 @@
 -- | Minimal stub
 module Language.Marlowe.Runtime.Core.ScriptRegistry where
 
-import Language.Marlowe.Runtime.ChainSync.Api (ScriptHash, TxOutRef)
-import Data.Aeson (ToJSON(toJSON), Value(String))
-import qualified Data.Text as Text
+import Cardano.Api (ScriptInAnyLang)
+import Language.Marlowe.Runtime.ChainSync.Api (ScriptHash, TxOutRef, TransactionOutput(..))
+import Data.Aeson (ToJSON, ToJSONKey)
+import GHC.Generics (Generic)
 
 data HelperScript = OpenRoleScript
-  deriving (Show, Eq, Ord)
-
-instance ToJSON HelperScript where
-  toJSON OpenRoleScript = toJSON ("OpenRoleScript" :: String)
+  deriving (Show, Eq, Ord, Generic, ToJSON, ToJSONKey)
 
 data ReferenceScriptUtxo = ReferenceScriptUtxo
   { txOutRef :: TxOutRef
-  , referenceScriptUTxO :: ()
-  , script :: ()
+  , txOut :: TransactionOutput
+  , script :: ScriptInAnyLang
   }
-  deriving (Show, Eq, Ord)
-
-instance ToJSON ReferenceScriptUtxo where
-  toJSON ReferenceScriptUtxo{txOutRef} = String $ Text.pack $ show txOutRef
+  deriving (Show, Eq, Generic, ToJSON)
 
 data MarloweScripts = MarloweScripts
   { marloweScript :: ScriptHash
