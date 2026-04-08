@@ -8,6 +8,7 @@ import Test.QuickCheck (property, ioProperty)
 import Cardano.Api (
   AsType (AsPaymentKey),
   BabbageEraOnwards (BabbageEraOnwardsConway),
+  EraHistory (EraHistory),
   generateSigningKey,
   getVerificationKey,
   makeShelleyAddress,
@@ -22,15 +23,23 @@ import Cardano.Api (
   toLedgerEpochInfo,
   )
 import qualified Cardano.Api as C
-import Convex.MockChain.Defaults (eraHistory, systemStart, protocolParameters)
+import Convex.MockChain.Defaults (protocolParameters)
 import Control.Monad.Trans.Except (runExceptT)
 import Data.Functor.Identity (Identity (..))
 import Data.Map (Map)
 import qualified Data.Map as Map
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
+import Data.SOP (K (K))
+import Data.SOP.Counting (Exactly (Exactly))
+import Data.SOP.NonEmpty (nonEmptyHead)
+import Data.SOP.Strict (NP ((:*), Nil))
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Time.Calendar (fromGregorian)
+import Data.Time.Clock (UTCTime (UTCTime))
+import Ouroboros.Consensus.Block.Abstract qualified as OuroborosA
+import Ouroboros.Consensus.HardFork.History qualified as Ouroboros
 import PlutusLedgerApi.V2 (POSIXTime (POSIXTime))
 import qualified PlutusLedgerApi.V2 as PV2
 import qualified Marlowe.Plutus.Semantics.Types as V1
@@ -64,12 +73,27 @@ import Language.Marlowe.Runtime.Transaction.Constraints (
   solveConstraints,
   )
 import Data.Foldable (for_)
+import Cardano.Ledger.Slot (EpochSize (EpochSize))
+import Cardano.Slotting.Time (SystemStart (SystemStart), mkSlotLength)
 import Vary qualified
 
 type TestEra = C.ConwayEra
 
 babbageEraOnwardsTest :: C.BabbageEraOnwards TestEra
 babbageEraOnwardsTest = BabbageEraOnwardsConway
+
+testSystemStart :: C.SystemStart
+testSystemStart = SystemStart $ UTCTime (fromGregorian 2022 1 1) 0
+
+testEraHistory :: C.EraHistory
+testEraHistory =
+  EraHistory $ Ouroboros.mkInterpreter $ Ouroboros.summaryWithExactly summaries
+  where
+    epochSize = EpochSize 432_000
+    slotLength = mkSlotLength 1
+    window = OuroborosA.GenesisWindow (2 * 2160)
+    one = nonEmptyHead $ Ouroboros.getSummary $ Ouroboros.neverForksSummary epochSize slotLength window
+    summaries = Exactly $ K one :* K one :* K one :* K one :* K one :* K one :* K one :* K one :* Nil
 
 buildConstraintsSpec :: Spec
 buildConstraintsSpec = do
@@ -271,8 +295,8 @@ e2eSpec = do
         }
       walletCtx = mkWalletContext testnetId verificationKey
       txBodyResult = solveConstraints
-          systemStart
-          (toLedgerEpochInfo eraHistory)
+          testSystemStart
+          (toLedgerEpochInfo testEraHistory)
           babbageEraOnwardsTest
           protocolParameters
           Core.MarloweV1
@@ -293,7 +317,7 @@ e2eSpec = do
       -- era history configuration and the timeout posix time value.
       -- All those pieces should be adjusted.
       timeout :: PV2.POSIXTime
-      timeout = 1000
+      timeout = 1_640_995_300_000
       tipSlotNo = C.SlotNo 0
       contract = V1.When [V1.Case (V1.Notify V1.TrueObs) V1.Close] timeout V1.Close
       marloweContext = mkMarloweContext Devel testnetId (Just (contract, Nothing))
@@ -302,8 +326,8 @@ e2eSpec = do
     marloweOutput <- expectJust "Expected Marlowe script output in context" marloweContext.scriptOutput
     (_applyResults, constraints) <- expectRight . runIdentity . runExceptT $ buildApplyInputsConstraints
       (\_ -> pure Nothing) -- merkleizeInput
-      (undefined :: C.SystemStart)
-      (undefined :: C.EraHistory)
+      testSystemStart
+      testEraHistory
       Core.MarloweV1
       marloweOutput
       tipSlotNo
@@ -313,8 +337,8 @@ e2eSpec = do
       [notifyInput]
     let
       txBodyResult = solveConstraints
-          systemStart
-          (toLedgerEpochInfo eraHistory)
+          testSystemStart
+          (toLedgerEpochInfo testEraHistory)
           babbageEraOnwardsTest
           protocolParameters
           Core.MarloweV1
