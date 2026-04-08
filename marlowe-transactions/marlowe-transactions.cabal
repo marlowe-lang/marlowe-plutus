@@ -127,6 +127,7 @@ test-suite test
     , containers
     , deepseq
     , hspec
+    , marlowe-binaries
     , marlowe-plutus
     , marlowe-transactions
     , nonempty-containers
