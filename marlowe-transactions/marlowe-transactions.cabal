@@ -130,6 +130,8 @@ test-suite marlowe-transactions-test
     , cardano-api
     , cardano-crypto-class
     , cardano-debug
+    , cardano-ledger-core
+    , cardano-slotting
     , convex-mockchain
     , containers
     , deepseq
@@ -145,8 +147,10 @@ test-suite marlowe-transactions-test
     , plutus-tx
     , QuickCheck
     , quickcheck-instances
+    , sop-core
+    , sop-extras
+    , strict-sop-core
     , text
     , time
     , transformers
     , vary
-
