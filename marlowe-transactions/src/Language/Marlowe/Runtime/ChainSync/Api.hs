@@ -60,6 +60,7 @@ import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Ouroboros.Consensus.HardFork.History (Summary(..))
 import qualified PlutusLedgerApi.V1 as Plutus
+import Unsafe.Coerce (unsafeCoerce)
 
 newtype ScriptHash = ScriptHash { unScriptHash :: ByteString }
   deriving (Show, Eq, Ord)
@@ -240,8 +241,8 @@ mkTxOutAssets assets = Just $ TxOutAssets assets
 unsafeTxOutAssets :: Assets -> TxOutAssets
 unsafeTxOutAssets = TxOutAssets
 
-unInterpreter :: a -> Summary xs
-unInterpreter = error "stub"
+unInterpreter :: interpreter -> Summary xs
+unInterpreter = unsafeCoerce
 
 toCardanoMetadata :: Metadata -> C.TxMetadataValue
 toCardanoMetadata = \case

@@ -45,7 +45,7 @@ import Cardano.Api (
   SystemStart,
   TxBodyContent (..),
   unsafeHashableScriptData,
- )
+  )
 import qualified Cardano.Api as C
 import GHC.Exts (fromList, toList)
 import Cardano.Api.Ledger (ppPricesL)
@@ -527,7 +527,7 @@ deriving instance ToJSON HelperScriptInfo
 
 type SolveConstraints era v =
   C.BabbageEraOnwards era
-  -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> Core.MarloweVersion v
   -> Either (MarloweContext v) PayoutContext
   -> WalletContext
@@ -565,14 +565,14 @@ ensureAtLeastHalfAnAda origValue =
 adjustOutputForMinUtxo
   :: forall era
    . C.MaryEraOnwards era
-  -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> C.TxOut C.CtxTx era
   -> Either ConstraintError (C.TxOut C.CtxTx era)
 adjustOutputForMinUtxo era protocol (C.TxOut address txOrigValue datum script) = do
   let origValue = C.txOutValueToValue txOrigValue
       adjustedForCalculateMin = ensureAtLeastHalfAnAda origValue
       txOut' = C.TxOut address (mkTxOutValue era adjustedForCalculateMin) datum script
-  let minLovelace = C.calculateMinimumUTxO (C.convert era) (C.unLedgerProtocolParameters protocol) txOut'
+  let minLovelace = C.calculateMinimumUTxO (C.convert era) protocol txOut'
   let deficit =
         if minLovelace > C.selectLovelace origValue
           then minLovelace <> (negate $ C.selectLovelace origValue)
@@ -586,7 +586,7 @@ adjustOutputForMinUtxo era protocol (C.TxOut address txOrigValue datum script) =
 adjustTxForMinUtxo
   :: forall era
    . C.BabbageEraOnwards era
-  -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> Maybe Chain.Address
   -> C.TxBodyContent C.BuildTx era
   -> Either ConstraintError (C.TxBodyContent C.BuildTx era)
@@ -625,8 +625,8 @@ adjustTxForMinUtxo era protocol mMarloweAddress txBodyContent = do
             <> show (getMarloweOutputValue adjustedTxOuts)
 
 -- | Compute the maximum fee for any transaction.
-maximumFee :: C.BabbageEraOnwards era -> C.LedgerProtocolParameters era -> Ledger.Coin
-maximumFee era (C.LedgerProtocolParameters protocolParameters) = C.babbageEraOnwardsConstraints era $ do
+maximumFee :: C.BabbageEraOnwards era -> Ledger.PParams (C.ShelleyLedgerEra era) -> Ledger.Coin
+maximumFee era protocolParameters = C.babbageEraOnwardsConstraints era $ do
   let txFeeFixed = protocolParameters ^. ppMinFeeBL
       txFeePerByte = protocolParameters ^. ppMinFeeAL
       maxTxSize = fromIntegral $ protocolParameters ^. ppMaxTxSizeL
@@ -643,7 +643,7 @@ maximumFee era (C.LedgerProtocolParameters protocolParameters) = C.babbageEraOnw
 findMinUtxo
   :: forall era
    . C.BabbageEraOnwards era
-  -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> (Chain.Address, Maybe Chain.Datum, C.Value)
   -> Either ConstraintError C.Value
 findMinUtxo era protocol (chAddress, mbDatum, origValue) =
@@ -667,14 +667,14 @@ findMinUtxo era protocol (chAddress, mbDatum, origValue) =
             mbDatum
 
     dummyTxOut <- makeTxOut maryEraOnwards chAddress datum revisedValue C.ReferenceScriptNone
-    let minLovelace = C.calculateMinimumUTxO (babbageEraOnwardsToShelleyBasedEra era) (C.unLedgerProtocolParameters protocol) dummyTxOut
+    let minLovelace = C.calculateMinimumUTxO (babbageEraOnwardsToShelleyBasedEra era) protocol dummyTxOut
     pure $ C.lovelaceToValue minLovelace
 
 -- | Ensure that the minimum UTxO requirement is satisfied for outputs.
 ensureMinUtxo
   :: forall era
    . C.BabbageEraOnwards era
-  -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> (Chain.Address, C.Value)
   -> Either ConstraintError (Chain.Address, C.Value)
 ensureMinUtxo era protocol (chAddress, origValue) =
@@ -716,7 +716,7 @@ onlyLovelace value = C.lovelaceToValue (C.selectLovelace value) == value
 selectCoins
   :: forall era v
    . C.BabbageEraOnwards era
-  -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> Core.MarloweVersion v
   -> Either (MarloweContext v) PayoutContext
   -> WalletContext
@@ -929,7 +929,7 @@ balanceTx
    . C.BabbageEraOnwards era
   -> SystemStart
   -> C.LedgerEpochInfo
-  -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> Core.MarloweVersion v
   -> Either (MarloweContext v) PayoutContext
   -> WalletContext
@@ -965,14 +965,15 @@ balanceTx era systemStart eraHistory protocol marloweVersion scriptCtx walletCtx
           Left . BalancingError $
             "Unsuccessful transaction balancing: "
               <> C.shelleyBasedEraConstraints (babbageEraOnwardsToShelleyBasedEra era) (show C.TxBodyContent{..})
-        let -- Recompute execution units with full set of UTxOs, including change.
+        let ledgerProtocolParams = C.LedgerProtocolParameters protocol
+            -- Recompute execution units with full set of UTxOs, including change.
             buildTxBodyContent = C.TxBodyContent{..}{C.txOuts = mkChangeTxOut changeValue : txOuts}
             dummyTxOut =
               C.makeTransactionBodyAutoBalance
                 (babbageEraOnwardsToShelleyBasedEra era)
                 systemStart
                 eraHistory
-                protocol
+                ledgerProtocolParams
                 mempty
                 mempty
                 mempty
@@ -1088,7 +1089,7 @@ allUtxos era marloweVersion scriptCtx WalletContext{..} HelpersContext{..} inclu
 solveInitialTxBodyContent
   :: forall era v
    . C.BabbageEraOnwards era
-  -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> Core.MarloweVersion v
   -> Either (MarloweContext v) PayoutContext
   -> WalletContext
@@ -1102,6 +1103,7 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
   (txValidityLowerBound, txValidityUpperBound) <- solveTxValidityRange
   txExtraKeyWits <- solveTxExtraKeyWits
   txMintValue <- solveTxMintValue
+  let ledgerProtocolParams = C.LedgerProtocolParameters protocol
   pure
     (C.defaultTxBodyContent shelleyEra)
       { txIns
@@ -1111,7 +1113,7 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
       , txValidityUpperBound
       , txMetadata
       , txExtraKeyWits
-      , txProtocolParams = C.BuildTxWith $ Just protocol
+      , txProtocolParams = C.BuildTxWith $ Just ledgerProtocolParams
       , txMintValue
       }
   where
