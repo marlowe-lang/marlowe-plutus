@@ -34,15 +34,18 @@ common lang
     DerivingStrategies
     DerivingVia
     DoAndIfThenElse
+    DuplicateRecordFields
     ExplicitForAll
     FlexibleContexts
     FlexibleInstances
+    GADTs
     GeneralizedNewtypeDeriving
     ImportQualifiedPost
     LambdaCase
     MultiParamTypeClasses
     NamedFieldPuns
     NumericUnderscores
+    OverloadedRecordDot
     OverloadedStrings
     PatternSynonyms
     RankNTypes
@@ -71,6 +74,7 @@ library
     , cardano-crypto-class
     , cardano-ledger-alonzo
     , cardano-ledger-api
+    , cardano-ledger-byron
     , cardano-ledger-core
     , containers
     , deepseq
@@ -111,7 +115,7 @@ library
     Language.Marlowe.Runtime.Transaction.BuildConstraints
     Language.Marlowe.Runtime.Transaction.Constraints
 
-test-suite test
+test-suite marlowe-transactions-test
   import:          lang
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
@@ -119,14 +123,18 @@ test-suite test
   other-modules:
     Language.Marlowe.Runtime.Transaction.BuildConstraintsSpec
   build-depends:
+    , aeson
+    , aeson-pretty
     , base
     , bytestring
     , cardano-api
     , cardano-crypto-class
+    , cardano-debug
     , convex-mockchain
     , containers
     , deepseq
     , hspec
+    , hspec-core
     , marlowe-binaries
     , marlowe-plutus
     , marlowe-transactions
@@ -140,4 +148,5 @@ test-suite test
     , text
     , time
     , transformers
+    , vary
 
