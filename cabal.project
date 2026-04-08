@@ -22,6 +22,7 @@ packages:
   marlowe-transactions
   marlowe-web
   libs/base16-aeson
+  libs/cardano-debug
   libs/multiplate
   -- libs/sqlite-simple
 

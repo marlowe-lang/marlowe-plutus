@@ -1,15 +1,10 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 module Language.Marlowe.Runtime.Transaction.BuildConstraintsSpec (
   buildConstraintsSpec,
 ) where
 
-import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
+import Cardano.Debug (friendlyTxBodyImpl, formatToString, FormatYaml(FormatYaml), runWarningIO)
+import Test.Hspec (Spec, describe, it, shouldSatisfy)
 import Test.QuickCheck (property, ioProperty)
-
 import Cardano.Api (
   AsType (AsPaymentKey),
   BabbageEraOnwards (BabbageEraOnwardsConway),
@@ -38,7 +33,6 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import PlutusLedgerApi.V2 (POSIXTime (POSIXTime))
 import qualified PlutusLedgerApi.V2 as PV2
-
 import qualified Marlowe.Plutus.Semantics.Types as V1
 import Marlowe.Plutus.Semantics (MarloweData (..), MarloweParams (..))
 import Marlowe.Plutus.Semantics.Types (unsafeMkPartyAddressBech32, ada)
@@ -58,7 +52,7 @@ import Language.Marlowe.Runtime.Transaction.BuildConstraints (
   AdjustMinUTxO (..),
   buildCreateConstraints,
   buildWithdrawConstraints,
-  RolesPolicyId (..),
+  RolesPolicyId (..), buildApplyInputsConstraints,
   )
 import Language.Marlowe.Runtime.Transaction.Constraints (
   RoleTokenConstraints (RoleTokenConstraintsNone),
@@ -69,6 +63,8 @@ import Language.Marlowe.Runtime.Transaction.Constraints (
   HelpersContext (..),
   solveConstraints,
   )
+import Data.Foldable (for_)
+import Vary qualified
 
 type TestEra = C.ConwayEra
 
@@ -77,7 +73,7 @@ babbageEraOnwardsTest = BabbageEraOnwardsConway
 
 buildConstraintsSpec :: Spec
 buildConstraintsSpec = do
-  describe "buildCreateConstraints" createSpec
+  describe "buildCreateConstraints" buildCreateSpec
   describe "buildWithdrawConstraints" withdrawSpec
   describe "E2E: Signing key pair and deposit contract" e2eSpec
 
@@ -108,20 +104,26 @@ runWithdrawTest
 runWithdrawTest payoutContext payoutRefs =
   runIdentity $ runExceptT $ buildWithdrawConstraints payoutContext Core.MarloweV1 payoutRefs
 
-createSpec :: Spec
-createSpec = do
-  it "buildCreateConstraints returns constraints for a Close contract" $ property $ do
-    let walletCtx = mkWalletContext testAddress
-    let result = runCreateTest walletCtx RoleTokensNone V1.Close
-    case result of
+buildCreateSpec :: Spec
+buildCreateSpec  = do
+  it "buildCreateConstraints returns constraints for a Close contract" $ ioProperty $ do
+    signingKey <- generateSigningKey AsPaymentKey
+    let
+      verificationKey = getVerificationKey signingKey
+      walletCtx = mkWalletContext testnetId verificationKey
+      result = runCreateTest walletCtx RoleTokensNone V1.Close
+    pure $ case result of
       Left _ -> property True
       Right _ -> property True
 
-  it "buildCreateConstraints returns constraints for a contract with Notify action" $ property $ do
-    let walletCtx = mkWalletContext testAddress
-        contract = V1.When [V1.Case (V1.Notify V1.FalseObs) V1.Close] 1000 V1.Close
-        result = runCreateTest walletCtx RoleTokensNone contract
-    case result of
+  it "buildCreateConstraints returns constraints for a contract with Notify action" $ ioProperty $ do
+    signingKey <- generateSigningKey AsPaymentKey
+    let
+      verificationKey = getVerificationKey signingKey
+      walletCtx = mkWalletContext testnetId verificationKey
+      contract = V1.When [V1.Case (V1.Notify V1.FalseObs) V1.Close] 1000 V1.Close
+      result = runCreateTest walletCtx RoleTokensNone contract
+    pure $ case result of
       Left _ -> property True
       Right _ -> property True
 
@@ -169,6 +171,16 @@ withdrawSpec = do
       Left (_ :: WithdrawError) -> property False
       Right (payouts, _constraints) -> property $ Map.size payouts == 1
 
+expectRight :: Show a => Either a b -> IO b
+expectRight = \case
+  Left err -> fail $ "Expected Right but got Left: " ++ show err
+  Right val -> pure val
+
+expectJust :: String -> Maybe a -> IO a
+expectJust errMsg = \case
+  Nothing -> fail $ "Expected Just but got Nothing: " ++ errMsg
+  Just val -> pure val
+
 -- E2E Tests following the steps from the original plan
 e2eSpec :: Spec
 e2eSpec = do
@@ -176,7 +188,7 @@ e2eSpec = do
     signingKey <- generateSigningKey AsPaymentKey
     let verificationKey = getVerificationKey signingKey
         keyHash = verificationKeyHash verificationKey
-    return $ property $ null (show keyHash)
+    return $ property $ not $ null (show keyHash)
 
   it "E2E Step 2: Create Party using unsafeMkPartyAddressBech32 (like Trivial.hs)" $ ioProperty $ do
     -- This is the party from Trivial.hs
@@ -226,6 +238,7 @@ e2eSpec = do
         rolesCurrency = PV2.CurrencySymbol $ PV2.toBuiltin $ BS.pack (replicate 28 0)
         marloweParams = MarloweParams rolesCurrency
         marloweData = MarloweData marloweParams initialState contract
+
     return $ property $ case marloweData of
       MarloweData (MarloweParams _) state c ->
         V1.minTime state == POSIXTime 0 && c == contract
@@ -243,94 +256,8 @@ e2eSpec = do
     signingKey <- generateSigningKey AsPaymentKey
     let
       verificationKey = getVerificationKey signingKey
-      keyHash = verificationKeyHash verificationKey
-      walletAddressAny = AddressShelley $ makeShelleyAddress testnetId (PaymentCredentialByKey keyHash) NoStakeAddress
-      walletAddress = fromCardanoAddressAny walletAddressAny
+      marloweContext = mkMarloweContext Devel testnetId Nothing
 
-      marloweScriptHash = Chain.ScriptHash $ PV2.fromBuiltin (PV2.getScriptHash marloweValidatorHash)
-      payoutScriptHash = Chain.ScriptHash $ PV2.fromBuiltin (PV2.getScriptHash rolePayoutValidatorHash)
-
-      marloweAddress = fromCardanoAddressInEra C.ConwayEra $ mkMarloweValidatorAddress testnetId
-      payoutAddress = fromCardanoAddressInEra C.ConwayEra $ mkRolePayoutValidatorAddress testnetId
-
-      marloweTxOutRef = Chain.TxOutRef (Chain.TxId $ LBS.toStrict $ LBS.replicate 32 2) (Chain.TxIx 0)
-      payoutTxOutRef = Chain.TxOutRef (Chain.TxId $ LBS.toStrict $ LBS.replicate 32 3) (Chain.TxIx 0)
-
-      marloweScriptUTxO :: ReferenceScriptUtxo
-      marloweScriptUTxO = ReferenceScriptUtxo
-        { txOutRef = marloweTxOutRef
-        , txOut = TransactionOutput
-            { address = marloweAddress
-            , assets = Chain.TxOutAssets $ Chain.Assets (Chain.Lovelace 2_000_000) (Chain.Tokens Map.empty)
-            , datumHash = Nothing
-            , datum = Nothing
-            }
-        , script = error "Script not needed for type check"
-        }
-
-      payoutScriptUTxO :: ReferenceScriptUtxo
-      payoutScriptUTxO = ReferenceScriptUtxo
-        { txOutRef = payoutTxOutRef
-        , txOut = TransactionOutput
-            { address = payoutAddress
-            , assets = Chain.TxOutAssets $ Chain.Assets (Chain.Lovelace 2_000_000) (Chain.Tokens Map.empty)
-            , datumHash = Nothing
-            , datum = Nothing
-            }
-        , script = error "Script not needed for type check"
-        }
-
-      rolesCurrency = PV2.CurrencySymbol $ PV2.toBuiltin $ BS.pack (replicate 28 0)
-      marloweParams = MarloweParams rolesCurrency
-      initialState = V1.State
-        { V1.accounts = AM.empty
-        , V1.choices = AM.empty
-        , V1.boundValues = AM.empty
-        , V1.minTime = POSIXTime 0
-        }
-      contract = V1.Close
-
-      marloweData :: Core.Datum 'Core.V1
-      marloweData = MarloweData marloweParams initialState contract
-
-      marloweOutput :: Core.TransactionScriptOutput 'Core.V1
-      marloweOutput = Core.TransactionScriptOutput
-        { Core.utxo = marloweTxOutRef
-        , Core.address = marloweAddress
-        , Core.datum = marloweData
-        , Core.assets = Chain.TxOutAssets $ Chain.Assets (Chain.Lovelace 2_000_000) (Chain.Tokens Map.empty)
-        }
-
-      marloweContext :: MarloweContext Core.V1
-      marloweContext = MarloweContext
-        { scriptOutput = Just marloweOutput
-        , marloweAddress = marloweAddress
-        , payoutAddress = payoutAddress
-        , marloweScriptUTxO = marloweScriptUTxO
-        , payoutScriptUTxO = payoutScriptUTxO
-        , marloweScriptHash = marloweScriptHash
-        , payoutScriptHash = payoutScriptHash
-        }
-
-      walletCtx :: WalletContext
-      walletCtx = WalletContext
-        { availableUtxos = Chain.UTxOs $ Map.singleton (Chain.TxOutRef (Chain.TxId $ LBS.toStrict $ LBS.replicate 32 0) (Chain.TxIx 0))
-            TransactionOutput
-              { address = walletAddress
-              , assets = Chain.TxOutAssets $ Chain.Assets (Chain.Lovelace 20_000_000) (Chain.Tokens Map.empty)
-              , datumHash = Nothing
-              , datum = Nothing
-              }
-        , collateralUtxos = Set.singleton $ Chain.TxOutRef (Chain.TxId $ LBS.toStrict $ LBS.replicate 32 1) (Chain.TxIx 1)
-        , changeAddress = walletAddress
-        }
-
-      helpersCtx :: HelpersContext
-      helpersCtx = HelpersContext
-        { currentHelperScripts = Map.empty
-        , helperPolicyId = Chain.PolicyId $ BS.pack (replicate 28 0)
-        , helperScriptStates = Map.empty
-        }
       constraints :: TxConstraints TestEra Core.V1
       constraints = TxConstraints
         { marloweInputConstraints = mempty
@@ -342,6 +269,7 @@ e2eSpec = do
         , signatureConstraints = mempty
         , metadataConstraints = Core.emptyMarloweTransactionMetadata
         }
+      walletCtx = mkWalletContext testnetId verificationKey
       txBodyResult = solveConstraints
           systemStart
           (toLedgerEpochInfo eraHistory)
@@ -350,15 +278,58 @@ e2eSpec = do
           Core.MarloweV1
           (Left marloweContext)
           walletCtx
-          helpersCtx
+          emptyHelpersCtx
           constraints
     txBodyResult `shouldSatisfy` \case
        Left _ -> False
        Right _ -> True
 
-  it "E2E Step 9: Call solveConstraints for a IDeposit step" do
-    True `shouldBe` False
+  it "E2E Step 9: Call solveConstraints for a INotify step" do
+    signingKey <- generateSigningKey AsPaymentKey
+    let
+      notifyInput = V1.NormalInput V1.INotify
+      verificationKey = getVerificationKey signingKey
+      -- There is a possible interaction between the tip slot number
+      -- era history configuration and the timeout posix time value.
+      -- All those pieces should be adjusted.
+      timeout :: PV2.POSIXTime
+      timeout = 1000
+      tipSlotNo = C.SlotNo 0
+      contract = V1.When [V1.Case (V1.Notify V1.TrueObs) V1.Close] timeout V1.Close
+      marloweContext = mkMarloweContext Devel testnetId (Just (contract, Nothing))
+      walletCtx = mkWalletContext testnetId verificationKey
 
+    marloweOutput <- expectJust "Expected Marlowe script output in context" marloweContext.scriptOutput
+    (_applyResults, constraints) <- expectRight . runIdentity . runExceptT $ buildApplyInputsConstraints
+      (\_ -> pure Nothing) -- merkleizeInput
+      (undefined :: C.SystemStart)
+      (undefined :: C.EraHistory)
+      Core.MarloweV1
+      marloweOutput
+      tipSlotNo
+      (Core.MarloweTransactionMetadata Nothing mempty)
+      Nothing -- invalidBefore
+      Nothing -- invalidHereafter
+      [notifyInput]
+    let
+      txBodyResult = solveConstraints
+          systemStart
+          (toLedgerEpochInfo eraHistory)
+          babbageEraOnwardsTest
+          protocolParameters
+          Core.MarloweV1
+          (Left marloweContext)
+          walletCtx
+          emptyHelpersCtx
+          constraints
+    for_ txBodyResult \txBody -> do
+      putStrLn "Generated transaction body:"
+      formatted <- runWarningIO . friendlyTxBodyImpl C.ShelleyBasedEraConway $ txBody
+      putStrLn $ formatToString (Vary.from FormatYaml) formatted
+
+    txBodyResult `shouldSatisfy` \case
+      Left _ -> False
+      Right _ -> True
 
 -- Helper functions
 testnetId :: C.NetworkId
@@ -373,14 +344,108 @@ mkMarloweValidatorAddress network = mkValidatorAddress network marloweValidatorB
 mkRolePayoutValidatorAddress :: C.NetworkId -> C.AddressInEra TestEra
 mkRolePayoutValidatorAddress network = mkValidatorAddress network rolePayoutValidatorBytes
 
-testAddress :: Chain.Address
-testAddress = Chain.Address "addr_test1qz3s0c370u8zzqn302nppuxl840gm6qdmjwqnxmqxme657s7upmd5vh70y0edgjzkyj0h8f0r4d5l3y3x8gwa9wh90sh8x9yhhlylnw78g3hq3q9qd2s8l0c"
+mkScriptInAnyLang :: PV2.SerialisedScript -> C.ScriptInAnyLang
+mkScriptInAnyLang =
+    C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV3)
+    . C.PlutusScript C.PlutusScriptV3
+    . C.PlutusScriptSerialised
 
-mkWalletContext :: Chain.Address -> WalletContext
-mkWalletContext address = WalletContext
-  { availableUtxos = Chain.UTxOs Map.empty
-  , collateralUtxos = Set.singleton $ Chain.TxOutRef (Chain.TxId "testTxId") (Chain.TxIx 1)
-  , changeAddress = address
+-- TODO:
+-- * Add ability to use `Marlowe.Binaries.Production` and later also
+data ValidatorsVersion = Devel
+
+mkMarloweContext :: ValidatorsVersion -> NetworkId -> Maybe (V1.Contract, Maybe V1.State) -> MarloweContext 'Core.V1
+mkMarloweContext _version network possibleContractInfo = do
+  let
+    marloweAddress = fromCardanoAddressInEra C.ConwayEra $ mkMarloweValidatorAddress network
+    -- Existing on-chain contract output if the contract is ongoing
+    scriptOutput = do
+      (contract, possibleState) <- possibleContractInfo
+      let
+        rolesCurrency = PV2.CurrencySymbol $ PV2.toBuiltin $ BS.pack (replicate 28 0)
+        marloweParams = MarloweParams rolesCurrency
+
+        marloweTxOutRef = Chain.TxOutRef (Chain.TxId $ LBS.toStrict $ LBS.replicate 32 2) (Chain.TxIx 0)
+        state = case possibleState of
+          Just st -> st
+          Nothing -> V1.State
+            { V1.accounts = AM.empty
+            , V1.choices = AM.empty
+            , V1.boundValues = AM.empty
+            , V1.minTime = POSIXTime 0
+            }
+        marloweData :: Core.Datum 'Core.V1
+        marloweData = MarloweData marloweParams state contract
+
+      pure $ Core.TransactionScriptOutput
+        { Core.utxo = marloweTxOutRef
+        , Core.address = marloweAddress
+        , Core.datum = marloweData
+        , Core.assets = Chain.TxOutAssets $ Chain.Assets (Chain.Lovelace 2_000_000) (Chain.Tokens Map.empty)
+        }
+    -- Published on chain script outputs with binaries
+    marloweScriptTxOutRef = Chain.TxOutRef (Chain.TxId $ LBS.toStrict $ LBS.replicate 32 3) (Chain.TxIx 0)
+    payoutScriptTxOutRef = Chain.TxOutRef (Chain.TxId $ LBS.toStrict $ LBS.replicate 32 4) (Chain.TxIx 0)
+    marloweScriptUTxO :: ReferenceScriptUtxo
+    marloweScriptUTxO = ReferenceScriptUtxo
+      { txOutRef = marloweScriptTxOutRef
+      , txOut = TransactionOutput
+          { address = marloweAddress
+          , assets = Chain.TxOutAssets $ Chain.Assets (Chain.Lovelace 2_000_000) (Chain.Tokens Map.empty)
+          , datumHash = Nothing
+          , datum = Nothing
+          }
+      , script = mkScriptInAnyLang marloweValidatorBytes
+      }
+    payoutAddress = fromCardanoAddressInEra C.ConwayEra $ mkRolePayoutValidatorAddress network
+    payoutScriptUTxO :: ReferenceScriptUtxo
+    payoutScriptUTxO = ReferenceScriptUtxo
+      { txOutRef = payoutScriptTxOutRef
+      , txOut = TransactionOutput
+          { address = payoutAddress
+          , assets = Chain.TxOutAssets $ Chain.Assets (Chain.Lovelace 2_000_000) (Chain.Tokens Map.empty)
+          , datumHash = Nothing
+          , datum = Nothing
+          }
+      , script = mkScriptInAnyLang rolePayoutValidatorBytes
+      }
+    marloweScriptHash = Chain.ScriptHash $ PV2.fromBuiltin (PV2.getScriptHash marloweValidatorHash)
+    payoutScriptHash = Chain.ScriptHash $ PV2.fromBuiltin (PV2.getScriptHash rolePayoutValidatorHash)
+
+  MarloweContext
+    { scriptOutput = scriptOutput
+    , marloweAddress = marloweAddress
+    , payoutAddress = payoutAddress
+    , marloweScriptUTxO = marloweScriptUTxO
+    , payoutScriptUTxO = payoutScriptUTxO
+    , marloweScriptHash = marloweScriptHash
+    , payoutScriptHash = payoutScriptHash
+    }
+
+mkWalletContext :: C.NetworkId -> C.VerificationKey C.PaymentKey -> WalletContext
+mkWalletContext network verificationKey = do
+  let
+    keyHash = verificationKeyHash verificationKey
+    walletAddressAny = AddressShelley $ makeShelleyAddress network (PaymentCredentialByKey keyHash) NoStakeAddress
+    walletAddress = fromCardanoAddressAny walletAddressAny
+    txOutRef = Chain.TxOutRef (Chain.TxId $ LBS.toStrict $ LBS.replicate 32 0) (Chain.TxIx 1)
+  WalletContext
+    { availableUtxos = Chain.UTxOs $ Map.singleton txOutRef
+        TransactionOutput
+          { address = walletAddress
+          , assets = Chain.TxOutAssets $ Chain.Assets (Chain.Lovelace 20_000_000) (Chain.Tokens Map.empty)
+          , datumHash = Nothing
+          , datum = Nothing
+          }
+    , collateralUtxos = Set.singleton txOutRef
+    , changeAddress = walletAddress
+    }
+
+emptyHelpersCtx :: HelpersContext
+emptyHelpersCtx = HelpersContext
+  { currentHelperScripts = Map.empty
+  , helperPolicyId = Chain.PolicyId $ BS.pack (replicate 28 0)
+  , helperScriptStates = Map.empty
   }
 
 -- | A valid 28-byte PolicyId for testing
