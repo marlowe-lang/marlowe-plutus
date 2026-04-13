@@ -23,6 +23,7 @@ import GHC.Generics (
  )
 import PlutusLedgerApi.V2 (CurrencySymbol (..), POSIXTime (POSIXTime), PubKeyHash (PubKeyHash), TokenName (..))
 import qualified PlutusTx.Prelude as P
+import qualified Marlowe.Plutus.Semantics.Types as S
 import Text.PrettyPrint.Leijen (
   Doc,
   comma,
@@ -155,3 +156,20 @@ instance Pretty CurrencySymbol where
   prettyFragment (CurrencySymbol bs) = text ("\"" ++ show (CurrencySymbol bs) ++ "\"")
 
 deriving newtype instance Pretty TokenName
+
+-- Pretty instances for semantic leaf types (mirroring original marlowe-cardano behaviour)
+instance Pretty S.Party where
+  prettyFragment = text . show
+
+instance Pretty S.ChoiceId where
+  prettyFragment = text . show
+
+
+instance Pretty S.ValueId where
+  prettyFragment = text . show
+
+instance Pretty S.Token where
+  prettyFragment = text . show
+
+instance Pretty S.Bound where
+  prettyFragment = text . show

@@ -35,7 +35,9 @@ common lang
     DerivingVia
     DoAndIfThenElse
     DuplicateRecordFields
+    EmptyCase
     ExplicitForAll
+    ExplicitNamespaces
     FlexibleContexts
     FlexibleInstances
     GADTs
@@ -48,6 +50,7 @@ common lang
     OverloadedRecordDot
     OverloadedStrings
     PatternSynonyms
+    QuantifiedConstraints
     RankNTypes
     RecordWildCards
     ScopedTypeVariables
@@ -69,6 +72,8 @@ library
   build-depends:
     , aeson
     , base
+    , base16-aeson
+    , base16 ^>=1.0
     , bytestring
     , cardano-api
     , cardano-crypto-class
@@ -115,13 +120,55 @@ library
     Language.Marlowe.Runtime.Transaction.BuildConstraints
     Language.Marlowe.Runtime.Transaction.Constraints
 
-test-suite marlowe-transactions-test
+library gen
+  import:          lang
+  hs-source-dirs:  gen
+  visibility:      public
+  exposed-modules:
+    Language.Marlowe.Runtime.ChainSync.Gen
+    Language.Marlowe.Runtime.Transaction.Gen
+
+  build-depends:
+    , base >=4.9 && <5
+    , bytestring >=0.10.12 && <0.12
+    , cardano-api ^>=10.23
+    , cardano-api-gen ^>=10.2
+    , cardano-protocol-tpraos
+    , containers
+    , errors
+    , hedgehog-quickcheck ^>=0.1
+    , http-media ^>=0.8
+    , marlowe-plutus
+    , marlowe-plutus:marlowe-testing
+    , marlowe-transactions
+    -- , marlowe-cardano ==0.2.1.0
+    -- , marlowe-chain-sync:gen ==1.0.0
+    -- , marlowe-chain-sync:plutus-compat
+    -- , marlowe-protocols ==0.3.0.0
+    -- , marlowe-runtime ==1.0.0
+    -- , marlowe-runtime:sync-api
+    -- , marlowe-runtime:tx-api
+    -- , marlowe-test ==0.2.1.0
+    , network-uri >=2.6 && <3
+    , nonempty-containers ^>=0.3.4
+    , ouroboros-consensus
+    , QuickCheck >=2.14 && <3
+    , quickcheck-instances ^>=0.3.29
+    , sop-core
+    , sop-extras
+    , strict-sop-core
+    , text
+    , time
+
+
+test-suite test
   import:          lang
   type:           exitcode-stdio-1.0
   main-is:        Spec.hs
   hs-source-dirs:  test
   other-modules:
     Language.Marlowe.Runtime.Transaction.BuildConstraintsSpec
+    Language.Marlowe.Runtime.Transaction.BuildConstraintsSpec.PropertyBased
   build-depends:
     , aeson
     , aeson-pretty

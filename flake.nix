@@ -2,15 +2,20 @@
   description = "Lightweight Marlowe Runtime: transaction builders, indexer and web server";
 
   inputs = {
-    hackage = {
-      url = "github:input-output-hk/hackage.nix";
+    cardano-node.url = "github:IntersectMBO/cardano-node/10.6.3";
+
+    cardonnay-src = {
+      url = "github:IntersectMBO/cardonnay";
       flake = false;
     };
 
-    jailed-agents.url = "github:andersonjoseph/jailed-agents";
-
     CHaP = {
       url = "github:IntersectMBO/cardano-haskell-packages?ref=repo";
+      flake = false;
+    };
+
+    hackage = {
+      url = "github:input-output-hk/hackage.nix";
       flake = false;
     };
 
@@ -19,16 +24,21 @@
       inputs.hackage.follows = "hackage";
     };
 
-    nixpkgs.follows = "haskell-nix/nixpkgs";
+    flake-utils.url = "github:numtide/flake-utils";
 
     iohk-nix = {
       url = "github:input-output-hk/iohk-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    jailed-agents.url = "github:andersonjoseph/jailed-agents";
+
+    nixpkgs.follows = "haskell-nix/nixpkgs";
+
     pre-commit-hooks.url = "github:cachix/pre-commit-hooks.nix";
 
-    flake-utils.url = "github:numtide/flake-utils";
+    # process-compose = {
+    #   url = "github:Platonic-systems/process-compose-flake";
   };
 
   outputs = inputs: inputs.flake-utils.lib.eachSystem [ "x86_64-linux" ] (system:

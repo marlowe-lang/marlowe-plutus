@@ -44,7 +44,13 @@ let
       };
     };
   };
+
+  cardano-cli = inputs.cardano-node.packages.${pkgs.system}.cardano-cli;
+  cardano-node = inputs.cardano-node.packages.${pkgs.system}.cardano-node;
+
   commonPackages = [
+    cardano-cli
+
     tools.cabal
     tools.cabal-fmt
     tools.fourmolu
@@ -93,12 +99,11 @@ let
       in [
         jail.combinators.network
         jail.combinators.time-zone
-        # jail.combinators.mount-dev
-        # jail.combinators.mount-proc
         jail.combinators.no-new-session
         jail.combinators.mount-cwd
-        # jail.combinators.tmpfs-tmp
         (jail.combinators.try-fwd-env "PKG_CONFIG_PATH")
+        (jail.combinators.try-fwd-env "CARDANO_NODE_NETWORK_ID")
+        (jail.combinators.try-fwd-env "CARDANO_NODE_SOCKET_PATH")
       ];
 
     extraReadwriteDirs = [
@@ -116,10 +121,65 @@ let
     ];
   };
 
+  #   lib,
+  #   coreutils,
+  #   writeText,
+  #   writeShellApplication,
+  #   cardano-cli,
+  #   formats,
+  #   cardonnay,
+  #   cardano-node,
+  #   cardano-cli,
+  # }: let
+
+  cardonnay = pkgs.python313.pkgs.buildPythonApplication {
+    pname = "cardonnay";
+    version = "0.3.4";
+    SETUPTOOLS_SCM_PRETEND_VERSION = "0.3.4";
+    src = inputs.cardonnay-src;
+    pyproject = true;
+    build-system = with pkgs.python313.pkgs; [ setuptools setuptools-scm ];
+    pythonRelaxDeps = [ "setuptools" ];
+    nativeBuildInputs = with pkgs.python313.pkgs; [
+      pythonRelaxDepsHook
+    ];
+    postPatch = ''
+      # Reduce initial TX submission delay (safe for local testnets)
+      find src/cardonnay_scripts/scripts \
+        -name 'common-start-*' -type f -exec \
+        sed -i 's/readonly TX_SUBMISSION_DELAY=60/readonly TX_SUBMISSION_DELAY=20/' {} +
+    '';
+    dependencies = with pkgs.python313.pkgs; [
+      supervisor
+      click
+      pygments
+      pydantic
+      filelock
+    ];
+  };
+
+  process-compose-testnet-yaml = pkgs.callPackage ./process-compose-testnet.nix {
+    inherit cardonnay cardano-node cardano-cli;
+  };
+
+  process-compose-testnet = pkgs.writeShellApplication {
+    name = "process-compose-testnet";
+    runtimeInputs = [];
+    text = ''
+      ${pkgs.process-compose}/bin/process-compose up -f ${process-compose-testnet-yaml} -L "$RUN_DIR"/process-compose-testnet;
+    '';
+  };
+
   shell = project.shellFor {
     name = "marlowe-plutus-${project.args.compiler-nix-name}";
 
-    buildInputs = commonPackages ++ [
+    nativeBuildInputs = commonPackages ++ [
+      cardonnay
+      cardano-node
+      # inputs.process-compose
+      pkgs.process-compose
+      process-compose-testnet
+
       (inputs.jailed-agents.lib.${pkgs.system}.makeJailedOpencode {
         inherit (commonJail) baseJailOptions extraPkgs extraReadwriteDirs;
       })
@@ -141,8 +201,19 @@ let
 
     withHoogle = false;
 
+    # export PC_CONFIG_FILES=${selfPkgs.process-compose-yaml}
+    # export PC_CONFIG_FILES_REDEMPTION=${selfPkgs.redemption-process-compose-yaml}
+    # export PC_CONFIG_FILES_PREPROD_REDEMPTION=${selfPkgs.preprod-redemption-process-compose-yaml}
     shellHook = ''
       ${preCommitCheck.shellHook}
+      export ROOT_DIR="$(git rev-parse --show-toplevel)"
+      export RUN_DIR="$ROOT_DIR/.run"
+      export TESTNET_DIR="$RUN_DIR/testnet"
+      export CARDONNAY_TESTNET_ID="9"
+      source <(cardonnay control print-env -i "$CARDONNAY_TESTNET_ID" -w "$TESTNET_DIR")
+      export CARDANO_NODE_NETWORK_ID=42
+      eval "$(cardonnay inspect faucet -i "$CARDONNAY_TESTNET_ID" -w "$TESTNET_DIR" | jq -r 'to_entries[] | "export FAUCET_\(.key|ascii_upcase)=\(.value|@sh)"')"
+      export PROCESS_COMPOSE_TESTNET_YAML=${process-compose-testnet-yaml}
     '';
   };
 in

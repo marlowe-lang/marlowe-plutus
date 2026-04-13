@@ -1,10 +1,14 @@
 {-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 -- | Minimal stub for ChainSync.Api - types for BuildConstraints
+
 module Language.Marlowe.Runtime.ChainSync.Api (
   Address(..),
   AssetId(..),
   Assets(..),
+  BlockNo(..),
+  BlockHeader(..),
+  BlockHeaderHash(..),
   Credential(..),
   Datum(..),
   DatumHash(..),
@@ -26,13 +30,16 @@ module Language.Marlowe.Runtime.ChainSync.Api (
   TxOutRef(..),
   UTxO(..),
   UTxOs(..),
+  WithGenesis(..),
+  fromDatum,
   lookupUTxO,
   mkTxOutAssets,
+  parseTxOutRef,
   paymentCredential,
+  renderTxOutRef,
   toCardanoAddressAny,
   toCardanoMetadata,
   toDatum,
-  fromDatum,
   toUTxOTuple,
   toUTxOsList,
   unInterpreter,
@@ -46,6 +53,7 @@ import qualified Cardano.Api as Cardano
 import qualified Data.Aeson as Aeson
 import Data.Aeson (ToJSON, ToJSONKey(toJSONKey))
 import Data.Aeson.Types (toJSONKeyText)
+import Data.ByteString.Base16 (decodeBase16Untyped, encodeBase16)
 import qualified Data.ByteString as BS
 import Control.Monad ((>=>))
 import Data.Bifunctor (Bifunctor (bimap))
@@ -54,16 +62,62 @@ import Data.Map (Map, toList)
 import qualified Data.Map as Map
 import Data.String (IsString(fromString))
 import Data.Text (Text)
-import qualified Data.Text as Text
+import qualified Data.Text as T
 import Data.Text.Encoding (decodeLatin1)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Ouroboros.Consensus.HardFork.History (Summary(..))
 import qualified PlutusLedgerApi.V1 as Plutus
 import Unsafe.Coerce (unsafeCoerce)
+import Data.Hashable (Hashable)
+import Data.ByteString.Base16.Aeson (EncodeBase16(..))
+import qualified Data.Text.Encoding as T
+import Control.Error (hush)
+import Text.Read (readMaybe)
+import Data.Base16.Types (extractBase16)
+
+newtype BlockNo = BlockNo {unBlockNo :: Word64}
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving newtype (Num, Integral, Real, Enum, Bounded, ToJSON, Hashable) -- Binary, Variations)
+
+newtype BlockHeaderHash = BlockHeaderHash {unBlockHeaderHash :: ByteString}
+  deriving stock (Eq, Ord, Generic)
+  deriving newtype (Hashable) -- Binary, Variations)
+  deriving (Show, ToJSON) via EncodeBase16
+
+-- | A block header, consisting of a slot number, a hash, and a block number.
+data BlockHeader = BlockHeader
+  { slotNo :: SlotNo
+  -- ^ The slot number when this block was produced.
+  , headerHash :: BlockHeaderHash
+  -- ^ The hash of this block's header.
+  , blockNo :: BlockNo
+  -- ^ The ordinal number of this block.
+  }
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving anyclass (ToJSON) -- Binary, Variations)
+
+--instance HasSignature BlockHeader where
+--  signature _ = "BlockHeader"
+
+isAfter :: SlotNo -> BlockHeader -> Bool
+isAfter s BlockHeader{..} = slotNo > s
+
+
+-- | Extends a type with a "Genesis" member.
+data WithGenesis a = Genesis | At a
+  deriving stock (Show, Eq, Ord, Functor, Generic)
+  deriving anyclass (ToJSON) -- Binary, Variations)
+
+-- instance (HasSignature a) => HasSignature (WithGenesis a) where
+--   signature _ = T.intercalate " " ["WithGenesis", signature $ Proxy @a]
+
+-- | A point in the chain, identified by a slot number, block header hash, and
+-- block number.
+type ChainPoint = WithGenesis BlockHeader
 
 newtype ScriptHash = ScriptHash { unScriptHash :: ByteString }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 newtype DatumHash = DatumHash { unDatumHash :: ByteString }
   deriving (Show, Eq, Ord)
@@ -83,7 +137,9 @@ data Datum
   deriving stock (Show, Eq, Ord, Generic)
 
 newtype TxId = TxId { unTxId :: ByteString }
-  deriving stock (Show, Eq, Ord, Generic)
+  deriving stock (Eq, Ord, Generic)
+  deriving (Show, ToJSON, ToJSONKey) via EncodeBase16
+
 
 newtype TxIx = TxIx { unTxIx :: Word64 }
   deriving stock (Show, Eq, Ord, Generic)
@@ -95,22 +151,39 @@ data TxOutRef = TxOutRef
   deriving (Show, Eq, Ord)
 
 instance ToJSON TxOutRef where
-  toJSON txOutRef = Aeson.String $ Text.pack $ show txOutRef
+  toJSON txOutRef = Aeson.String $ T.pack $ show txOutRef
 
 instance ToJSONKey TxOutRef where
-  toJSONKey = toJSONKeyText (Text.pack . show)
+  toJSONKey = toJSONKeyText (T.pack . show)
+
+{- HLINT ignore "Functor law" -}
+parseTxOutRef :: Text -> Maybe TxOutRef
+parseTxOutRef val = case T.splitOn "#" val of
+  [txId, txIx] ->
+    TxOutRef
+      <$> (TxId <$> hush (decodeBase16Untyped . T.encodeUtf8 $ txId))
+      <*> (TxIx <$> readMaybe (T.unpack txIx))
+  _ -> Nothing
+
+renderTxOutRef :: TxOutRef -> Text
+renderTxOutRef txOutRef =
+  mconcat
+    [ extractBase16 . encodeBase16 $ txOutRef.txOutRefId.unTxId
+    , "#"
+    , T.pack . show $ txOutRef.txOutRefIdx.unTxIx
+    ]
 
 data AssetId = AssetId
   { policyId :: PolicyId
   , tokenName :: TokenName
   }
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 instance ToJSON AssetId where
-  toJSON (AssetId p t) = Aeson.String $ Text.pack $ show (p, t)
+  toJSON (AssetId p t) = Aeson.String $ T.pack $ show (p, t)
 
 instance ToJSONKey AssetId where
-  toJSONKey = toJSONKeyText (Text.pack . show)
+  toJSONKey = toJSONKeyText (T.pack . show)
 newtype PaymentKeyHash = PaymentKeyHash { unPaymentKeyHash :: ByteString }
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass ToJSON
@@ -180,7 +253,7 @@ data TransactionOutput = TransactionOutput
   deriving stock (Show, Eq, Ord, Generic)
 
 instance ToJSON TransactionOutput where
-  toJSON TransactionOutput{address} = Aeson.String $ Text.pack $ show address
+  toJSON TransactionOutput{address} = Aeson.String $ T.pack $ show address
 
 newtype TxOutAssets = TxOutAssets {unTxOutAssets :: Assets}
   deriving stock (Show, Eq, Ord, Generic)
@@ -257,14 +330,11 @@ lookupUTxO txOutRef (UTxOs utxos) = Map.lookup txOutRef utxos
 
 toCardanoAddressAny :: Address -> Maybe C.AddressAny
 toCardanoAddressAny = hush . deserialiseFromRawBytes C.AsAddressAny . unAddress
-  where
-    hush :: Either a b -> Maybe b
-    hush = either (const Nothing) Just
 
 data Credential
   = PaymentKeyCredential PaymentKeyHash
   | ScriptCredential ScriptHash
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 paymentCredential :: Address -> Maybe Credential
 paymentCredential =

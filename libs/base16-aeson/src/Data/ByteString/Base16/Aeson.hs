@@ -7,7 +7,7 @@ module Data.ByteString.Base16.Aeson (
   unBase16,
 ) where
 
-import Data.Aeson (FromJSON, ToJSON (toJSON))
+import Data.Aeson (FromJSON, ToJSON (toJSON), FromJSONKey)
 import Data.Aeson qualified as A
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types qualified as A
@@ -21,7 +21,7 @@ import Data.Text qualified as T
 import Data.Text qualified as Text
 import Data.Text.Encoding qualified as TE
 
-newtype EncodeBase16 = EncodeBase16 BSS.ByteString
+newtype EncodeBase16 = EncodeBase16 { bytes :: BSS.ByteString }
   deriving (Eq, Ord, Show)
 
 unBase16 (EncodeBase16 bs) = bs
@@ -35,6 +35,12 @@ instance FromJSON EncodeBase16 where
   parseJSON v = do
     let base16Parser = either (fail . T.unpack) pure . decodeBase16Untyped . TE.encodeUtf8
     EncodeBase16 <$> Aeson.withText "ByteString" base16Parser v
+
+instance A.ToJSONKey EncodeBase16 where
+  toJSONKey = A.toJSONKeyText (\(EncodeBase16 bytes) -> extractBase16 . encodeBase16 $ bytes)
+
+instance FromJSONKey EncodeBase16 where
+  fromJSONKey = A.FromJSONKeyValue A.parseJSON
 
 byteStringToJSON :: BSS.ByteString -> Aeson.Value
 byteStringToJSON = toJSON . EncodeBase16
