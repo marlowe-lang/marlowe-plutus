@@ -74,6 +74,7 @@ library
     , base
     , base16-aeson
     , base16 ^>=1.0
+    , binary ^>=0.8.8
     , bytestring
     , cardano-api
     , cardano-crypto-class
