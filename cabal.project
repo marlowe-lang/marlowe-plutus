@@ -17,13 +17,17 @@ index-state:
 
 packages:
   marlowe-binaries
+  marlowe-cli
   marlowe-indexer
   marlowe-plutus
+  marlowe-plutus-extended
   marlowe-transactions
   marlowe-web
   libs/base16-aeson
   libs/cardano-debug
   libs/multiplate
+  libs/plutus-ledger-ada
+  libs/plutus-ledger-slot
   -- libs/sqlite-simple
 
 tests: True
