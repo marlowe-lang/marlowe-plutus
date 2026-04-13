@@ -19,6 +19,7 @@ packages:
   marlowe-binaries
   marlowe-cli
   marlowe-indexer
+  marlowe-object
   marlowe-plutus
   marlowe-plutus-extended
   marlowe-transactions
@@ -28,6 +29,7 @@ packages:
   libs/multiplate
   libs/plutus-ledger-ada
   libs/plutus-ledger-slot
+  libs/variations
   -- libs/sqlite-simple
 
 tests: True

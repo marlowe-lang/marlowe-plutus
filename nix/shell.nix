@@ -102,6 +102,7 @@ let
         jail.combinators.no-new-session
         jail.combinators.mount-cwd
         (jail.combinators.try-fwd-env "PKG_CONFIG_PATH")
+        (jail.combinators.try-fwd-env "LD_LIBRARY_PATH")
         (jail.combinators.try-fwd-env "CARDANO_NODE_NETWORK_ID")
         (jail.combinators.try-fwd-env "CARDANO_NODE_SOCKET_PATH")
       ];
@@ -214,6 +215,8 @@ let
       export CARDANO_NODE_NETWORK_ID=42
       eval "$(cardonnay inspect faucet -i "$CARDONNAY_TESTNET_ID" -w "$TESTNET_DIR" | jq -r 'to_entries[] | "export FAUCET_\(.key|ascii_upcase)=\(.value|@sh)"')"
       export PROCESS_COMPOSE_TESTNET_YAML=${process-compose-testnet-yaml}
+
+      export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.bzip2 ]}:$LD_LIBRARY_PATH"
     '';
   };
 in
