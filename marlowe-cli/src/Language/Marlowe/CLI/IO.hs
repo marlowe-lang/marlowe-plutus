@@ -72,7 +72,7 @@ import Cardano.Api (
   TxMetadataInEra (..),
   TxMetadataJsonSchema (..),
   babbageEraOnwardsConstraints,
-  babbageEraOnwardsToShelleyBasedEra,
+  convert,
   getScriptData,
   getTxId,
   metadataFromJson,
@@ -299,7 +299,7 @@ readMaybeMetadata
 readMaybeMetadata file =
   do
     metadata <- mapM decodeFileStrict file
-    era <- asksEra babbageEraOnwardsToShelleyBasedEra
+    era <- asksEra convert
     maybe
       (pure TxMetadataNone)
       (fmap (TxMetadataInEra era) . liftCli . metadataFromJson TxMetadataJsonNoSchema)
@@ -344,7 +344,7 @@ queryInEra connection q = do
     liftCliExceptT $
       queryNodeLocalState connection VolatileTip $
         QueryInEra $
-          QueryInShelleyBasedEra (babbageEraOnwardsToShelleyBasedEra era) q
+          QueryInShelleyBasedEra (convert era) q
   liftCli res
 
 queryUTxOs
@@ -486,7 +486,7 @@ txResourceUsage era protocolParameters txBody =
         naturalFromInteger $
           toInteger $
             BS.length $
-              shelleyBasedEraConstraints (babbageEraOnwardsToShelleyBasedEra era) $
+              shelleyBasedEraConstraints (convert era) $
                 C.serialiseToCBOR txBody
       maxSize = babbageEraOnwardsConstraints era $ fromIntegral $ protocolParameters ^. lppPParamsL . ppMaxTxSizeL
       fractionSize = 100 * size `div` maxSize
@@ -541,7 +541,7 @@ submitTxBody
 submitTxBody txBuildupContext txBody signings =
   do
     era <- askEra
-    let shelleyEra = babbageEraOnwardsToShelleyBasedEra era
+    let shelleyEra = convert era
         tx =
           signShelleyTransaction shelleyEra txBody $
             somePaymentSigningKeyToTxWitness <$> signings
@@ -564,7 +564,7 @@ submitTxBody txBuildupContext txBody signings =
           Just exceeded -> do
             throwError . CliError $ show exceeded
           Nothing -> pure ()
-        let C.TxBody txBodyContent = txBody
+        let txBodyContent = C.getTxBodyContent txBody
 
             txIns = map fst . C.txIns $ txBodyContent
             txInsRef = case C.txInsReference txBodyContent of
@@ -635,6 +635,8 @@ submitTxBody' txBuildupCtx body bodyContent changeAddress signingKeys = do
                             C.TxOutValueShelleyBased ShelleyBasedEraBabbage $ toLedgerValue MaryEraOnwardsBabbage value'
                           BabbageEraOnwardsConway ->
                             C.TxOutValueShelleyBased ShelleyBasedEraConway $ toLedgerValue MaryEraOnwardsConway value'
+                          BabbageEraOnwardsDijkstra ->
+                            C.TxOutValueShelleyBased ShelleyBasedEraDijkstra $ toLedgerValue MaryEraOnwardsDijkstra value'
                       )
                       datum
                       refScript
@@ -647,8 +649,8 @@ submitTxBody' txBuildupCtx body bodyContent changeAddress signingKeys = do
       (True, C.TxFeeExplicit feesInEra value) -> pure $ C.TxFeeExplicit feesInEra (value + feeBalancingMargin)
       _ -> throwError . CliError $ "Unable to adjust the change during resubmission attempt."
 
-    case C.createAndValidateTransactionBody
-      (babbageEraOnwardsToShelleyBasedEra era)
+    case C.createTransactionBody
+      (convert era)
       (C.TxBodyContent{..}{C.txOuts = txOuts', C.txFee = txFee'}) of
       Left err' -> throwError . CliError $ "Failure during reconstruction of the failing tx body: " <> show err'
       Right body' -> do

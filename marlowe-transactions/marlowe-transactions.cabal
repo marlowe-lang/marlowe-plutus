@@ -71,6 +71,7 @@ library
   hs-source-dirs:  src
   build-depends:
     , aeson
+    , attoparsec
     , base
     , base16-aeson
     , base16 ^>=1.0
@@ -80,12 +81,16 @@ library
     , cardano-crypto-class
     , cardano-ledger-alonzo
     , cardano-ledger-api
+    , cardano-ledger-binary
     , cardano-ledger-byron
     , cardano-ledger-core
     , containers
     , deepseq
     , errors
+    , groups
     , hashable
+    , http-media
+    , keys
     , lens
     , marlowe-binaries ^>=0.2
     , marlowe-plutus ^>=0.2
@@ -98,15 +103,20 @@ library
     , plutus-ledger-api ^>=1.57
     , plutus-tx ^>=1.57
     , plutus-tx-plugin ^>=1.57
+    , reflection
     , scientific
     , semialign
     , semigroups
+    , semigroupoids
+    , sop-core
     , sop-extras
+    , strict-sop-core
     , text
     , these
     , time
     , transformers
     , unordered-containers
+    , variations
     , vector
 
   exposed-modules:
@@ -116,6 +126,7 @@ library
     Language.Marlowe.Runtime.ChainSync.Api
     Language.Marlowe.Runtime.Core.Api
     Language.Marlowe.Runtime.Core.ScriptRegistry
+    Language.Marlowe.Runtime.History.Api
     Language.Marlowe.Runtime.Plutus.V2.Api
     Language.Marlowe.Runtime.Transaction.Api
     Language.Marlowe.Runtime.Transaction.BuildConstraints
@@ -127,6 +138,8 @@ library gen
   visibility:      public
   exposed-modules:
     Language.Marlowe.Runtime.ChainSync.Gen
+    Language.Marlowe.Runtime.Core.Gen
+    Language.Marlowe.Runtime.History.Gen
     Language.Marlowe.Runtime.Transaction.Gen
 
   build-depends:

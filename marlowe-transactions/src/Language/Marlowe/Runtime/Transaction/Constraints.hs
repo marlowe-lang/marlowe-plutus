@@ -892,7 +892,10 @@ selectCoins era protocol marloweVersion scriptCtx walletCtx@WalletContext{..} he
       change :: C.Value
       change =
         -- This is the change required to balance native tokens.
-        deleteLovelace $ -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+        deleteLovelace $ -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+        -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+        -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
         -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
           (mconcat $ txOutToValue . snd <$> selection) -- The inputs selected by the algorithm for spending many include native tokens that weren't in the required `outputs`.
             <> C.negateValue targetSelectionValue -- The tokens required by `outputs` (as represented in the `targetSelectionValue` requirement) shouldn't be included as change.
@@ -1061,10 +1064,12 @@ allUtxos era marloweVersion scriptCtx WalletContext{..} HelpersContext{..} inclu
 
       -- Extra UTxOs for reference scripts.
       mkReferenceUtxo :: ReferenceScriptUtxo -> Maybe (C.TxIn, C.TxOut ctx era)
-      mkReferenceUtxo ReferenceScriptUtxo{..} =
+      mkReferenceUtxo ReferenceScriptUtxo{..} = do
+        let
+          pv = C.PlutusScriptV2
         (,)
           <$> toCardanoTxIn txOutRef
-          <*> toCardanoTxOut' maryEraOnwards txOut (Just script)
+          <*> toCardanoTxOut' maryEraOnwards txOut (Just $ C.ScriptInAnyLang (C.PlutusScriptLanguage pv) (C.PlutusScript pv script))
 
       -- UTxOs for helper scripts.
       helperUTxO HelperScriptState{helperUTxO = Just (helperTxOutRef, helperTransactionOutput)} =
@@ -1244,7 +1249,7 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
       let items :: [Maybe (Either ConstraintError C.TxIn)]
           items = marloweTxInReference : payoutTxInReferences requiredPayoutScriptHashes <> (pure . pure <$> Set.toList helperTxInReferences)
           sequenced :: Maybe (Either ConstraintError [C.TxIn])
-          sequenced = case traverse id items of
+          sequenced = case sequenceA items of
             Nothing -> Nothing
             Just es -> case partitionEithers es of
               ([], rights) -> Just $ Right rights

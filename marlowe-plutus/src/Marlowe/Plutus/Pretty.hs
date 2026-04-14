@@ -149,8 +149,13 @@ instance Pretty BS.ByteString where
 instance Pretty P.BuiltinByteString where
   prettyFragment = text . show . P.fromBuiltin
 
+-- FIXME: We should decode the builtin data into a Marlowe contract here.
 instance Pretty P.BuiltinData where
   prettyFragment _bd = text "<BuiltinData>"
+
+-- FIXME: This was just a quick port of the old derived instance.
+instance Pretty S.Contract where
+  prettyFragment = text . show
 
 instance Pretty CurrencySymbol where
   prettyFragment (CurrencySymbol bs) = text ("\"" ++ show (CurrencySymbol bs) ++ "\"")

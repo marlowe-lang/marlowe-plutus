@@ -134,9 +134,9 @@ import Cardano.Api (
   ToCardanoEra (toCardanoEra),
   TxIn,
   VerificationKey,
-  babbageEraOnwardsToShelleyBasedEra,
   cardanoEraConstraints,
   castVerificationKey,
+  convert,
   deserialiseAddress,
   deserialiseFromTextEnvelope,
   serialiseAddress,
@@ -144,12 +144,8 @@ import Cardano.Api (
   shelleyBasedEraConstraints,
   toAddressAny,
  )
-import Cardano.Api qualified as C
-import Cardano.Api.Byron qualified as CB
 import Cardano.Api (PlutusScript (..))
 import Cardano.Api qualified as C
-import Cardano.Api qualified as CS
-import Cardano.Ledger.Coin qualified as C
 import Codec.Serialise (deserialise)
 import Contrib.Data.Time.Units as Time.Units
 import Contrib.Data.Time.Units.Aeson (Duration (..))
@@ -227,19 +223,19 @@ getVerificationKey (SomePaymentSigningKeyPaymentExtended skey) =
 getVerificationKey (SomePaymentSigningKeyGenesisUTxO skey) =
   SomePaymentVerificationKeyGenesisUTxO $ C.getVerificationKey skey
 
-somePaymentSigningKeyToTxWitness :: SomePaymentSigningKey -> CS.ShelleyWitnessSigningKey
+somePaymentSigningKeyToTxWitness :: SomePaymentSigningKey -> C.ShelleyWitnessSigningKey
 somePaymentSigningKeyToTxWitness (SomePaymentSigningKeyPayment skey) =
-  CS.WitnessPaymentKey skey
+  C.WitnessPaymentKey skey
 somePaymentSigningKeyToTxWitness (SomePaymentSigningKeyPaymentExtended skey) =
-  CS.WitnessPaymentExtendedKey skey
+  C.WitnessPaymentExtendedKey skey
 somePaymentSigningKeyToTxWitness (SomePaymentSigningKeyGenesisUTxO skey) =
-  CS.WitnessGenesisUTxOKey skey
+  C.WitnessGenesisUTxOKey skey
 
-txWitnessSigningKeyToSomePaymentSigningKey :: CS.ShelleyWitnessSigningKey -> Maybe SomePaymentSigningKey
+txWitnessSigningKeyToSomePaymentSigningKey :: C.ShelleyWitnessSigningKey -> Maybe SomePaymentSigningKey
 txWitnessSigningKeyToSomePaymentSigningKey = \case
-  CS.WitnessPaymentKey skey -> Just $ SomePaymentSigningKeyPayment skey
-  CS.WitnessPaymentExtendedKey skey -> Just $ SomePaymentSigningKeyPaymentExtended skey
-  CS.WitnessGenesisUTxOKey skey -> Just $ SomePaymentSigningKeyGenesisUTxO skey
+  C.WitnessPaymentKey skey -> Just $ SomePaymentSigningKeyPayment skey
+  C.WitnessPaymentExtendedKey skey -> Just $ SomePaymentSigningKeyPaymentExtended skey
+  C.WitnessGenesisUTxOKey skey -> Just $ SomePaymentSigningKeyGenesisUTxO skey
   _ -> Nothing
 
 -- | A marlowe transaction in an existentially quantified era
@@ -261,12 +257,13 @@ doWithCardanoEra :: forall era m a. (MonadReader (CliEnv era) m) => ((IsCardanoE
 doWithCardanoEra m = askEra >>= \era -> cardanoEraConstraints (toCardanoEra era) m
 
 doWithShelleyBasedEra :: forall era m a. (MonadReader (CliEnv era) m) => ((IsShelleyBasedEra era) => m a) -> m a
-doWithShelleyBasedEra m = askEra >>= \era -> shelleyBasedEraConstraints (babbageEraOnwardsToShelleyBasedEra era) m
+doWithShelleyBasedEra m = askEra >>= \era -> shelleyBasedEraConstraints (convert era) m
 
 toAsType :: BabbageEraOnwards era -> AsType era
 toAsType = \case
   BabbageEraOnwardsBabbage -> AsBabbageEra
   BabbageEraOnwardsConway -> AsConwayEra
+  BabbageEraOnwardsDijkstra -> AsDijkstraEra
 
 toAddressAny' :: AddressInEra era -> AddressAny
 toAddressAny' (AddressInEra _ addr) = toAddressAny addr
@@ -274,7 +271,7 @@ toAddressAny' (AddressInEra _ addr) = toAddressAny addr
 toShelleyAddress :: AddressInEra era -> Maybe (C.Address C.ShelleyAddr)
 toShelleyAddress (AddressInEra _ addr) = case addr of
   C.ByronAddress _ -> Nothing
-  s@CS.ShelleyAddress{} -> Just s
+  s@C.ShelleyAddress{} -> Just s
 
 newtype CliEnv era = CliEnv {era :: BabbageEraOnwards era}
 
@@ -286,17 +283,19 @@ asksEra f = f <$> askEra
 
 instance ToJSON SomeMarloweTransaction where
   toJSON (SomeMarloweTransaction plutusVersion era tx) =
-    shelleyBasedEraConstraints (babbageEraOnwardsToShelleyBasedEra era) $
+    shelleyBasedEraConstraints (convert era) $
       object
         let eraStr :: String
             eraStr = case era of
               BabbageEraOnwardsBabbage -> "babbage"
               BabbageEraOnwardsConway -> "conway"
+              BabbageEraOnwardsDijkstra -> "dijkstra"
             plutusVersionStr :: String
             plutusVersionStr = case plutusVersion of
               C.PlutusScriptV1 -> "PlutusScriptV1"
               C.PlutusScriptV2 -> "PlutusScriptV2"
               C.PlutusScriptV3 -> "PlutusScriptV3"
+              C.PlutusScriptV4 -> "PlutusScriptV4"
          in [ "era" .= eraStr
             , "plutusVersion" .= plutusVersionStr
             , "tx"
@@ -304,6 +303,7 @@ instance ToJSON SomeMarloweTransaction where
                         C.PlutusScriptV1 -> toJSON tx
                         C.PlutusScriptV2 -> toJSON tx
                         C.PlutusScriptV3 -> toJSON tx
+                        C.PlutusScriptV4 -> toJSON tx
                      )
                       :: Value
                    )
@@ -437,13 +437,13 @@ validatorAddress
   :: (C.IsPlutusScriptLanguage lang)
   => PlutusScript lang
   -> BabbageEraOnwards era
-  -> CS.NetworkId
-  -> CS.StakeAddressReference
+  -> C.NetworkId
+  -> C.StakeAddressReference
   -> AddressInEra era
 validatorAddress viScript era network stake = do
   let viHash = C.hashScript (C.PlutusScript C.plutusScriptVersion viScript)
       paymentCredential = C.PaymentCredentialByScript viHash
-  C.makeShelleyAddressInEra (babbageEraOnwardsToShelleyBasedEra era) network paymentCredential stake
+  C.makeShelleyAddressInEra (convert era) network paymentCredential stake
 
 -- | Build validator info.
 validatorInfo

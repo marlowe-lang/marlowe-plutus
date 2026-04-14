@@ -252,7 +252,7 @@ buildCreateConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName 
   pure (datum, assets, roleCurrency)
   where
     nftsMetadata (RolesPolicyId (PolicyId policyId)) = case roles of
-      UnsafeRoleTokensMint (unMint -> minting) -> do
+      RoleTokensMint (unMint -> minting) -> do
         let tokensMetadata = flip NEMap.foldMapWithKey minting \tokenName MintRole{..} ->
               flip foldMap roleMetadata \roleTokenMetadata -> do
                 let tokenName' = unTokenName tokenName
@@ -280,7 +280,7 @@ buildCreateConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName 
     -- Role token distribution constraints
     buildRoleTokenConstraints :: TxConstraintsBuilderM CreateError era 'V1 m (RolesPolicyId, Maybe ThreadTokenAssetId)
     buildRoleTokenConstraints = case roles of
-      UnsafeRoleTokensUsePolicy policyId distribution -> do
+      RoleTokensUsePolicy policyId distribution -> do
         for_ (Map.toList distribution) \(tokenName, dist') ->
           for_ (Map.toList dist') \(destination, quantity) -> do
             let destination' = case destination of
@@ -291,7 +291,7 @@ buildCreateConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName 
           ( RolesPolicyId policyId
           , ThreadTokenAssetId (AssetId policyId threadTokenName) <$ guard (any (Map.member (ToScript OpenRoleScript)) distribution)
           )
-      UnsafeRoleTokensMint mint -> do
+      RoleTokensMint mint -> do
         let WalletContext{availableUtxos} = walletCtx
             txOutAssetsLovelace (CS.TxOutAssets (Assets lovelace _)) = lovelace
             utxoLovelace UTxO{transactionOutput = TransactionOutput{assets}} = txOutAssetsLovelace assets
