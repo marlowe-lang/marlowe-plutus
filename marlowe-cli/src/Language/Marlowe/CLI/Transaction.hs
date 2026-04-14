@@ -74,9 +74,7 @@ import Cardano.Api (
   AddressInEra (..),
   AllegraEraOnwards (..),
   AlonzoEraOnwards (..),
-  AsType (..),
   AssetId (..),
-  AssetName (..),
   BabbageEraOnwards (..),
   BalancedTxBody (..),
   BuildTx,
@@ -142,7 +140,7 @@ import Cardano.Api (
   valueToPolicyAssets,
   WitCtxTxIn,
   Witness (..),
-  babbageEraOnwardsToShelleyBasedEra,
+  convert,
   calculateMinimumUTxO,
   getTxId,
   hashScript,
@@ -160,13 +158,10 @@ import Cardano.Api (
   toScriptInAnyLang,
   txOutValueToValue,
   txMintValueToValue,
-  valueFromList,
-  valueToList,
   valueToLovelace,
   verificationKeyHash,
   writeFileTextEnvelope,
  )
-import Cardano.Api qualified as C
 import Cardano.Api.Ledger qualified as Ledger
 import Cardano.Api (
   LedgerProtocolParameters (..),
@@ -218,6 +213,7 @@ import Data.Time.Units (Second)
 import Data.Traversable (for)
 import Data.Tuple.Extra (uncurry3)
 import GHC.Natural (Natural)
+import GHC.IsList (fromList, toList)
 import Language.Marlowe.CLI.Cardano.Api (
   adjustMinimumUTxO,
   toTxOutDatumInTx,
@@ -277,7 +273,6 @@ import Language.Marlowe.CLI.Types (
   mkNodeTxBuildup,
   queryContextNetworkId,
   toAddressAny',
-  toAsType,
   toPaymentVerificationKey,
   toQueryContext,
   validatorInfo',
@@ -384,7 +379,7 @@ buildClean connection signingKeyFiles lovelace changeAddress range mintValue met
     outputs <-
       sequence
         [ makeTxOut changeAddress C.TxOutDatumNone (value <> lovelaceToValue lovelace) ReferenceScriptNone
-        | value <- valueFromList . pure <$> valueToList (total <> minting)
+        | value <- fromList . pure <$> toList (total <> minting)
         , isNothing $ valueToLovelace value
         ]
 
@@ -550,7 +545,7 @@ buildFaucet' connection value addresses (TxBodyFile bodyFile) timeout =
             $ SimpleScriptWitness scriptLanguageInEra (SScript script)
         changeAddress =
           makeShelleyAddressInEra
-            (babbageEraOnwardsToShelleyBasedEra era)
+            (convert era)
             network
             (PaymentCredentialByScript . hashScript . SimpleScript $ script)
             NoStakeAddress
@@ -683,7 +678,7 @@ buildMintingImpl txBuildupCtx mintingAction metadataProps expires (PrintStats pr
       Mint _ tokenDistribution -> do
         let tokenDistribution' = do
               tokenDistribution <&> \(recipient, minAda, tokens) -> do
-                let toValue (TokenName name) count = valueFromList . pure $ (AssetId policy (C.UnsafeAssetName $ fromBuiltin name), C.Quantity $ toInteger count)
+                let toValue (TokenName name) count = fromList . pure $ (AssetId policy (C.UnsafeAssetName $ fromBuiltin name), C.Quantity $ toInteger count)
                     value = foldMap (uncurry toValue) tokens
                 (recipient, value, minAda)
 
@@ -727,7 +722,7 @@ buildMintingImpl txBuildupCtx mintingAction metadataProps expires (PrintStats pr
           let value = C.txOutValueToValue txOutValue
               toPolicyId C.AdaAssetId = Nothing
               toPolicyId (AssetId p _) = Just p
-              tokensValue = C.valueFromList . filter (\(assetId, _) -> toPolicyId assetId == Just policy) . C.valueToList $ value
+              tokensValue = fromList . filter (\(assetId, _) -> toPolicyId assetId == Just policy) . toList $ value
           if (tokensValue /= mempty || addr == changeAddress) && refScript == C.ReferenceScriptNone
             then do
               let changeValue = value <> negateValue tokensValue
@@ -771,7 +766,7 @@ buildMintingImpl txBuildupCtx mintingAction metadataProps expires (PrintStats pr
     metadata' <-
       case metadataProps of
         Just metadataProps' ->
-          fmap (TxMetadataInEra (babbageEraOnwardsToShelleyBasedEra era))
+          fmap (TxMetadataInEra (convert era))
             . liftCli
             . metadataFromJson TxMetadataJsonNoSchema
             . A.Object
@@ -906,7 +901,7 @@ publisherAddress scriptHash publishingStrategy era network = case publishingStra
   PublishAtAddress addr -> addr
   PublishPermanently stake -> do
     let paymentCredentials = permanentPublisher scriptHash
-    makeShelleyAddressInEra (babbageEraOnwardsToShelleyBasedEra era) network paymentCredentials stake
+    makeShelleyAddressInEra (convert era) network paymentCredentials stake
 
 -- | Information required to publish a script
 type ScriptPublishingInfo lang era =
@@ -1554,13 +1549,13 @@ buildBodyWithContent queryCtx payFromScript payToScript extraInputs inputs outpu
     let txInsCollateral = TxInsCollateral (babbageEraOnwardsToAlonzoEraOnwards era) $ maybeToList collateral
         txReturnCollateral = TxReturnCollateralNone
         txTotalCollateral = TxTotalCollateralNone
-        txFee = TxFeeExplicit (babbageEraOnwardsToShelleyBasedEra era) 0
+        txFee = TxFeeExplicit (convert era) 0
         txValidityLowerBound =
           maybe
             TxValidityNoLowerBound
             (TxValidityLowerBound (babbageEraOnwardsToAllegraEraOnwards era) . fst)
             slotRange
-        txValidityUpperBound = TxValidityUpperBound (babbageEraOnwardsToShelleyBasedEra era) $ snd <$> slotRange
+        txValidityUpperBound = TxValidityUpperBound (convert era) $ snd <$> slotRange
         txMetadata = metadata
         txAuxScripts = TxAuxScriptsNone
         txExtraKeyWits = TxExtraKeyWitnesses (babbageEraOnwardsToAlonzoEraOnwards era) extraSigners
@@ -1609,7 +1604,7 @@ buildBodyWithContent queryCtx payFromScript payToScript extraInputs inputs outpu
               buildTxBodyContent = TxBodyContent{..}{txOuts = mkChangeTxOut changeValue : txOuts}
               trial =
                 makeTransactionBodyAutoBalance
-                  (babbageEraOnwardsToShelleyBasedEra era)
+                  (convert era)
                   start
                   (C.toLedgerEpochInfo history)
                   protocol
@@ -1640,7 +1635,7 @@ buildBodyWithContent queryCtx payFromScript payToScript extraInputs inputs outpu
       $ C.babbageEraOnwardsConstraints era do
         hPutStrLn stderr ""
         hPutStrLn stderr $ "Fee: " <> show lovelace
-        let size = BS.length $ C.shelleyBasedEraConstraints (babbageEraOnwardsToShelleyBasedEra era) $ serialiseToCBOR txBody
+        let size = BS.length $ C.shelleyBasedEraConstraints (convert era) $ serialiseToCBOR txBody
             maxSize = fromIntegral $ protocol ^. lppPParamsL . Ledger.ppMaxTxSizeL
             fractionSize = 100 * size `div` maxSize
         hPutStrLn stderr $ "Size: " <> show size <> " / " <> show maxSize <> " = " <> show fractionSize <> "%"
@@ -1893,7 +1888,7 @@ filterUtxos = do
     LovelaceOnly amountCheck -> do
       filterByValue \v -> let l = selectLovelace v in lovelaceToValue l == v && amountCheck l
     AssetOnly asset -> do
-      filterByValue \v -> length (valueToList v) == 2 && selectAsset v asset >= 1
+      filterByValue \v -> length (toList v) == 2 && selectAsset v asset >= 1
     PolicyIdOnly policyId -> do
       filterByValue \v -> do
         let C.ValueNestedRep v' = C.valueToNestedRep v
@@ -2042,7 +2037,7 @@ findMinUtxo protocol (address, datum, value) =
                 datum
             )
             ReferenceScriptNone
-    pure $ calculateMinimumUTxO (babbageEraOnwardsToShelleyBasedEra era) (unLedgerProtocolParameters protocol) trial
+    pure $ calculateMinimumUTxO (convert era) (unLedgerProtocolParameters protocol) trial
 
 -- | Ensure that the minimum UTxO requirement is satisfied for outputs.
 ensureMinUtxo
@@ -2064,7 +2059,7 @@ ensureMinUtxo protocol (address, datum, value) =
             (mkTxOutValue era value')
             datum
             ReferenceScriptNone
-        value'' = calculateMinimumUTxO (babbageEraOnwardsToShelleyBasedEra era) (unLedgerProtocolParameters protocol) trial
+        value'' = calculateMinimumUTxO (convert era) (unLedgerProtocolParameters protocol) trial
     pure
       ( address
       , datum
@@ -2156,7 +2151,7 @@ selectCoins queryCtx inputs outputs pay changeAddress CoinSelectionStrategy{..} 
           let delta :: [Quantity]
               delta =
                 fmap snd
-                  . valueToList
+                  . toList
                   . deleteLovelace
                   $ candidate <> negateValue required
               excess :: Int
@@ -2212,7 +2207,7 @@ selectCoins queryCtx inputs outputs pay changeAddress CoinSelectionStrategy{..} 
               candidates' = delete next candidates
               -- Ignore negative quantities.
               filterPositive :: Value -> Value
-              filterPositive = valueFromList . filter ((> 0) . snd) . valueToList
+              filterPositive = fromList . filter ((> 0) . snd) . toList
               -- Compute the remaining requirement.
               required' :: Value
               required' = filterPositive $ required <> negateValue (txOutToValue $ snd next)

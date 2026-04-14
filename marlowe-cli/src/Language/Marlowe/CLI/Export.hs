@@ -69,7 +69,7 @@ import Cardano.Api (
   SerialiseAsRawBytes (..),
   StakeAddressReference (..),
   ToCardanoEra (toCardanoEra),
-  babbageEraOnwardsToShelleyBasedEra,
+  convert,
   cardanoEraConstraints,
   hashScript,
   hashScriptDataBytes,
@@ -292,7 +292,7 @@ buildAddress
 buildAddress script era network stake =
   let viScript = PlutusScript CS.plutusScriptVersion script
    in makeShelleyAddressInEra
-        (babbageEraOnwardsToShelleyBasedEra era)
+        (convert era)
         network
         (PaymentCredentialByScript $ hashScript viScript)
         stake

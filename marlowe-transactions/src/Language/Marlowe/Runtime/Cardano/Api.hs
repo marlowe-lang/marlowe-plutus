@@ -37,8 +37,8 @@ babbageEraOnwardsToShelleyBasedEra = \case
 toCardanoScriptHash :: ScriptHash -> Maybe C.ScriptHash
 toCardanoScriptHash = hush . C.deserialiseFromRawBytes C.AsScriptHash . unScriptHash
 
-fromCardanoScriptHash :: C.ScriptHash -> ScriptHash
-fromCardanoScriptHash = ScriptHash . C.serialiseToRawBytes
+-- fromCardanoScriptHash :: C.ScriptHash -> ScriptHash
+-- fromCardanoScriptHash = ScriptHash . C.serialiseToRawBytes
 
 toCardanoPlutusScript :: forall lang. (C.HasTypeProxy lang) => PlutusScript -> Maybe (C.PlutusScript lang)
 toCardanoPlutusScript = hush . C.deserialiseFromRawBytes (C.proxyToAsType (Proxy :: Proxy (C.PlutusScript lang))) . unPlutusScript
@@ -275,7 +275,7 @@ fromCardanoTxIx :: C.TxIx -> TxIx
 fromCardanoTxIx (C.TxIx txIx) = TxIx $ fromIntegral txIx
 
 toCardanoSlotNo :: SlotNo -> C.SlotNo
-toCardanoSlotNo = id
+toCardanoSlotNo slotNo = C.SlotNo slotNo.unSlotNo
 
 fromCardanoSlotNo :: C.SlotNo -> SlotNo
-fromCardanoSlotNo = id
+fromCardanoSlotNo (C.SlotNo slotNo) = SlotNo slotNo

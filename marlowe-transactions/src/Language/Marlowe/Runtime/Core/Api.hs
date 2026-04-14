@@ -29,7 +29,7 @@ import Data.Binary (Binary (..), Get, Put, getWord8, putWord8)
 import Data.Binary.Get (getWord32be)
 import Data.Binary.Put (putWord32be)
 import Data.ByteString (ByteString)
-import Data.ByteString.Base16 (decodeBase16, encodeBase16)
+import Data.ByteString.Base16 (decodeBase16Untyped, encodeBase16)
 import Data.Either (fromRight)
 import Data.Kind (Type)
 import qualified Data.List.NonEmpty as NE
@@ -43,9 +43,9 @@ import Data.Text.Encoding (encodeUtf8)
 import Data.Time (UTCTime)
 import Data.Type.Equality (TestEquality (..), type (:~:) (Refl))
 import GHC.Generics (Generic, to)
-import qualified Language.Marlowe.Analysis.Safety.Types as V1
-import qualified Language.Marlowe.Core.V1.Semantics as V1
-import qualified Language.Marlowe.Core.V1.Semantics.Types as V1
+import qualified Marlowe.Plutus.Analysis.Safety.Types as V1
+import qualified Marlowe.Plutus.Semantics as V1
+import qualified Marlowe.Plutus.Semantics.Types as V1
 import Language.Marlowe.Runtime.ChainSync.Api (
   BlockHeader,
   TokenName (..),
@@ -56,11 +56,14 @@ import Language.Marlowe.Runtime.ChainSync.Api (
   unPolicyId,
  )
 import qualified Language.Marlowe.Runtime.ChainSync.Api as Chain
-import Network.Protocol.Codec.Spec (GVariations (gVariations), Variations (..), varyAp)
+import Data.Variations (GVariations (gVariations), Variations (..), varyAp)
 import Numeric.Natural (Natural)
 import qualified PlutusLedgerApi.V1 as Plutus
-import qualified PlutusLedgerApi.V1.Value as Plutus
 import qualified PlutusLedgerApi.V2 as PV2
+import Data.Base16.Types (extractBase16)
+import qualified Marlowe.Plutus.AssocMap as MAM
+import qualified Cardano.Api as C
+import Data.Data (Proxy(..))
 
 -- | The ID of a contract is the TxId and TxIx of the UTxO that first created
 -- the contract.
@@ -503,16 +506,16 @@ payoutDatumToJSON = \case
   MarloweV1 -> \case
     Chain.AssetId policyId tokenName ->
       toJSON
-        ( String . encodeBase16 . unPolicyId $ policyId
-        , String . encodeBase16 . unTokenName $ tokenName
+        ( String . extractBase16 . encodeBase16 . unPolicyId $ policyId
+        , String . extractBase16 . encodeBase16 . unTokenName $ tokenName
         )
 
 payoutDatumFromJSON :: MarloweVersion v -> Value -> Parser (PayoutDatum v)
 payoutDatumFromJSON = \case
   MarloweV1 -> \json -> do
     (p, t) <- parseJSON json
-    p' <- either (parseFail . T.unpack) (pure . Chain.PolicyId) . decodeBase16 . encodeUtf8 $ t
-    t' <- either (parseFail . T.unpack) (pure . Chain.TokenName) . decodeBase16 . encodeUtf8 $ p
+    p' <- either (parseFail . T.unpack) (pure . Chain.PolicyId) . decodeBase16Untyped . encodeUtf8 $ t
+    t' <- either (parseFail . T.unpack) (pure . Chain.TokenName) . decodeBase16Untyped . encodeUtf8 $ p
     pure $ Chain.AssetId p' t'
 
 datumToJSON :: MarloweVersion v -> Datum v -> Value
@@ -636,9 +639,22 @@ instance Binary PV2.BuiltinByteString where
 instance Variations PV2.BuiltinByteString where
   variations = PV2.toBuiltin <$> variations @ByteString
 
+instance Binary PV2.BuiltinData where
+  put = put . C.serialiseToCBOR . C.unsafeHashableScriptData . C.fromPlutusData . PV2.builtinDataToData . PV2.toBuiltinData
+  get = do
+    bytes <- get @ByteString
+    case C.deserialiseFromCBOR (C.proxyToAsType (Proxy @C.HashableScriptData)) bytes of
+      Left err -> fail $ "Failed to decode BuiltinData: " <> show err
+      Right hashableScriptData -> pure $
+        PV2.dataToBuiltinData . C.toPlutusData . C.getScriptData $ hashableScriptData
+
 instance (Binary k, Binary v) => Binary (PV2.Map k v)
 
+instance (Binary k, Binary v) => Binary (MAM.Map k v)
+
 instance (Variations k, Variations v) => Variations (PV2.Map k v)
+
+instance (Variations k, Variations v) => Variations (MAM.Map k v)
 
 -- The following require manual instances to avoid infinite recursion.
 instance Variations V1.Contract where
