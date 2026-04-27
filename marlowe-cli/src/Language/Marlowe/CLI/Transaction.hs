@@ -10,6 +10,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns -Wno-deprecations #-}
 
 -----------------------------------------------------------------------------
 
@@ -953,7 +954,7 @@ buildPublishingImpl
   -> PublishingStrategy era
   -> CoinSelectionStrategy
   -> PrintStats
-  -> m ([TxBody era], MarloweScriptsRefs C.PlutusScriptV2 era)
+  -> m ([TxBody era], MarloweScriptsRefs C.PlutusScriptV3 era)
 buildPublishingImpl buildupCtx signingKey expires changeAddress publishingStrategy coinSelectionStrategy (PrintStats printStats) = do
   let queryCtx = toQueryContext buildupCtx
   pm <- buildScriptPublishingInfo queryCtx marloweValidator publishingStrategy
@@ -981,7 +982,7 @@ buildPublishingImpl buildupCtx signingKey expires changeAddress publishingStrate
         (txBodyContent, txBody) <-
           buildBodyWithContent
             queryCtx
-            ([] :: [PayFromScript C.PlutusScriptV2])
+            ([] :: [PayFromScript C.PlutusScriptV3])
             Nothing
             []
             inputs
@@ -1145,7 +1146,7 @@ publishImpl
   -> PublishingStrategy era
   -> CoinSelectionStrategy
   -> PrintStats
-  -> m ([TxBody era], MarloweScriptsRefs C.PlutusScriptV2 era)
+  -> m ([TxBody era], MarloweScriptsRefs C.PlutusScriptV3 era)
 publishImpl txBuildupCtx signingKey expires changeAddress publishingStrategy coinSelectionStrategy printStats = do
   (txBodies, _) <-
     buildPublishingImpl @era
@@ -1177,7 +1178,7 @@ findScriptRef
   -> ScriptHash
   -> PublishingStrategy era
   -> PrintStats
-  -> m (Maybe (AnUTxO era, ValidatorInfo C.PlutusScriptV2 era))
+  -> m (Maybe (AnUTxO era, ValidatorInfo C.PlutusScriptV3 era))
 findScriptRef queryCtx scriptHash publishingStrategy (PrintStats printStats) = do
   era <- askEra
   let networkId = queryContextNetworkId queryCtx
@@ -1208,7 +1209,7 @@ findMarloweScriptsRefs
   -- ^ Either already selected UTxOs or connection info to select UTxOs.
   -> PublishingStrategy era
   -> PrintStats
-  -> m (Maybe (MarloweScriptsRefs C.PlutusScriptV2 era))
+  -> m (Maybe (MarloweScriptsRefs C.PlutusScriptV3 era))
 findMarloweScriptsRefs queryCtx publishingStrategy printStats = do
   let marloweHash = hashScript $ toScript marloweValidator
       payoutHash = hashScript $ toScript payoutValidator
@@ -1299,7 +1300,7 @@ buildContinuing
 buildContinuing connection scriptAddress validatorFile redeemerFile inputDatumFile signingKeyFiles txIn outputDatumFile outputValue inputs outputs collateral changeAddress minimumSlot maximumSlot metadataFile (TxBodyFile bodyFile) timeout printStats invalid =
   do
     metadata <- readMaybeMetadata metadataFile
-    validator <- liftCliIO ((readFileTextEnvelope (File validatorFile)) :: IO (Either (C.FileError C.TextEnvelopeError) (C.PlutusScript C.PlutusScriptV2)))
+    validator <- liftCliIO ((readFileTextEnvelope (File validatorFile)) :: IO (Either (C.FileError C.TextEnvelopeError) (C.PlutusScript C.PlutusScriptV3)))
     redeemer <- Redeemer <$> decodeFileBuiltinData redeemerFile
     inputDatum <- Datum <$> decodeFileBuiltinData inputDatumFile
     outputDatum <- Datum <$> decodeFileBuiltinData outputDatumFile
@@ -1371,7 +1372,7 @@ buildOutgoing
 buildOutgoing connection validatorFile redeemerFile inputDatumFile signingKeyFiles txIn inputs outputs collateral changeAddress minimumSlot maximumSlot metadataFile (TxBodyFile bodyFile) timeout printStats invalid =
   do
     metadata <- readMaybeMetadata metadataFile
-    validator <- liftCliIO ((readFileTextEnvelope (File validatorFile)) :: IO (Either (C.FileError C.TextEnvelopeError) (C.PlutusScript C.PlutusScriptV2)))
+    validator <- liftCliIO ((readFileTextEnvelope (File validatorFile)) :: IO (Either (C.FileError C.TextEnvelopeError) (C.PlutusScript C.PlutusScriptV3)))
     redeemer <- Redeemer <$> decodeFileBuiltinData redeemerFile
     inputDatum <- Datum <$> decodeFileBuiltinData inputDatumFile
     signingKeys <- mapM readSigningKey signingKeyFiles
@@ -1900,7 +1901,7 @@ filterUtxos = do
         t@(_, TxOut _ _ _ (ReferenceScript _ script)) ->
           if hashScriptInAnyLang script == scriptHash
             then case (pv, script) of
-              (PlutusScriptV2, C.ScriptInAnyLang _ (C.PlutusScript PlutusScriptV2 script')) -> Just (AnUTxO t, script')
+              (PlutusScriptV3, C.ScriptInAnyLang _ (C.PlutusScript PlutusScriptV3 script')) -> Just (AnUTxO t, script')
               -- FIXME: Improve error reporting
               _ -> Nothing
             else Nothing

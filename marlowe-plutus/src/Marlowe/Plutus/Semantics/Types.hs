@@ -136,9 +136,7 @@ import Data.String (String, IsString)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding as Text (decodeUtf8, decodeUtf8', encodeUtf8)
--- import qualified Deriving.Aeson as DAeson
 import qualified Marlowe.Plutus.Semantics.Types.Address as Address
--- import Marlowe.Plutus.Pretty (Pretty (..))
 import qualified PlutusLedgerApi.V1.Value as Val
 import PlutusLedgerApi.V2 (CurrencySymbol (CurrencySymbol, unCurrencySymbol), POSIXTime (..), TokenName (unTokenName))
 import qualified PlutusLedgerApi.V2 as Ledger (Address (..))
@@ -147,7 +145,6 @@ import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringHex)
 import PlutusTx.Lift (makeLift)
 import qualified PlutusTx.List as List
 import PlutusTx (makeIsDataIndexed)
--- import Text.PrettyPrint.Leijen (parens, text)
 import qualified GHC.Generics as H (Generic)
 import qualified Prelude as H
 

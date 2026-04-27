@@ -9,12 +9,12 @@ module Language.Marlowe.Runtime.History.Api where
 import Cardano.Api (EraHistory (EraHistory))
 import Control.Error (listToMaybe, note, runMaybeT)
 import Control.Error.Util (hoistMaybe)
-import Control.Monad (guard, join, when)
+import Control.Monad (guard, join, unless)
 import Control.Monad.Trans.Class (lift)
 import Data.Aeson (ToJSON, object, toJSON, (.=))
 import Data.Bifunctor (first)
 import Data.Binary (Binary, get, put)
-import Data.Foldable (find, for_)
+import Data.Foldable (find)
 import qualified Data.List.NonEmpty as NE
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -245,14 +245,14 @@ instance ToJSON (ContractStep 'V1)
 instance Variations (ContractStep 'V1)
 
 extractCreation :: ContractId -> Chain.Transaction -> Either ExtractCreationError SomeCreateStep
-extractCreation contractId tx@Chain.Transaction{inputs, metadata = txMetadata} = do
+extractCreation contractId tx@Chain.Transaction{metadata = txMetadata} = do
   Chain.TransactionOutput{assets, address = scriptAddress, datum = mdatum} <-
     getOutput (txIx $ unContractId contractId) tx
   marloweScriptHash <- getScriptHash scriptAddress
   (SomeMarloweVersion version, MarloweScripts{..}) <- note InvalidScriptHash $ getMarloweVersion marloweScriptHash
   let payoutValidatorHash = payoutScript
-  for_ inputs \Chain.TransactionInput{..} ->
-    when (isScriptAddress marloweScriptHash address) $ Left NotCreationTransaction
+  -- for_ inputs \Chain.TransactionInput{..} ->
+  --   when (isScriptAddress marloweScriptHash address) $ Left NotCreationTransaction
   txDatum <- note NoCreateDatum mdatum
   datum <- note InvalidCreateDatum $ fromChainDatum version txDatum
   let createOutput = TransactionScriptOutput scriptAddress assets (unContractId contractId) datum
@@ -283,18 +283,21 @@ extractMarloweTransaction
   -> ContractId
   -> Chain.Address
   -> Chain.ScriptHash
-  -> TxOutRef
-  -> Chain.BlockHeader
+  -> (Chain.TxOutRef, Maybe Chain.Redeemer)
+  -> BlockHeader
   -> Chain.Transaction
   -> Either ExtractMarloweTransactionError (Transaction v)
-extractMarloweTransaction version systemStart eraHistory contractId scriptAddress payoutValidatorHash consumedUTxO blockHeader Chain.Transaction{..} = do
-  let transactionId = txId
-  Chain.TransactionInput{redeemer = mRedeemer} <-
-    note TxInNotFound $ find (consumesUTxO consumedUTxO) inputs
-  rawRedeemer <- note NoRedeemer mRedeemer
+extractMarloweTransaction version systemStart eraHistory contractId scriptAddress payoutValidatorHash (consumedTxOutRef, possibleRedeemer) blockHeader Chain.Transaction{..} = do
+  let
+    transactionId = txId
+  unless (elem consumedTxOutRef . Map.keys $ inputs) $
+    Left TxInNotFound
+
   marloweInputs <- case version of
     MarloweV1 -> do
-      redeemer <- note InvalidRedeemer $ Chain.fromRedeemer rawRedeemer
+      redeemer <- do
+        rawRedeemer <- note NoRedeemer possibleRedeemer
+        note InvalidRedeemer $ Chain.fromRedeemer rawRedeemer
       for redeemer \case
         V1.Input content -> pure $ V1.NormalInput content
         V1.MerkleizedTxInput content continuationHash ->
@@ -357,8 +360,8 @@ isToScriptHash toScriptHash Chain.TransactionOutput{..} = case Chain.paymentCred
 isToAddress :: Chain.Address -> Chain.TransactionOutput -> Bool
 isToAddress toAddress Chain.TransactionOutput{..} = address == toAddress
 
-consumesUTxO :: TxOutRef -> Chain.TransactionInput -> Bool
-consumesUTxO TxOutRef{..} Chain.TransactionInput{txId = txInId, txIx = txInIx} =
+consumesUTxO :: TxOutRef -> Chain.TxOutRef -> Bool
+consumesUTxO TxOutRef{..} Chain.TxOutRef{txId = txInId, txIx = txInIx} =
   txId == txInId && txIx == txInIx
 
 createStepToUnspentContractOutput :: SomeCreateStep -> UnspentContractOutput

@@ -12,6 +12,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-deprecations #-}
 
 -- | Transaction-related commands in the Marlowe CLI tool.
 module Language.Marlowe.CLI.Command.Transaction (
@@ -38,7 +39,8 @@ import Cardano.Api (
   babbageEraOnwardsToShelleyBasedEra,
   shelleyBasedEraConstraints,
  )
-import Control.Monad.Except (MonadError, MonadIO, liftIO)
+import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Maybe (fromMaybe)
 import Language.Marlowe.CLI.Command.Parse (
   parseAddress,

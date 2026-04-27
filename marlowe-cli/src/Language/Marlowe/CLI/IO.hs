@@ -436,7 +436,7 @@ getPV2CostModelParams
 getPV2CostModelParams queryCtx = do
   era <- askEra
   protocolParameters <- getLedgerProtocolParams queryCtx
-  let pv2 = C.AnyPlutusScriptVersion C.PlutusScriptV2
+  let pv2 = C.AnyPlutusScriptVersion C.PlutusScriptV3
   C.CostModel costModel <- babbageEraOnwardsConstraints era do
     let costModels = fromAlonzoCostModels $ protocolParameters ^. lppPParamsL . ppCostModelsL
     liftCli $ note ("Missing PV2 cost model" :: String) $ Map.lookup pv2 costModels

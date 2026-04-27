@@ -11,6 +11,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS_GHC -Wno-deprecations #-}
 
 -- | Commands for the Marlowe CLI tool.
 module Language.Marlowe.CLI.Command (
@@ -24,29 +25,28 @@ module Language.Marlowe.CLI.Command (
 ) where
 
 import Cardano.Api (
-  BabbageEra,
   BabbageEraOnwards (..),
-  ConwayEra,
   IsShelleyBasedEra,
   NetworkId,
   babbageEraOnwardsToShelleyBasedEra,
   shelleyBasedEraConstraints,
  )
-import Control.Monad.Except (MonadError, MonadIO, liftIO, runExceptT)
+import Control.Monad.Except (MonadError, runExceptT)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (Foldable (fold), asum)
 import Language.Marlowe.CLI.Command.Contract (ContractCommand, parseContractCommand, runContractCommand)
 import Language.Marlowe.CLI.Command.Format (FormatCommand, parseFormatCommand, runFormatCommand)
 import Language.Marlowe.CLI.Command.Input (InputCommand, parseInputCommand, runInputCommand)
 import Language.Marlowe.CLI.Command.Role (RoleCommand, parseRoleCommand, runRoleCommand)
 import Language.Marlowe.CLI.Command.Run (RunCommand, parseRunCommand, runRunCommand)
-import Language.Marlowe.CLI.Command.Template (
-  OutputFiles (..),
-  TemplateCommand,
-  parseTemplateCommand,
-  parseTemplateCommandOutputFiles,
-  runTemplateCommand,
- )
-import Language.Marlowe.CLI.Command.Test (TestCommand, mkParseTestCommand, runTestCommand)
+-- import Language.Marlowe.CLI.Command.Template (
+--   OutputFiles (..),
+--   TemplateCommand,
+--   parseTemplateCommand,
+--   parseTemplateCommandOutputFiles,
+--   runTemplateCommand,
+-- )
+-- import Language.Marlowe.CLI.Command.Test (TestCommand, mkParseTestCommand, runTestCommand)
 import Language.Marlowe.CLI.Command.Transaction (TransactionCommand, parseTransactionCommand, runTransactionCommand)
 import Language.Marlowe.CLI.Command.Util (UtilCommand, parseUtilCommand, runUtilCommand)
 import Language.Marlowe.CLI.IO (getNetworkMagic, getNodeSocketPath)
@@ -68,14 +68,10 @@ data Command era
     InputCommand InputCommand
   | -- | Role-related commands.
     RoleCommand RoleCommand
-  | -- | Template-related commands.
-    TemplateCommand TemplateCommand OutputFiles
   | -- | Transaction-related commands.
     TransactionCommand (TransactionCommand era)
   | -- | Miscellaneous commands.
     UtilCommand (UtilCommand era)
-  | -- | Test-related commands.
-    TestCommand (TestCommand era)
   | -- | Format-related commands.
     FormatCommand FormatCommand
 
@@ -118,10 +114,8 @@ runCommand
 runCommand era cmd = flip runReaderT CliEnv{..} case cmd of
   RunCommand command -> runRunCommand command
   ContractCommand command -> runContractCommand command
-  TestCommand command -> runTestCommand command
   InputCommand command -> runInputCommand command
   RoleCommand command -> runRoleCommand command
-  TemplateCommand command outputFiles -> runTemplateCommand command outputFiles
   TransactionCommand command -> runTransactionCommand era command
   UtilCommand command -> runUtilCommand command
   FormatCommand command -> runFormatCommand command
@@ -165,25 +159,20 @@ mkCommandParser networkId socketPath version = do
         , pure (SomeEra BabbageEraOnwardsBabbage)
         ]
     mkSomeCommandParser :: IO (O.Parser SomeCommand)
-    mkSomeCommandParser = do
-      let parseTestCommand :: BabbageEraOnwards era -> IO (O.Parser (TestCommand era))
-          parseTestCommand era = mkParseTestCommand era networkId socketPath
-      -- FIXME: Is is possible to avoid this duplication?
-      -- It seems to be hard to mix `BindP` and `IO`.
-      testCommandParsers <- (,) <$> parseTestCommand BabbageEraOnwardsBabbage <*> parseTestCommand BabbageEraOnwardsConway
-      pure $ O.BindP eraOption (mkSomeCommandParser' testCommandParsers)
+    mkSomeCommandParser = pure $ O.BindP eraOption mkSomeCommandParser'
 
     mkSomeCommandParser'
-      :: (O.Parser (TestCommand BabbageEra), O.Parser (TestCommand ConwayEra))
-      -> SomeEra
+      :: SomeEra
       -> O.Parser SomeCommand
-    mkSomeCommandParser' (testCommandParser, _) (SomeEra BabbageEraOnwardsBabbage) = do
-      SomeCommand BabbageEraOnwardsBabbage <$> commandParser BabbageEraOnwardsBabbage testCommandParser
-    mkSomeCommandParser' (_, testCommandParser) (SomeEra BabbageEraOnwardsConway) = do
-      SomeCommand BabbageEraOnwardsConway <$> commandParser BabbageEraOnwardsConway testCommandParser
+    mkSomeCommandParser' (SomeEra BabbageEraOnwardsBabbage) = do
+      SomeCommand BabbageEraOnwardsBabbage <$> commandParser BabbageEraOnwardsBabbage
+    mkSomeCommandParser' (SomeEra BabbageEraOnwardsConway) = do
+      SomeCommand BabbageEraOnwardsConway <$> commandParser BabbageEraOnwardsConway
+    mkSomeCommandParser' (SomeEra BabbageEraOnwardsDijkstra) = do
+      SomeCommand BabbageEraOnwardsDijkstra <$> commandParser BabbageEraOnwardsDijkstra
 
-    commandParser :: BabbageEraOnwards era -> O.Parser (TestCommand era) -> O.Parser (Command era)
-    commandParser era testCommandParser =
+    commandParser :: BabbageEraOnwards era -> O.Parser (Command era)
+    commandParser era =
       asum
         [ O.hsubparser $
             fold
@@ -191,12 +180,6 @@ mkCommandParser networkId socketPath version = do
               , O.command "run" $
                   O.info (RunCommand <$> parseRunCommand era networkId socketPath) $
                     O.progDesc "Run a contract."
-              , O.command "template" $
-                  O.info (TemplateCommand <$> parseTemplateCommand <*> parseTemplateCommandOutputFiles) $
-                    O.progDesc "Create a contract from a template."
-              , O.command "test" $
-                  O.info (TestCommand <$> testCommandParser) $
-                    O.progDesc "Run test scenario described using yaml based DSL."
               , O.command "format" $
                   O.info (FormatCommand <$> parseFormatCommand) $
                     O.progDesc "Convert between formats and pretty-print Marlowe contracts."

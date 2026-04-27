@@ -15,6 +15,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -Wno-deprecations #-}
 
 -- | Analyze Marlowe contracts.
 module Language.Marlowe.CLI.Analyze (

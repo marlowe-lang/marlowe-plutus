@@ -116,7 +116,6 @@ import Data.ByteString.Lazy.Char8 qualified as LBS8 (unpack)
 import Data.Text qualified as T (unpack)
 
 import Cardano.Api qualified as C
-import Cardano.Api qualified as CS
 import Codec.Serialise (serialise)
 import Control.Monad.Reader (MonadReader)
 import Data.ByteString.Short qualified as SBS
@@ -144,16 +143,20 @@ buildMarlowe
   -- ^ The contract's state.
   -> [Input]
   -- ^ The contract's input,
-  -> m (Either CliError (MarloweInfo CS.PlutusScriptV2 era))
+  -> m (Either CliError (MarloweInfo C.PlutusScriptV3 era))
   -- ^ The contract and transaction information, or an error message.
 buildMarlowe marloweParams era protocolVersion costModel network stake contract state inputs =
   do
-    pure do
-      miValidatorInfo <-
-        validatorInfo' marloweValidator Nothing era protocolVersion costModel network stake
-      let miDatumInfo = buildMarloweDatum marloweParams contract state
-          miRedeemerInfo = buildRedeemer inputs
-      pure MarloweInfo{..}
+    liftIO $ print ("Building marlowe" :: String)
+    let
+      vi = do
+        miValidatorInfo <-
+          validatorInfo' marloweValidator Nothing era protocolVersion costModel network stake
+        let miDatumInfo = buildMarloweDatum marloweParams contract state
+            miRedeemerInfo = buildRedeemer inputs
+        pure MarloweInfo{..}
+    liftIO $ print vi
+    pure vi
 
 -- | Export to a file the comprehensive information about a Marlowe contract and transaction.
 exportMarlowe
@@ -209,7 +212,7 @@ exportMarlowe marloweParams protocolVersion costModel network stake contractFile
 -- | Print information about a Marlowe contract and transaction.
 printMarlowe
   :: forall m lang era
-   . (MonadError CliError m, MonadIO m, CS.IsPlutusScriptLanguage lang)
+   . (MonadError CliError m, MonadIO m, C.IsPlutusScriptLanguage lang)
   => MarloweParams
   -- ^ The Marlowe contract parameters.
   -> BabbageEraOnwards era
@@ -247,7 +250,7 @@ printMarlowe marloweParams era protocolVersion costModel network stake contract 
         putStrLn $
           "Validator: "
             <> LBS8.unpack
-              (withPlutusScriptVersion (CS.plutusScriptVersion @lang) $ encode $ C.serialiseToTextEnvelope Nothing viScript)
+              (withPlutusScriptVersion (C.plutusScriptVersion @lang) $ encode $ C.serialiseToTextEnvelope Nothing viScript)
         putStrLn ""
         putStrLn $
           "Validator address: "
@@ -279,8 +282,8 @@ printMarlowe marloweParams era protocolVersion costModel network stake contract 
 -- | Compute the address of a validator.
 buildAddress
   :: forall lang era
-   . (CS.IsPlutusScriptLanguage lang)
-  => CS.PlutusScript lang
+   . (C.IsPlutusScriptLanguage lang)
+  => C.PlutusScript lang
   -- ^ The validator.
   -> BabbageEraOnwards era
   -> NetworkId
@@ -290,7 +293,7 @@ buildAddress
   -> AddressInEra era
   -- ^ The script address.
 buildAddress script era network stake =
-  let viScript = PlutusScript CS.plutusScriptVersion script
+  let viScript = PlutusScript C.plutusScriptVersion script
    in makeShelleyAddressInEra
         (convert era)
         network
@@ -314,8 +317,8 @@ buildMarloweAddress era network stake = do
 -- | Print the address of a validator.
 exportAddress
   :: forall era lang m
-   . (MonadIO m, MonadReader (CliEnv era) m, CS.IsPlutusScriptLanguage lang)
-  => CS.PlutusScript lang
+   . (MonadIO m, MonadReader (CliEnv era) m, C.IsPlutusScriptLanguage lang)
+  => C.PlutusScript lang
   -- ^ The validator.
   -> NetworkId
   -- ^ The network ID.
@@ -345,9 +348,9 @@ buildValidatorInfo
   :: (MonadReader (CliEnv era) m)
   => (MonadIO m)
   => (MonadError CliError m)
-  => (CS.IsPlutusScriptLanguage lang)
+  => (C.IsPlutusScriptLanguage lang)
   => QueryExecutionContext era
-  -> CS.PlutusScript lang
+  -> C.PlutusScript lang
   -> Maybe C.TxIn
   -> StakeAddressReference
   -> m (ValidatorInfo lang era)
@@ -360,9 +363,9 @@ buildValidatorInfo queryCtx plutusScript txIn stake = do
 -- | Export to a file the validator information.
 exportValidatorImpl
   :: forall lang era m
-   . (MonadError CliError m, MonadReader (CliEnv era) m, CS.IsPlutusScriptLanguage lang)
+   . (MonadError CliError m, MonadReader (CliEnv era) m, C.IsPlutusScriptLanguage lang)
   => (MonadIO m)
-  => CS.PlutusScript lang
+  => C.PlutusScript lang
   -> MajorProtocolVersion
   -> [Integer]
   -- ^ The cost model parameters.
@@ -414,7 +417,7 @@ marloweValidatorInfo
   -- ^ The network ID.
   -> StakeAddressReference
   -- ^ The stake address.
-  -> m (Either CliError (ValidatorInfo CS.PlutusScriptV2 era))
+  -> m (Either CliError (ValidatorInfo C.PlutusScriptV3 era))
   -- ^ The validator information, or an error message.
 marloweValidatorInfo script prot costModel network stake = do
   pure $ validatorInfo' marloweValidator Nothing script prot costModel network stake
@@ -627,7 +630,7 @@ payoutValidatorInfo
   -- ^ The network ID.
   -> StakeAddressReference
   -- ^ The stake address.
-  -> m (Either CliError (ValidatorInfo CS.PlutusScriptV2 era))
+  -> m (Either CliError (ValidatorInfo C.PlutusScriptV3 era))
   -- ^ The validator information, or an error message.
 payoutValidatorInfo script prot cost network stake = do
   pure $ validatorInfo' payoutValidator Nothing script prot cost network stake
@@ -644,7 +647,7 @@ openRoleValidatorInfo
   -- ^ The network ID.
   -> StakeAddressReference
   -- ^ The stake address.
-  -> m (Either CliError (ValidatorInfo CS.PlutusScriptV2 era))
+  -> m (Either CliError (ValidatorInfo C.PlutusScriptV3 era))
   -- ^ The validator information, or an error message.
 openRoleValidatorInfo script prot cost network stake = do
   pure $ validatorInfo' openRolesValidator Nothing script prot cost network stake

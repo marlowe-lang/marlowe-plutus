@@ -83,3 +83,9 @@ instance (ArbitraryMarloweVersion v) => Arbitrary (TransactionScriptOutput v) wh
       [ [TransactionScriptOutput address assets' utxo datum | assets' <- shrink assets]
       , [TransactionScriptOutput address assets utxo datum' | datum' <- shrink datum]
       ]
+
+instance Arbitrary SomeTransactionScriptOutput where
+  arbitrary = SomeTransactionScriptOutput MarloweV1 <$> arbitrary
+  shrink (SomeTransactionScriptOutput MarloweV1 output) =
+    SomeTransactionScriptOutput MarloweV1 <$> shrink output
+

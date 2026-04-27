@@ -2,6 +2,17 @@
 {-# OPTIONS_GHC -Wno-deriving-defaults #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
+{--
+ TODO:
+ I believe that this domain type layer requires a significant rewrite.
+ We created a layer of types but we can not assume any correctness invariants
+ for them. They store raw bytes etc. and transformation from and to cardano-api
+ types is painful.
+ * Make many of the types just wrappers around the cardano-api types.
+ * This should allow us to actually have even stronger or domain specific invariants.
+ * We can preserve our own instances for utility classes like. decoders/encoders (binary, json etc.) 
+--}
+
 module Language.Marlowe.Runtime.ChainSync.Api where
 
 import Cardano.Api (
@@ -160,6 +171,18 @@ data BlockHeader = BlockHeader
   deriving stock (Show, Eq, Ord, Generic)
   deriving anyclass (Binary, ToJSON, Variations)
 
+newtype ChainTip = ChainTip { blockHeader :: Maybe BlockHeader }
+  deriving stock (Show, Eq, Ord, Generic)
+  deriving newtype (Binary, ToJSON, Variations)
+
+chainTipFromChainPoint :: ChainPoint -> ChainTip
+chainTipFromChainPoint = \case
+  Genesis -> ChainTip Nothing
+  At header -> ChainTip (Just header)
+
+genesisChainTip :: ChainTip
+genesisChainTip = ChainTip Nothing
+
 -- instance HasSignature BlockHeader where
 --   signature _ = "BlockHeader"
 
@@ -174,8 +197,9 @@ data Transaction = Transaction
   -- ^ The range of slots during which this transaction is valid.
   , metadata :: TransactionMetadata
   -- ^ The metadata of this transaction
-  , inputs :: Set TransactionInput
-  -- ^ The inputs consumed by the transaction
+  , inputs :: Map TxOutRef (Maybe Redeemer)
+  -- ^ The inputs consumed by the transaction.
+  -- The ordering on the ledger is lexicographical.
   , outputs :: [TransactionOutput]
   -- ^ The outputs produced by the transaction.
   , mintedTokens :: Tokens
@@ -664,6 +688,9 @@ renderTxOutRef TxOutRef{..} =
     , T.pack $ show $ unTxIx txIx
     ]
 
+txOutRefFromTransactionInput :: TransactionInput -> TxOutRef
+txOutRefFromTransactionInput input = TxOutRef input.txId input.txIx
+
 newtype SlotNo = SlotNo {unSlotNo :: Word64}
   deriving stock (Show, Eq, Ord, Generic)
   deriving newtype (Num, Integral, Real, Enum, Bounded, Binary, ToJSON, Variations, Hashable)
@@ -838,7 +865,7 @@ fromCardanoStakeAddressReference = \case
     Just $
       StakePointer
         (SlotNo $ Cardano.unSlotNo $ ptrSlotNo ptr)
-        (let Base.TxIx txIx = ptrTxIx ptr in TxIx $ txIx)
+        (let Base.TxIx txIx = ptrTxIx ptr in TxIx txIx)
         (let Base.CertIx certIx = ptrCertIx ptr in CertIx certIx)
 
 fromCardanoStakeCredential :: Cardano.StakeCredential -> StakeCredential

@@ -114,6 +114,7 @@ library
     , indexed-traversable
     -- This is our main dependency change
     -- from .external-dependencies/marlowe-cardano/marlowe (called internally marlowe-cardano lib)
+    , marlowe-binaries
     , marlowe-plutus
     , marlowe-plutus-extended
     , megaparsec
@@ -154,8 +155,8 @@ library command
     Language.Marlowe.CLI.Command.Parse
     Language.Marlowe.CLI.Command.Role
     Language.Marlowe.CLI.Command.Run
-    Language.Marlowe.CLI.Command.Template
-    Language.Marlowe.CLI.Command.Test
+--     Language.Marlowe.CLI.Command.Template  -- TODO: Commented out - depends on marlowe-contracts (not in workspace)
+--     Language.Marlowe.CLI.Command.Test  -- TODO: Commented out - depends on marlowe-runtime:config and cli-test (not in workspace)
     Language.Marlowe.CLI.Command.Transaction
     Language.Marlowe.CLI.Command.Util
 
@@ -171,6 +172,7 @@ library command
     -- , marlowe-cardano
     , marlowe-cli
     , marlowe-plutus
+    , marlowe-plutus-extended
     -- , marlowe-cli:cli-test
     -- , marlowe-contracts
     -- , marlowe-runtime:config
@@ -185,17 +187,17 @@ library command
     , text
     , time-units
 
--- executable marlowe-cli
---   import:          lang
---   hs-source-dirs:  app
---   main-is:         Main.hs
---   other-modules:   Paths_marlowe_cli
---   autogen-modules: Paths_marlowe_cli
---   build-depends:
---     , base >=4.9 && <5
---     , marlowe-cli:command
--- 
---   ghc-options:     -threaded
+executable marlowe-cli
+  import:          lang
+  hs-source-dirs:  app
+  main-is:         Main.hs
+  other-modules:   Paths_marlowe_cli
+  autogen-modules: Paths_marlowe_cli
+  build-depends:
+    , base >=4.9 && <5
+    , marlowe-cli:command
+
+  ghc-options:     -threaded
 -- 
 -- 
 -- library cli-test

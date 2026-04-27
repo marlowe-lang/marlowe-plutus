@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 -- | Additional conversion functions for `PlutusScript`
 module Language.Marlowe.CLI.Cardano.Api.PlutusScript (
@@ -13,6 +14,7 @@ module Language.Marlowe.CLI.Cardano.Api.PlutusScript (
 ) where
 
 import Cardano.Api (
+  PlutusScript,
   PlutusScriptV1,
   PlutusScriptV2,
   PlutusScriptV3,
@@ -20,7 +22,6 @@ import Cardano.Api (
   Script (..),
  )
 import Cardano.Api qualified as C
-import Cardano.Api (PlutusScript)
 import Language.Marlowe.CLI.Orphans ()
 
 withPlutusScriptVersion :: PlutusScriptVersion lang -> ((C.IsPlutusScriptLanguage lang) => a) -> a
@@ -29,7 +30,7 @@ withPlutusScriptVersion PlutusScriptV2 = id
 withPlutusScriptVersion PlutusScriptV3 = id
 
 toScript :: forall lang. (C.IsPlutusScriptLanguage lang) => PlutusScript lang -> Script lang
-toScript = PlutusScript (C.plutusScriptVersion @lang)
+toScript ps = C.PlutusScript (C.plutusScriptVersion @lang) ps
 
 toScriptLanguageInEra
   :: forall era lang
@@ -55,3 +56,4 @@ toScriptLanguageInEra = case C.plutusScriptVersion @lang of
     toPlutusScriptV3LanguageInEra = \case
       C.BabbageEraOnwardsBabbage -> Nothing
       C.BabbageEraOnwardsConway -> Just C.PlutusScriptV3InConway
+      C.BabbageEraOnwardsDijkstra -> Nothing

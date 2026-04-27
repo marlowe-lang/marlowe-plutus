@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 -----------------------------------------------------------------------------
 --
@@ -106,10 +107,10 @@ import Data.ByteString.Char8 qualified as BS8 (pack)
 import Data.Maybe (fromMaybe)
 import Data.Text qualified as T (pack)
 import Data.Time.Units (Second)
-import Language.Marlowe qualified as M
+import Marlowe.Plutus.Semantics.Types qualified as M
 import Options.Applicative qualified as O
 import PlutusLedgerApi.Common (MajorProtocolVersion)
-import PlutusLedgerApi.Common.Versions (alonzoPV, vasilPV)
+import PlutusLedgerApi.Common.Versions (alonzoPV, vasilPV, changPV)
 
 -- | Parser for network ID.
 parseNetworkId :: O.Mod O.OptionFields NetworkId -> O.Parser NetworkId
@@ -194,7 +195,7 @@ readTxIdEither
   -> Either String TxId
   -- ^ Either the transaction ID or an error message.
 readTxIdEither s =
-  case deserialiseFromRawBytesHex AsTxId $ BS8.pack s of
+  case deserialiseFromRawBytesHex (BS8.pack s) of
     Left msg -> Left ("Invalid transaction ID: " <> show msg)
     Right txId -> Right txId
 
@@ -267,12 +268,12 @@ readAssetIdEither
   -- ^ Either the asset ID or an error message.
 readAssetIdEither s =
   case s =~ "^([[:xdigit:]]{56})\\.([^+]+)$" of
-    [[_, symbol, name]] -> case deserialiseFromRawBytesHex AsPolicyId $ BS8.pack symbol of
+    [[_, symbol, name]] -> case deserialiseFromRawBytesHex $ BS8.pack symbol of
       Right symbol' ->
         Right $
           AssetId
             symbol'
-            (AssetName . BS8.pack $ name)
+            (C.UnsafeAssetName . BS8.pack $ name)
       Left msg -> Left ("Invalid policy ID: " <> show msg)
     _ -> Left "Invalid token."
 
@@ -297,7 +298,9 @@ readAddressEither era s = do
     Just address -> Right address
 
 readPartyEither :: String -> Either String Party
-readPartyEither str = readPartyAddressEither str <|> readPartyRoleEither str
+readPartyEither str = case readPartyAddressEither str of
+  Right party -> Right party
+  Left _ -> readPartyRoleEither str
 
 -- | Parser for `Party`.
 parseParty :: O.ReadM Party
@@ -461,11 +464,12 @@ parseProtocolVersion :: O.ReadM MajorProtocolVersion
 parseProtocolVersion = O.eitherReader \case
   "alonzo" -> pure alonzoPV
   "vasil" -> pure vasilPV
+  "chang" -> pure changPV
   s -> Left $ "Invalid protocol version: " <> s <> ". Expecting [alonzo|vasil]."
 
 protocolVersionOpt :: O.Parser MajorProtocolVersion
 protocolVersionOpt =
-  fromMaybe vasilPV
+  fromMaybe changPV
     <$> ( O.optional $
             O.option
               parseProtocolVersion

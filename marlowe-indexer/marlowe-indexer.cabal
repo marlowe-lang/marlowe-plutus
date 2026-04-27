@@ -31,8 +31,10 @@ common lang
     ExplicitForAll
     FlexibleContexts
     FlexibleInstances
+    GADTs
     GeneralizedNewtypeDeriving
     ImportQualifiedPost
+    KindSignatures
     LambdaCase
     MultiParamTypeClasses
     NamedFieldPuns
@@ -55,9 +57,103 @@ common lang
     -Wincomplete-uni-patterns -Wincomplete-record-updates
     -Wredundant-constraints -Widentities -Werror
 
+library db
+  import:          lang
+  hs-source-dirs:  db
+  build-depends:
+    , aeson
+    , base >=4.9 && <5
+    , binary
+    , bytestring
+    , cardano-api
+    , containers
+    , hasql
+    , hasql-th >=0.5
+    , hasql-transaction
+    , log-base
+    , marlowe-plutus
+    , marlowe-transactions
+    , mtl
+    , plutus-ledger-api
+    , plutus-tx
+    , text
+    , time
+    , transformers
+    , unliftio
+    , witherable
+    , vector
+
+  exposed-modules:
+    Language.Marlowe.Runtime.Indexer.Database
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitBlocks
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetMarloweUTxO
+    Language.Marlowe.Runtime.Indexer.MarloweBlock
+    Language.Marlowe.Runtime.Indexer.Party
+
+
 library
   import:          lang
-  hs-source-dirs:  .
+  hs-source-dirs:  src
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , async-components
+    , base >=4.9 && <5
+    , base16
+    , binary
+    , bytestring
+    , cardano-api
+    , cardano-ledger-alonzo
+    , cardano-ledger-api
+    , cardano-ledger-byron
+    , cardano-ledger-core
+    , cardano-ledger-shelley
+    , cardano-strict-containers
+    , containers
+    , hasql
+    , hasql-th >=0.5
+    , hasql-transaction
+    , log-base
+    , marlowe-indexer:db
+    , marlowe-plutus
+    , marlowe-transactions
+    , mtl
+    , ouroboros-consensus
+    , ouroboros-consensus-cardano
+    , ouroboros-network-api
+    , ouroboros-network-protocols
+    , marlowe-plutus
+    , monad-control
+    , nonempty-containers ^>=0.3.5.0
+    , plutus-ledger-api
+    , stm ^>=2.5.1.0
+    , text
+    , time
+    , transformers
+    , typed-protocols
+    , unliftio
+    , unliftio-core
+    , vector
+    , witherable
+
+  exposed-modules:
+    -- Should we rename this to ChainFollower or MarloweFollower and ChainFollower.BlockProcessor or
+    -- ChainFollower.ProcessBlock (similarily to the db naming convention)?
+    Marlowe.Indexer
+    Marlowe.Indexer.MarloweChainFollower
+    Marlowe.Indexer.MarloweChainFollower.Extractor
+    Marlowe.Indexer.NodeFollower
+    -- In here Block cuold also be renamed to `ProcessBlock`.
+    Marlowe.Indexer.NodeFollower.Block
+    Marlowe.Indexer.NodeQuerier
+    Marlowe.Indexer.Store
+
+executable marlowe-indexer
+  import:          lang
+  hs-source-dirs:  app
+  main-is:         Main.hs
   build-depends:
     , base >=4.9 && <5
     , binary
@@ -66,21 +162,9 @@ library
     , hasql
     , hasql-th >=0.5
     , hasql-transaction
+    , marlowe-indexer
     , text
     , time
-    , vector
-    , marlowe-plutus
-
-  exposed-modules:
-    Language.Marlowe.Runtime.ChainSync.Api
-    Language.Marlowe.Runtime.Core.Api
-    Language.Marlowe.Runtime.History.Api
-    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitBlocks
-    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback
-    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints
-    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetMarloweUTxO
-    Language.Marlowe.Runtime.Indexer.Party
-    Language.Marlowe.Runtime.Indexer.Types
 
 test-suite marlowe-indexer-test
   import:          lang
@@ -90,6 +174,7 @@ test-suite marlowe-indexer-test
   other-modules:   Test
   build-depends:
     , base >=4.9 && <5
+    , binary
     , bytestring
     , containers
     , hasql
@@ -98,7 +183,8 @@ test-suite marlowe-indexer-test
     , HUnit
     , text
     , time
-    , marlowe-indexer
+    , marlowe-indexer:db
+    , marlowe-transactions
     , temporary
     , transformers
 

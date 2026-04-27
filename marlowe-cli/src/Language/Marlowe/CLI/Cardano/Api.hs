@@ -6,6 +6,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns -Wno-deprecations #-}
 
 module Language.Marlowe.CLI.Cardano.Api (
   Value.txOutValue,

@@ -56,7 +56,6 @@ import qualified Marlowe.Plutus.Semantics.Types as V1
 import Language.Marlowe.Runtime.Cardano.Api (
   fromCardanoSlotNo,
   plutusScriptHash,
-  toCardanoAddressAny,
   toCardanoPlutusScript,
   toCardanoSlotNo,
  )
@@ -79,6 +78,7 @@ import Language.Marlowe.Runtime.ChainSync.Api (
   TxOutRef,
   UTxO (UTxO),
   mkTxOutAssets,
+  toCardanoAddressAny,
   toUTxOsList,
   unInterpreter,
   unQuantity,

@@ -29,7 +29,8 @@ import Cardano.Api (
   StakeAddressReference (..),
   TxIn,
  )
-import Control.Monad.Except (MonadError, MonadIO, liftIO)
+import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Foldable (asum)
 import Data.Maybe (fromMaybe)
 import Language.Marlowe.CLI.Analyze (analyze)
@@ -66,16 +67,21 @@ import Language.Marlowe.CLI.Types (
   SigningKeyFile,
   TxBodyFile,
  )
-import Language.Marlowe.Client (defaultMarloweParams, marloweParams)
-import Language.Marlowe.Core.V1.Semantics.Types (Input)
-import PlutusLedgerApi.V1 (CurrencySymbol, POSIXTime (..), TokenName)
-
+import Marlowe.Plutus.Semantics (MarloweParams (MarloweParams))
+import Marlowe.Plutus.Semantics.Types (Input)
+import PlutusLedgerApi.V1 (CurrencySymbol, POSIXTime (..), TokenName, adaSymbol)
 import Cardano.Api qualified as Api (Value)
 import Cardano.Api qualified as C
 import Control.Monad.Reader (MonadReader)
 import Data.Time.Units (Second)
 import Language.Marlowe.CLI.IO (getMajorProtocolVersion, getPV2CostModelParams)
 import Options.Applicative qualified as O
+
+defaultMarloweParams :: MarloweParams
+defaultMarloweParams = MarloweParams adaSymbol
+
+marloweParams :: CurrencySymbol -> MarloweParams
+marloweParams rc = MarloweParams rc
 
 -- | Marlowe CLI commands and options for running contracts.
 data RunCommand era
