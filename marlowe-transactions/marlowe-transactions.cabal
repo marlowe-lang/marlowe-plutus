@@ -58,6 +58,7 @@ common lang
     TupleSections
     TypeApplications
     TypeFamilies
+    TypeFamilyDependencies
     TypeOperators
     ViewPatterns
 
@@ -78,12 +79,19 @@ library
     , binary ^>=0.8.8
     , bytestring
     , cardano-api
+    , cardano-binary
     , cardano-crypto-class
+    , cardano-ledger-allegra
     , cardano-ledger-alonzo
     , cardano-ledger-api
+    , cardano-ledger-babbage
     , cardano-ledger-binary
     , cardano-ledger-byron
+    , cardano-ledger-conway
+    , cardano-ledger-dijkstra
     , cardano-ledger-core
+    , cardano-ledger-mary
+    , cardano-ledger-shelley
     , containers
     , deepseq
     , errors
@@ -122,6 +130,7 @@ library
   exposed-modules:
     Marlowe.Plutus.Transactions
     Language.Marlowe.Runtime.Cardano.Api
+    Language.Marlowe.Runtime.Cardano.Api.Kupo
     Language.Marlowe.Runtime.Cardano.Feature
     Language.Marlowe.Runtime.ChainSync.Api
     Language.Marlowe.Runtime.Core.Api
@@ -200,7 +209,9 @@ test-suite test
     , hspec-core
     , marlowe-binaries
     , marlowe-plutus
+    , marlowe-plutus:marlowe-testing
     , marlowe-transactions
+    , marlowe-transactions:gen
     , nonempty-containers
     , ouroboros-consensus
     , ouroboros-network-api

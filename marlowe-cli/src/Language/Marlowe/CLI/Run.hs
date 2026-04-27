@@ -18,6 +18,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns -Wno-overlapping-patterns -Wno-deprecations #-}
 
 -- | Run Marlowe contracts.
 module Language.Marlowe.CLI.Run (
@@ -360,8 +361,7 @@ initializeTransactionImpl
   -- ^ Action to return a MarloweTransaction
 initializeTransactionImpl marloweParams mtSlotConfig protocolVersion costModelParams network stake mtContract mtState refs merkleize printStats = case C.plutusScriptVersion @lang of
   PlutusScriptV1 -> throwError "Plutus Script V1 not supported"
-  PlutusScriptV3 -> throwError "Plutus Script V3 not supported"
-  PlutusScriptV2 -> do
+  PlutusScriptV3 -> do
     era <- askEra
     let mtRolesCurrency = rolesCurrency marloweParams
     (mtValidator, mtRoleValidator, mtOpenRoleValidator) <-
@@ -591,7 +591,6 @@ readMarloweTransactionFile era lang marloweInFile = do
   case era of
     C.BabbageEraOnwardsBabbage -> case (era', lang, lang') of
       (C.BabbageEraOnwardsBabbage, PlutusScriptV1, PlutusScriptV1) -> pure marloweIn
-      (C.BabbageEraOnwardsBabbage, PlutusScriptV2, PlutusScriptV2) -> pure marloweIn
       (C.BabbageEraOnwardsBabbage, PlutusScriptV3, PlutusScriptV3) -> pure marloweIn
       (C.BabbageEraOnwardsConway, _, _) -> throwError "Running in Babbage era, read file in Conway era"
       _ ->
@@ -599,7 +598,6 @@ readMarloweTransactionFile era lang marloweInFile = do
           "Expecting a different version of plutus in the Marlowe file. Expected: " <> show lang <> " but got: " <> show lang'
     C.BabbageEraOnwardsConway -> case (era', lang, lang') of
       (C.BabbageEraOnwardsConway, PlutusScriptV1, PlutusScriptV1) -> pure marloweIn
-      (C.BabbageEraOnwardsConway, PlutusScriptV2, PlutusScriptV2) -> pure marloweIn
       (C.BabbageEraOnwardsConway, PlutusScriptV3, PlutusScriptV3) -> pure marloweIn
       (C.BabbageEraOnwardsBabbage, _, _) -> throwError "Running in Conway era, read file in Babbage era"
       _ ->

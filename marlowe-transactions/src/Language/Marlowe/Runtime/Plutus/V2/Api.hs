@@ -2,8 +2,7 @@
 module Language.Marlowe.Runtime.Plutus.V2.Api where
 
 import Cardano.Chain.Common (addrToBase58)
-import Language.Marlowe.Runtime.ChainSync.Api (Address(..), ScriptHash(..), Assets (..), AssetId (..), PolicyId (..), TokenName (..), Lovelace(..), Tokens (..), Quantity (..))
-import Language.Marlowe.Runtime.Cardano.Api (toCardanoAddressAny)
+import Language.Marlowe.Runtime.ChainSync.Api (Address(..), ScriptHash(..), Assets (..), AssetId (..), PolicyId (..), TokenName (..), Lovelace(..), Tokens (..), Quantity (..), toCardanoAddressAny)
 import qualified PlutusLedgerApi.V2 as PV2
 import qualified PlutusTx.Monoid as PTx
 import qualified Cardano.Api as C

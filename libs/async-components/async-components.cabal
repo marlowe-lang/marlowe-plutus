@@ -1,0 +1,84 @@
+cabal-version: 3.4
+name:          async-components
+version:       0.1.1.0
+synopsis:      A really simple async components for building concurrent server processes.
+bug-reports:   https://github.com/marlowe-lang/marlowe-plutus/issues
+license:       Apache-2.0
+author:        Jamie Bertram, Tomasz Rybarczyk
+maintainer:    tomasz.rybarczyk@marlowe-lang.org
+stability:     experimental
+category:      Language
+license-files:
+  LICENSE
+  NOTICE
+
+source-repository head
+  type:     git
+  location: https://github.com/input-output-hk/marlowe-cardano
+  subdir:   async-components
+
+library
+  default-language:   Haskell2010
+  hs-source-dirs:     src
+  default-extensions:
+    BangPatterns
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DoAndIfThenElse
+    DuplicateRecordFields
+    ExplicitForAll
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NumericUnderscores
+    OverloadedStrings
+    OverloadedRecordDot
+    PatternSynonyms
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    ViewPatterns
+
+  ghc-options:
+    -Wall -Wnoncanonical-monad-instances -Wunused-packages
+    -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Wredundant-constraints -Widentities
+
+  exposed-modules:
+    Control.Concurrent.Component
+    Control.Concurrent.Component.Probes
+    -- Control.Concurrent.Component.Run
+
+  build-depends:
+    , base >=4.9 && <5
+    , log-base
+    , exceptions ^>=0.10
+    , general-allocate ^>=0.2
+    , mtl >=2.2 && <3
+    , natural-transformation
+    , servant-client ^>=0.20
+    , servant-server ^>=0.20
+    , text
+    , unliftio ^>=0.2.1
+    , warp >=3.3 && <4

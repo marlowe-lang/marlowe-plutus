@@ -4,15 +4,16 @@ module Language.Marlowe.Scripts (
   payoutValidator,
 ) where
 
-import Cardano.Api (PlutusScript, PlutusScriptV2)
-import Cardano.Api qualified as C
-import Marlowe.Plutus.Scripts qualified as MPS
+import Cardano.Api (PlutusScript (PlutusScriptSerialised), PlutusScriptV3)
+import Marlowe.Plutus.Binaries.Production qualified as Binaries
 
-marloweValidator :: PlutusScript PlutusScriptV2
-marloweValidator = error "TODO: marloweValidator - needs PlutusScript generation from MPS.mkMarloweValidator"
+marloweValidator :: PlutusScript PlutusScriptV3
+marloweValidator = PlutusScriptSerialised Binaries.marloweValidatorBytes
 
-openRolesValidator :: PlutusScript PlutusScriptV2
-openRolesValidator = error "TODO: openRolesValidator - needs PlutusScript generation"
+-- TODO: openRolesValidator is not compiled in marlowe-binaries yet.
+-- Using payoutValidator as placeholder - open roles won't work until this is fixed.
+openRolesValidator :: PlutusScript PlutusScriptV3
+openRolesValidator = PlutusScriptSerialised Binaries.rolePayoutValidatorBytes
 
-payoutValidator :: PlutusScript PlutusScriptV2
-payoutValidator = error "TODO: payoutValidator - needs PlutusScript generation from MPS.mkRolePayoutValidator"
+payoutValidator :: PlutusScript PlutusScriptV3
+payoutValidator = PlutusScriptSerialised Binaries.rolePayoutValidatorBytes

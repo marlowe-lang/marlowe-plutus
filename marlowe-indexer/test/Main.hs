@@ -8,5 +8,5 @@ main = do
   putStrLn "Marlowe Indexer Database Test Suite"
   putStrLn "=================================="
   putStrLn ""
-  runTestTT allTests
+  _ <- runTestTT allTests
   return ()

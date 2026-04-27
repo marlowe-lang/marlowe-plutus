@@ -14,7 +14,6 @@ import Cardano.Api (
   makeShelleyAddress,
   makeShelleyAddressInEra,
   verificationKeyHash,
-  AddressAny(AddressShelley),
   PaymentCredential (..),
   StakeAddressReference (..),
   ShelleyBasedEra (ShelleyBasedEraConway),
@@ -50,8 +49,8 @@ import Marlowe.Plutus.Binaries.Devel (marloweValidatorBytes, marloweValidatorHas
 import Language.Marlowe.Runtime.ChainSync.Api hiding (Datum, ada)
 import qualified Language.Marlowe.Runtime.ChainSync.Api as Chain
 import qualified Language.Marlowe.Runtime.Core.Api as Core
-import Language.Marlowe.Runtime.Core.ScriptRegistry (ReferenceScriptUtxo (..))
-import Language.Marlowe.Runtime.Cardano.Api (fromCardanoAddressAny, fromCardanoAddressInEra)
+import Language.Marlowe.Runtime.Core.ScriptRegistry (ReferenceScriptUtxo (..), ScriptInPlutus(..))
+import Language.Marlowe.Runtime.Cardano.Api (fromCardanoAddressInEra)
 import Language.Marlowe.Runtime.Transaction.Api (
   CreateError,
   RoleTokensConfig (..),
@@ -318,7 +317,7 @@ e2eSpec = do
       -- All those pieces should be adjusted.
       timeout :: PV2.POSIXTime
       timeout = 1_640_995_300_000
-      tipSlotNo = C.SlotNo 0
+      tipSlotNo = SlotNo 0
       contract = V1.When [V1.Case (V1.Notify V1.TrueObs) V1.Close] timeout V1.Close
       marloweContext = mkMarloweContext Devel testnetId (Just (contract, Nothing))
       walletCtx = mkWalletContext testnetId verificationKey
@@ -368,12 +367,6 @@ mkMarloweValidatorAddress network = mkValidatorAddress network marloweValidatorB
 mkRolePayoutValidatorAddress :: C.NetworkId -> C.AddressInEra TestEra
 mkRolePayoutValidatorAddress network = mkValidatorAddress network rolePayoutValidatorBytes
 
-mkScriptInAnyLang :: PV2.SerialisedScript -> C.ScriptInAnyLang
-mkScriptInAnyLang =
-    C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV3)
-    . C.PlutusScript C.PlutusScriptV3
-    . C.PlutusScriptSerialised
-
 -- TODO:
 -- * Add ability to use `Marlowe.Binaries.Production` and later also
 data ValidatorsVersion = Devel
@@ -419,7 +412,7 @@ mkMarloweContext _version network possibleContractInfo = do
           , datumHash = Nothing
           , datum = Nothing
           }
-      , script = mkScriptInAnyLang marloweValidatorBytes
+      , script = ScriptInPlutusV3 marloweValidatorBytes
       }
     payoutAddress = fromCardanoAddressInEra C.ConwayEra $ mkRolePayoutValidatorAddress network
     payoutScriptUTxO :: ReferenceScriptUtxo
@@ -431,7 +424,7 @@ mkMarloweContext _version network possibleContractInfo = do
           , datumHash = Nothing
           , datum = Nothing
           }
-      , script = mkScriptInAnyLang rolePayoutValidatorBytes
+      , script = ScriptInPlutusV3 rolePayoutValidatorBytes
       }
     marloweScriptHash = Chain.ScriptHash $ PV2.fromBuiltin (PV2.getScriptHash marloweValidatorHash)
     payoutScriptHash = Chain.ScriptHash $ PV2.fromBuiltin (PV2.getScriptHash rolePayoutValidatorHash)
@@ -450,8 +443,8 @@ mkWalletContext :: C.NetworkId -> C.VerificationKey C.PaymentKey -> WalletContex
 mkWalletContext network verificationKey = do
   let
     keyHash = verificationKeyHash verificationKey
-    walletAddressAny = AddressShelley $ makeShelleyAddress network (PaymentCredentialByKey keyHash) NoStakeAddress
-    walletAddress = fromCardanoAddressAny walletAddressAny
+    walletAddressShelley = makeShelleyAddress network (PaymentCredentialByKey keyHash) NoStakeAddress
+    walletAddress = Chain.fromCardanoShelleyAddress walletAddressShelley
     txOutRef = Chain.TxOutRef (Chain.TxId $ LBS.toStrict $ LBS.replicate 32 0) (Chain.TxIx 1)
   WalletContext
     { availableUtxos = Chain.UTxOs $ Map.singleton txOutRef

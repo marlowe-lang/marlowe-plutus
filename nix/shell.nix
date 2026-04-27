@@ -12,7 +12,6 @@ let
   };
 
   preCommitCheck = inputs.pre-commit-hooks.lib.${pkgs.system}.run {
-
     src = lib.cleanSources ../.;
 
     hooks = {
@@ -50,6 +49,7 @@ let
 
   commonPackages = [
     cardano-cli
+    cardonnay
 
     tools.cabal
     tools.cabal-fmt
@@ -122,17 +122,6 @@ let
     ];
   };
 
-  #   lib,
-  #   coreutils,
-  #   writeText,
-  #   writeShellApplication,
-  #   cardano-cli,
-  #   formats,
-  #   cardonnay,
-  #   cardano-node,
-  #   cardano-cli,
-  # }: let
-
   cardonnay = pkgs.python313.pkgs.buildPythonApplication {
     pname = "cardonnay";
     version = "0.3.4";
@@ -146,9 +135,9 @@ let
     ];
     postPatch = ''
       # Reduce initial TX submission delay (safe for local testnets)
-      find src/cardonnay_scripts/scripts \
-        -name 'common-start-*' -type f -exec \
-        sed -i 's/readonly TX_SUBMISSION_DELAY=60/readonly TX_SUBMISSION_DELAY=20/' {} +
+      # find src/cardonnay_scripts/scripts \
+      #   -name 'common-start-*' -type f -exec \
+      #   sed -i 's/readonly TX_SUBMISSION_DELAY=60/readonly TX_SUBMISSION_DELAY=20/' {} +
     '';
     dependencies = with pkgs.python313.pkgs; [
       supervisor
@@ -159,7 +148,17 @@ let
     ];
   };
 
-  process-compose-testnet-yaml = pkgs.callPackage ./process-compose-testnet.nix {
+  process-compose-postgres-yaml = pkgs.callPackage ./process-compose/postgres.nix {};
+
+  process-compose-postgres = pkgs.writeShellApplication {
+    name = "process-compose-postgres";
+    runtimeInputs = [];
+    text = ''
+      ${pkgs.process-compose}/bin/process-compose up -f ${process-compose-postgres-yaml} -L "$RUN_DIR"/process-compose-postgres;
+    '';
+  };
+
+  process-compose-testnet-yaml = pkgs.callPackage ./process-compose/testnet.nix {
     inherit cardonnay cardano-node cardano-cli;
   };
 
@@ -171,14 +170,31 @@ let
     '';
   };
 
+  process-compose-dev-env-yaml = pkgs.callPackage ./process-compose/dev-env.nix {
+    inherit cardano-cli cardano-node cardonnay;
+  };
+
+  process-compose-dev-env = pkgs.writeShellApplication {
+    name = "process-compose-dev-env";
+    runtimeInputs = [];
+    text = ''
+      ${pkgs.process-compose}/bin/process-compose up -f ${process-compose-dev-env-yaml} -L "$RUN_DIR"/process-compose-dev-env;
+    '';
+  };
+
   shell = project.shellFor {
     name = "marlowe-plutus-${project.args.compiler-nix-name}";
 
     nativeBuildInputs = commonPackages ++ [
-      cardonnay
       cardano-node
       # inputs.process-compose
       pkgs.process-compose
+
+      # The main process compose for the full dev env.
+      process-compose-dev-env
+      # FIXME: Currently those process compose envs will overlap
+      # regarding port. They are exposed for debugging purposes.
+      process-compose-postgres
       process-compose-testnet
 
       (inputs.jailed-agents.lib.${pkgs.system}.makeJailedOpencode {
@@ -202,19 +218,26 @@ let
 
     withHoogle = false;
 
-    # export PC_CONFIG_FILES=${selfPkgs.process-compose-yaml}
-    # export PC_CONFIG_FILES_REDEMPTION=${selfPkgs.redemption-process-compose-yaml}
-    # export PC_CONFIG_FILES_PREPROD_REDEMPTION=${selfPkgs.preprod-redemption-process-compose-yaml}
     shellHook = ''
       ${preCommitCheck.shellHook}
       export ROOT_DIR="$(git rev-parse --show-toplevel)"
       export RUN_DIR="$ROOT_DIR/.run"
+
+      # Vars required by postgres part of the process compose:
+      export SQITCH_CHDIR="$ROOT_DIR/sql"
+      export POSTGRES_DIR="$RUN_DIR/postgres"
+      export PGPORT="15432"
+
+      # Vars required by testnet part of the process compose:
       export TESTNET_DIR="$RUN_DIR/testnet"
       export CARDONNAY_TESTNET_ID="9"
       source <(cardonnay control print-env -i "$CARDONNAY_TESTNET_ID" -w "$TESTNET_DIR")
       export CARDANO_NODE_NETWORK_ID=42
       eval "$(cardonnay inspect faucet -i "$CARDONNAY_TESTNET_ID" -w "$TESTNET_DIR" | jq -r 'to_entries[] | "export FAUCET_\(.key|ascii_upcase)=\(.value|@sh)"')"
+
       export PROCESS_COMPOSE_TESTNET_YAML=${process-compose-testnet-yaml}
+      export PROCESS_COMPOSE_POSTGRES_YAML=${process-compose-postgres-yaml}
+      export PROCESS_COMPOSE_DEV_ENV_YAML=${process-compose-dev-env-yaml}
 
       export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.bzip2 ]}:$LD_LIBRARY_PATH"
     '';

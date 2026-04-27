@@ -74,7 +74,7 @@ import Language.Marlowe.Runtime.Transaction.Constraints (
   WalletContext (..),
  )
 import qualified Language.Marlowe.Runtime.Transaction.Constraints as TxConstraints
-import qualified Marlowe.Runtime.Transaction.Gen ()
+import qualified Language.Marlowe.Runtime.Transaction.Gen ()
 import Ouroboros.Consensus.Block (EpochSize (EpochSize), GenesisWindow (GenesisWindow))
 import Ouroboros.Consensus.BlockchainTime (RelativeTime (..), SystemStart (..), mkSlotLength)
 import Ouroboros.Consensus.HardFork.History (
@@ -88,7 +88,8 @@ import Ouroboros.Consensus.HardFork.History (
  )
 import PlutusLedgerApi.V1 (Address (Address), Credential (PubKeyCredential), PubKeyHash (PubKeyHash), fromBuiltin)
 import PlutusLedgerApi.V1.Time (POSIXTime (POSIXTime))
-import qualified PlutusTx.AssocMap as AM
+import qualified PlutusLedgerApi.V1.Value as Val
+import qualified Marlowe.Plutus.AssocMap as MAM
 import Marlowe.Plutus.Testing.Semantics.Arbitrary ()
 import Test.Hspec (Spec, shouldBe)
 import qualified Test.Hspec as Hspec
@@ -444,7 +445,8 @@ buildApplyInputsConstraintsSpec =
               :* K (oneSecondEraSummary 3) -- Mary lasted 1 second
               :* K (oneSecondEraSummary 4) -- Alonzo lasted 1 second
               :* K (oneSecondEraSummary 5) -- Babbage lasted 1 second
-              :* K (unboundedEraSummary 6) -- Conway never ends
+              :* K (unboundedEraSummary 6) -- Conway lasted 1 second
+              :* K (unboundedEraSummary 7) -- Dijkstra never ends
               :* Nil
         -- Important note: these slot computations cannot be used generally, but are specifically tailored
         -- to the contrived era history and system start used for this test case.
@@ -469,9 +471,9 @@ buildApplyInputsConstraintsSpec =
         mkTxOutAssets' = fromMaybe mempty . mkTxOutAssets
         -- Chain conversions.
         toChainAddress = (Chain.Address .) . Semantics.serialiseAddress
-        toChainAssets (Semantics.Token "" "") amount = mkTxOutAssets' $ Chain.Assets (Chain.Lovelace $ fromInteger amount) mempty
-        toChainAssets (Semantics.Token currency name) amount =
-          mkTxOutAssets' $
+        toChainAssets (Semantics.Token currency name) amount
+          | currency == Val.adaSymbol && name == Val.adaToken = mkTxOutAssets' $ Chain.Assets (Chain.Lovelace $ fromInteger amount) mempty
+          | otherwise = mkTxOutAssets' $
             Chain.Assets mempty . Chain.Tokens $
               Map.singleton (toAssetId currency name) (Chain.Quantity $ fromInteger amount)
         toAction (Semantics.IDeposit account party token amount) = Semantics.Deposit account party token $ Semantics.Constant amount
@@ -624,7 +626,7 @@ buildApplyInputsConstraintsSpec =
               makeAccount (Semantics.Payment account _ token amount) = Map.singleton (account, token) amount
               makePay (Semantics.Payment account payee token amount) = Semantics.Pay account payee token $ Semantics.Constant amount
               -- Fill the accounts with sufficient funds to make the payments.
-              accounts = AM.unsafeFromList . Map.toList . Map.unionsWith (+) $ makeAccount <$> payments
+              accounts = MAM.unsafeFromList . Map.toList . Map.unionsWith (+) $ makeAccount <$> payments
               marloweState = Semantics.State accounts choices values $ POSIXTime 0
               -- Add all of the payments to the contract.
               marloweContract = foldr makePay assertWhenCloseContract payments

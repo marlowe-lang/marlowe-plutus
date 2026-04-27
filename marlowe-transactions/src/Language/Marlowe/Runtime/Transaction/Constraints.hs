@@ -116,7 +116,7 @@ import Language.Marlowe.Runtime.Core.Api (
   fromChainPayoutDatum,
  )
 import qualified Language.Marlowe.Runtime.Core.Api as Core
-import Language.Marlowe.Runtime.Core.ScriptRegistry (HelperScript, ReferenceScriptUtxo (..))
+import Language.Marlowe.Runtime.Core.ScriptRegistry (HelperScript, ReferenceScriptUtxo (..), toCardanoScriptInAnyLang)
 import qualified Language.Marlowe.Runtime.Core.ScriptRegistry as ScriptRegistry
 import Language.Marlowe.Runtime.Transaction.Api (CoinSelectionError (..), ConstraintError (..), Destination (..))
 import qualified Marlowe.Plutus.Scripts.Types as V1
@@ -1066,10 +1066,10 @@ allUtxos era marloweVersion scriptCtx WalletContext{..} HelpersContext{..} inclu
       mkReferenceUtxo :: ReferenceScriptUtxo -> Maybe (C.TxIn, C.TxOut ctx era)
       mkReferenceUtxo ReferenceScriptUtxo{..} = do
         let
-          pv = C.PlutusScriptV2
+          scriptInAnyLang = toCardanoScriptInAnyLang script
         (,)
           <$> toCardanoTxIn txOutRef
-          <*> toCardanoTxOut' maryEraOnwards txOut (Just $ C.ScriptInAnyLang (C.PlutusScriptLanguage pv) (C.PlutusScript pv script))
+          <*> toCardanoTxOut' maryEraOnwards txOut (Just $ scriptInAnyLang)
 
       -- UTxOs for helper scripts.
       helperUTxO HelperScriptState{helperUTxO = Just (helperTxOutRef, helperTransactionOutput)} =

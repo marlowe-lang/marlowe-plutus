@@ -24,6 +24,7 @@ packages:
   marlowe-plutus-extended
   marlowe-transactions
   marlowe-web
+  libs/async-components
   libs/base16-aeson
   libs/cardano-debug
   libs/multiplate

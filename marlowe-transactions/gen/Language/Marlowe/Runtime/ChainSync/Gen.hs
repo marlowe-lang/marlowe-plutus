@@ -5,8 +5,6 @@ module Language.Marlowe.Runtime.ChainSync.Gen where
 
 import qualified Cardano.Api as C
 import Cardano.Api (
-  AddressAny (..),
-  -- AlonzoEraOnwards (..),
   AnyShelleyBasedEra (..),
   BabbageEra,
   CardanoEra (..),
@@ -29,7 +27,6 @@ import qualified Data.Map as Map
 import qualified Data.Text as T
 import Data.Word (Word64)
 import Language.Marlowe.Runtime.Cardano.Api (fromCardanoDatumHash, toCardanoScriptData)
-import qualified Language.Marlowe.Runtime.Cardano.Api as Cardano.Api
 import Language.Marlowe.Runtime.ChainSync.Api
 import Ouroboros.Consensus.Block (EpochSize (..), GenesisWindow (..))
 import Ouroboros.Consensus.BlockchainTime (RelativeTime (..), SlotLength (..), mkSlotLength)
@@ -121,7 +118,7 @@ instance Arbitrary CertIx where
   arbitrary = CertIx <$> arbitrary
 
 instance Arbitrary Address where
-  arbitrary = hedgehog $ Cardano.Api.fromCardanoAddressAny . AddressShelley <$> genAddressShelley
+  arbitrary = hedgehog $ fromCardanoShelleyAddress <$> genAddressShelley
 
 instance Arbitrary Assets where
   arbitrary = Assets <$> arbitrary <*> arbitrary

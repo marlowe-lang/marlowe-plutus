@@ -21,7 +21,8 @@ module Language.Marlowe.CLI.Command.Role (
 ) where
 
 import Cardano.Api (NetworkId (..), StakeAddressReference (..))
-import Control.Monad.Except (MonadError, MonadIO)
+import Control.Monad.Except (MonadError)
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader.Class (MonadReader)
 import Data.Map qualified as Map
 import Data.Maybe (fromMaybe)
@@ -35,7 +36,7 @@ import Language.Marlowe.CLI.Command.Parse (
 import Language.Marlowe.CLI.Export (exportRoleAddress, exportRoleDatum, exportRoleRedeemer, exportRoleValidator)
 import Language.Marlowe.CLI.IO (getDefaultCostModel)
 import Language.Marlowe.CLI.Types (CliEnv, CliError)
-import Language.Marlowe.Core.V1.Semantics.Types (Token (Token))
+import Marlowe.Plutus.Semantics.Types (Token (Token))
 import Options.Applicative qualified as O
 import PlutusLedgerApi.Common (MajorProtocolVersion)
 import PlutusLedgerApi.V1 (CurrencySymbol, TokenName)

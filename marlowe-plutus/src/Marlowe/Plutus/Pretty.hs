@@ -178,3 +178,24 @@ instance Pretty S.Token where
 
 instance Pretty S.Bound where
   prettyFragment = text . show
+
+instance Pretty S.Observation where
+  prettyFragment = text . show
+
+instance Pretty (S.Value S.Observation) where
+  prettyFragment = text . show
+
+instance Pretty (S.Case S.Contract) where
+  prettyFragment = text . show
+
+instance Pretty S.Action where
+  prettyFragment = text . show
+
+instance Pretty S.State where
+  prettyFragment = text . show
+
+instance Pretty S.Payee where
+  prettyFragment = text . show
+
+instance Pretty S.InputContent where
+  prettyFragment = text . show

@@ -1,12 +1,5 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE TypeFamilyDependencies #-}
-{-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Language.Marlowe.Runtime.Core.Api where
@@ -64,6 +57,7 @@ import Data.Base16.Types (extractBase16)
 import qualified Marlowe.Plutus.AssocMap as MAM
 import qualified Cardano.Api as C
 import Data.Data (Proxy(..))
+import qualified Data.Aeson as A
 
 -- | The ID of a contract is the TxId and TxIx of the UTxO that first created
 -- the contract.
@@ -127,6 +121,18 @@ instance IsMarloweVersion 'V1 where
   type Inputs 'V1 = [V1.Input]
   type PayoutDatum 'V1 = Chain.AssetId
   marloweVersion = MarloweV1
+
+withMarloweVersion :: MarloweVersion v -> ((IsMarloweVersion v) => a) -> a
+withMarloweVersion = \case
+  MarloweV1 -> id
+
+instance (IsMarloweVersion v) => Variations (MarloweVersion v) where
+  variations = pure $ marloweVersion @v
+
+instance ToJSON (MarloweVersion v) where
+  toJSON =
+    String . \case
+      MarloweV1 -> "v1"
 
 newtype MarloweMetadataTag = MarloweMetadataTag {getMarloweMetadataTag :: Text}
   deriving newtype (Show, Eq, Ord, IsString, FromJSON, ToJSON, Binary, ToJSONKey, FromJSONKey, Variations)
@@ -392,6 +398,39 @@ instance Binary (TransactionScriptOutput 'V1) where
     putDatum MarloweV1 datum
   get = TransactionScriptOutput <$> get <*> get <*> get <*> getDatum MarloweV1
 
+data SomeTransactionScriptOutput = forall v. SomeTransactionScriptOutput (MarloweVersion v) (TransactionScriptOutput v)
+
+instance Show SomeTransactionScriptOutput where
+  show (SomeTransactionScriptOutput version output) = case version of
+    MarloweV1 -> "SomeTransactionScriptOutputV1 " <> show output
+
+instance Eq SomeTransactionScriptOutput where
+  SomeTransactionScriptOutput MarloweV1 output1 == SomeTransactionScriptOutput MarloweV1 output2 = output1 == output2
+
+instance ToJSON SomeTransactionScriptOutput where
+  toJSON (SomeTransactionScriptOutput version output) = case version of
+    MarloweV1 ->
+      A.object
+        [ "version" A..= MarloweV1
+        , "output" A..= output
+        ]
+
+instance Variations SomeTransactionScriptOutput where
+  variations =
+    join $
+      NE.fromList
+        [ SomeTransactionScriptOutput MarloweV1 <$> variations
+        ]
+
+instance Binary SomeTransactionScriptOutput where
+  put (SomeTransactionScriptOutput version output) = case version of
+    MarloweV1 -> do
+      put $ SomeMarloweVersion MarloweV1
+      put output
+  get =
+    get >>= \case
+      SomeMarloweVersion MarloweV1 -> SomeTransactionScriptOutput MarloweV1 <$> get
+
 data SomeMarloweVersion = forall v. SomeMarloweVersion (MarloweVersion v)
 
 instance Eq SomeMarloweVersion where
@@ -418,18 +457,6 @@ instance Show SomeMarloweVersion where
 
 withSomeMarloweVersion :: (forall v. MarloweVersion v -> r) -> SomeMarloweVersion -> r
 withSomeMarloweVersion f (SomeMarloweVersion v) = f v
-
-withMarloweVersion :: MarloweVersion v -> ((IsMarloweVersion v) => a) -> a
-withMarloweVersion = \case
-  MarloweV1 -> id
-
-instance (IsMarloweVersion v) => Variations (MarloweVersion v) where
-  variations = pure $ marloweVersion @v
-
-instance ToJSON (MarloweVersion v) where
-  toJSON =
-    String . \case
-      MarloweV1 -> "v1"
 
 instance ToJSON SomeMarloweVersion where
   toJSON (SomeMarloweVersion v) = toJSON v

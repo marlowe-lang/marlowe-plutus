@@ -1,0 +1,31 @@
+module Marlowe.Indexer where
+--
+-- data NodeQuerierDependencies m = NodeQuerierDependencies
+--   { connectToLocalNode :: !(LocalNodeClientProtocolsInMode -> m ()) }
+--
+-- data NodeFollowerDependencies m = NodeFollowerDependencies
+--   { connectToLocalNode :: !(LocalNodeClientProtocolsInMode -> m ())
+--   -- ^ Connect to the local node.
+--   , getIntersectionPoints :: !(GetIntersectionPoints m)
+--   -- ^ How to load the set of initial intersection points for the chain sync client.
+--   -- | The maximum cost a set of changes is allowed to incur before the
+--   -- NodeFollower blocks.
+--   , memoryCostConfig :: MemoryCostConfig
+--   }
+--
+--data MarloweChainFollowerDependencies m = MarloweChainFollowerDependencies
+--  { changes :: STM NodeFollower.Changes
+--  , getMarloweUTxO :: m MarloweUTxO
+--  , marloweScriptHashes  :: Set ScriptHash
+--  , nodeQuerier :: NodeQuerier m
+--  , systemStart :: C.SystemStart
+--  }
+--
+-- data StoreDependencies m = StoreDependencies
+--   { databaseQueries :: DatabaseQueries m
+--   , pullEvent :: STM ChainEvent
+--   }
+--
+-- data PersisterDependencies m = PersisterDependencies
+--   { databaseQueries :: DatabaseQueries m
+--   , readChanges :: STM Changes

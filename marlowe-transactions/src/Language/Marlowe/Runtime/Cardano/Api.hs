@@ -3,7 +3,7 @@
 -- | Utilities for converting to and from Cardano API types.
 module Language.Marlowe.Runtime.Cardano.Api where
 
-import Cardano.Api (getScriptData, unsafeHashableScriptData)
+import Cardano.Api (getScriptData, unsafeHashableScriptData, TxBodyContent(..))
 import qualified Cardano.Api as C
 import Cardano.Api.Value (valueFromList, valueToList)
 import Control.Applicative (Alternative ((<|>)))
@@ -15,6 +15,18 @@ import Data.Maybe (mapMaybe)
 import Debug.Trace (traceShow)
 import Language.Marlowe.Runtime.Cardano.Feature
 import Language.Marlowe.Runtime.ChainSync.Api
+import Language.Marlowe.Runtime.Cardano.Api.Kupo ()
+import qualified Cardano.Ledger.TxIn as Ledger
+import qualified Cardano.Crypto.Hash as Ledger
+import Data.ByteString.Short (fromShort)
+import qualified Cardano.Ledger.Core as Ledger
+import qualified Cardano.Ledger.Plutus as Ledger
+import Cardano.Ledger.Api (binaryDataToData)
+import qualified Cardano.Ledger.Dijkstra as L
+import Cardano.Ledger.Plutus (unData)
+import qualified Language.Marlowe.Runtime.Cardano.Api.Kupo as Kupo
+import Data.Functor ((<&>))
+import qualified Cardano.Ledger.BaseTypes as Ledger
 
 babbageEraOnwardsToMaryEraOnwards :: C.BabbageEraOnwards era -> C.MaryEraOnwards era
 babbageEraOnwardsToMaryEraOnwards = \case
@@ -36,9 +48,6 @@ babbageEraOnwardsToShelleyBasedEra = \case
 
 toCardanoScriptHash :: ScriptHash -> Maybe C.ScriptHash
 toCardanoScriptHash = hush . C.deserialiseFromRawBytes C.AsScriptHash . unScriptHash
-
--- fromCardanoScriptHash :: C.ScriptHash -> ScriptHash
--- fromCardanoScriptHash = ScriptHash . C.serialiseToRawBytes
 
 toCardanoPlutusScript :: forall lang. (C.HasTypeProxy lang) => PlutusScript -> Maybe (C.PlutusScript lang)
 toCardanoPlutusScript = hush . C.deserialiseFromRawBytes (C.proxyToAsType (Proxy :: Proxy (C.PlutusScript lang))) . unPlutusScript
@@ -103,6 +112,28 @@ toCardanoLovelace = C.Coin . unLovelace
 fromCardanoLovelace :: C.Coin -> Lovelace
 fromCardanoLovelace (C.Coin l) = Lovelace l
 
+fromCardanoBlockHeaderHash :: C.Hash C.BlockHeader -> BlockHeaderHash
+fromCardanoBlockHeaderHash = BlockHeaderHash . C.serialiseToRawBytes
+
+fromCardanoBlockNo :: C.BlockNo -> BlockNo
+fromCardanoBlockNo (C.BlockNo n) = BlockNo n
+
+fromCardanoBlockHeader :: C.BlockHeader -> BlockHeader
+fromCardanoBlockHeader (C.BlockHeader slotNo blockHash blockNo) =
+  BlockHeader
+    { slotNo = fromCardanoSlotNo slotNo
+    , headerHash = fromCardanoBlockHeaderHash blockHash
+    , blockNo = fromCardanoBlockNo blockNo
+    }
+
+fromCardanoChainTip :: C.ChainTip -> ChainTip
+fromCardanoChainTip = \case
+  C.ChainTipAtGenesis -> ChainTip Nothing
+  C.ChainTip slotNo blockHash blockNo -> ChainTip . Just $ BlockHeader
+    (fromCardanoSlotNo slotNo)
+    (fromCardanoBlockHeaderHash blockHash)
+    (fromCardanoBlockNo blockNo)
+
 tokensToCardanoValue :: Tokens -> Maybe C.Value
 tokensToCardanoValue = fmap valueFromList . traverse toCardanoValue' . Map.toList . unTokens
   where
@@ -119,6 +150,14 @@ tokensFromCardanoValue = Tokens . Map.fromList . mapMaybe fromCardanoValue' . va
     fromCardanoValue' (C.AdaAssetId, _) = Nothing
     fromCardanoValue' (C.AssetId policy name, q) =
       Just (AssetId (fromCardanoPolicyId policy) (fromCardanoAssetName name), fromCardanoQuantity q)
+
+tokensFromCardanoMintValue :: forall ctx era. C.TxMintValue era ctx -> Tokens
+tokensFromCardanoMintValue = \case
+  C.TxMintNone -> Tokens Map.empty
+  C.TxMintValue _ mintigMap -> Tokens $ Map.fromList do
+    (policy, (C.PolicyAssets assets, _)) <- Map.toList mintigMap
+    (name, q) <- Map.toList assets
+    pure (AssetId (fromCardanoPolicyId policy) (fromCardanoAssetName name), fromCardanoQuantity q)
 
 assetsToCardanoValue :: TxOutAssets -> Maybe C.Value
 assetsToCardanoValue (TxOutAssets (Assets ada tokens)) =
@@ -240,12 +279,6 @@ cardanoEraToAsType = \case
   C.ConwayEra -> C.AsConwayEra
   C.DijkstraEra -> C.AsDijkstraEra
 
-toCardanoAddressAny :: Address -> Maybe C.AddressAny
-toCardanoAddressAny = hush . C.deserialiseFromRawBytes C.AsAddressAny . unAddress
-
-fromCardanoAddressAny :: C.AddressAny -> Address
-fromCardanoAddressAny = Address . C.serialiseToRawBytes
-
 toCardanoAddressInEra :: C.CardanoEra era -> Address -> Maybe (C.AddressInEra era)
 toCardanoAddressInEra era =
   withCardanoEra era $
@@ -279,3 +312,47 @@ toCardanoSlotNo slotNo = C.SlotNo slotNo.unSlotNo
 
 fromCardanoSlotNo :: C.SlotNo -> SlotNo
 fromCardanoSlotNo (C.SlotNo slotNo) = SlotNo slotNo
+
+fromCardanoTxValidity :: C.TxValidityLowerBound era -> C.TxValidityUpperBound era -> ValidityRange
+fromCardanoTxValidity l u = case (l, u) of
+  (C.TxValidityNoLowerBound, C.TxValidityUpperBound _ Nothing) -> Unbounded
+  (C.TxValidityNoLowerBound, C.TxValidityUpperBound _ (Just upper)) -> MaxBound $ fromCardanoSlotNo upper
+  (C.TxValidityLowerBound _ lower, C.TxValidityUpperBound _ Nothing) -> MinBound $ fromCardanoSlotNo lower
+  (C.TxValidityLowerBound _ lower, C.TxValidityUpperBound _ (Just upper)) -> MinMaxBound (fromCardanoSlotNo lower) (fromCardanoSlotNo upper)
+
+
+fromLedgerTxId :: Ledger.TxId -> TxId
+fromLedgerTxId = TxId . (\(Ledger.UnsafeHash h) -> fromShort h) . Ledger.extractHash . Ledger.unTxId
+
+fromLedgerTxIn :: Ledger.TxIn -> TxOutRef
+fromLedgerTxIn (Ledger.TxIn txId txIx) = TxOutRef (fromLedgerTxId txId) (TxIx $ Ledger.unTxIx txIx)
+
+fromLedgerBinaryData :: Ledger.BinaryData L.DijkstraEra -> Datum
+fromLedgerBinaryData = fromPlutusData . unData . binaryDataToData
+
+inputsFromCardanoTx :: C.IsCardanoEra era => C.Tx era -> Map.Map TxOutRef (Maybe Redeemer)
+inputsFromCardanoTx tx = do
+  let
+    tx' = Kupo.txFromCardanoTx tx
+    ledgerBasedResult = fst $ foldr
+      (\ref (refs, i) -> ((ref, Kupo.spendRedeemer tx' i):refs, i + 1))
+      (mempty, 0)
+      (Kupo.spentInputs tx')
+  Map.fromList $ ledgerBasedResult <&>
+    bimap fromLedgerTxIn (fmap (Redeemer . fromLedgerBinaryData))
+
+fromCardanoTransaction :: forall era. C.IsCardanoEra era => C.Tx era -> Transaction
+fromCardanoTransaction tx = do
+  let
+    txBody@(C.TxBody (C.TxBodyContent {..})) = C.getTxBody tx
+    era = C.cardanoEra
+    txId = fromCardanoTxId $ C.getTxId txBody
+    validityRange = fromCardanoTxValidity txValidityLowerBound txValidityUpperBound
+    metadata = case txMetadata of
+      C.TxMetadataNone -> TransactionMetadata Map.empty
+      C.TxMetadataInEra _ md -> fromCardanoTxMetadata md
+    inputs = inputsFromCardanoTx tx
+    outputs = mapMaybe (fromCardanoTxOut era) txOuts
+    mintedTokens = tokensFromCardanoMintValue txMintValue
+  Transaction{..}
+

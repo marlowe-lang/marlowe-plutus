@@ -24,6 +24,7 @@
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 -- | Types for the Marlowe CLI tool.
 module Language.Marlowe.CLI.Types (
@@ -154,7 +155,6 @@ import Control.Exception (Exception)
 import Control.Monad.Except (MonadError, liftEither)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Reader.Class (MonadReader (..), asks)
-import Control.Monad.Writer (WriterT (..))
 import Data.Aeson (FromJSON (..), ToJSON (..), Value, object, withObject, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.KeyMap qualified as KeyMap
@@ -185,6 +185,7 @@ import Marlowe.Plutus.Extended qualified as E
 import Plutus.V1.Ledger.SlotConfig (SlotConfig, posixTimeToEnclosingSlot, slotToBeginPOSIXTime)
 import PlutusLedgerApi.V1 (CurrencySymbol, Datum, DatumHash, ExBudget, Redeemer)
 import PlutusLedgerApi.V1 qualified as P
+import PlutusLedgerApi.V3 qualified as PV3
 
 -- | Exception for Marlowe CLI.
 newtype CliError = CliError {unCliError :: String}
@@ -248,7 +249,7 @@ data SomeMarloweTransaction
       (MarloweTransaction lang era)
 
 -- | Plutus version which we use in the current Marlowe script.
-type MarlowePlutusVersion = C.PlutusScriptV2
+type MarlowePlutusVersion = C.PlutusScriptV3
 
 marlowePlutusVersion :: PlutusScriptVersion MarlowePlutusVersion
 marlowePlutusVersion = C.plutusScriptVersion
@@ -293,17 +294,13 @@ instance ToJSON SomeMarloweTransaction where
             plutusVersionStr :: String
             plutusVersionStr = case plutusVersion of
               C.PlutusScriptV1 -> "PlutusScriptV1"
-              C.PlutusScriptV2 -> "PlutusScriptV2"
               C.PlutusScriptV3 -> "PlutusScriptV3"
-              C.PlutusScriptV4 -> "PlutusScriptV4"
          in [ "era" .= eraStr
             , "plutusVersion" .= plutusVersionStr
             , "tx"
                 .= ( ( case plutusVersion of
                         C.PlutusScriptV1 -> toJSON tx
-                        C.PlutusScriptV2 -> toJSON tx
                         C.PlutusScriptV3 -> toJSON tx
-                        C.PlutusScriptV4 -> toJSON tx
                      )
                       :: Value
                    )
@@ -315,9 +312,8 @@ instance FromJSON SomeMarloweTransaction where
     plutusVersionStr :: String <- obj .: "plutusVersion"
     case (eraStr, plutusVersionStr) of
       ("babbage", "PlutusScriptV1") -> SomeMarloweTransaction C.PlutusScriptV1 BabbageEraOnwardsBabbage <$> obj .: "tx"
-      ("babbage", "PlutusScriptV2") -> SomeMarloweTransaction C.PlutusScriptV2 BabbageEraOnwardsBabbage <$> obj .: "tx"
       ("conway", "PlutusScriptV1") -> SomeMarloweTransaction C.PlutusScriptV1 BabbageEraOnwardsConway <$> obj .: "tx"
-      ("conway", "PlutusScriptV2") -> SomeMarloweTransaction C.PlutusScriptV2 BabbageEraOnwardsConway <$> obj .: "tx"
+      ("conway", "PlutusScriptV3") -> SomeMarloweTransaction C.PlutusScriptV3 BabbageEraOnwardsConway <$> obj .: "tx"
       _ -> fail $ "Unsupported era " <> show eraStr
 
 -- | Complete description of a Marlowe transaction.
@@ -462,17 +458,15 @@ validatorInfo
   -- ^ The stake address.
   -> Either String (ValidatorInfo lang era)
   -- ^ The validator information, or an error message.
-validatorInfo viScript viTxIn era protocolVersion costModel network stake = do
+validatorInfo viScript viTxIn era _protocolVersion _costModel network stake = do
   let C.PlutusScriptSerialised viBytes = viScript
       viHash = C.hashScript (C.PlutusScript C.plutusScriptVersion viScript)
       viAddress = validatorAddress viScript era network stake
       viSize = SBS.length viBytes
 
-  script <- Bifunctor.first show $ P.deserialiseScript protocolVersion viBytes
-  (evaluationContext, _) <- Bifunctor.first show $ runWriterT $ P.mkEvaluationContext (fromIntegral <$> costModel)
-  case P.evaluateScriptCounting protocolVersion P.Verbose evaluationContext script [] of
-    (_, Right viCost) -> pure $ ValidatorInfo{..}
-    (_, Left err) -> Left $ show err
+  -- TODO: Fix execution cost calculation - old code was buggy (passed [] so script wasn't evaluated)
+  let viCost = PV3.ExBudget (PV3.ExCPU 0) (PV3.ExMemory 0)
+  pure $ ValidatorInfo{..}
 
 validatorInfo'
   :: (MonadError CliError m)

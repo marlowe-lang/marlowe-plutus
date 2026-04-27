@@ -3,6 +3,7 @@
 
 module Language.Marlowe.Runtime.Core.ScriptRegistry where
 
+import qualified Cardano.Api as C
 import Cardano.Api (AsType (..), NetworkId (..), NetworkMagic (..), PlutusScript, PlutusScriptV2, SerialiseAsCBOR (..))
 import Data.Aeson (FromJSON, FromJSONKey, ToJSON (..), ToJSONKey)
 import Data.Binary (Binary)
@@ -30,6 +31,7 @@ import Language.Marlowe.Runtime.Core.Api (
   SomeMarloweVersion (..),
  )
 import Data.Variations (Variations)
+import qualified PlutusLedgerApi.Common as PLA
 
 instance Ord NetworkId where
   compare Mainnet Mainnet = EQ
@@ -38,11 +40,51 @@ instance Ord NetworkId where
   compare (Testnet (NetworkMagic a)) (Testnet (NetworkMagic b)) =
     compare a b
 
+-- Instead of using `C.ScriptInAnyLang`
+-- we can restrict ourselves to Plutus versions
+-- which Marlowe was written in so far.
+-- BTW, `SerialisedScript` is just an alias for `ShortByteString`.
+data ScriptInPlutus
+  = ScriptInPlutusV2 PLA.SerialisedScript
+  | ScriptInPlutusV3 PLA.SerialisedScript
+  deriving (Show, Eq, Ord)
+
+toCardanoScriptInAnyLang :: ScriptInPlutus -> C.ScriptInAnyLang
+toCardanoScriptInAnyLang (ScriptInPlutusV2 bytes) =
+    C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV2)
+    . C.PlutusScript C.PlutusScriptV2
+    . C.PlutusScriptSerialised
+    $ bytes
+toCardanoScriptInAnyLang (ScriptInPlutusV3 bytes) =
+    C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV3)
+    . C.PlutusScript C.PlutusScriptV3
+    . C.PlutusScriptSerialised
+    $ bytes
+
+fromCardanoPlutusScriptV2 :: C.PlutusScript C.PlutusScriptV2 -> ScriptInPlutus
+fromCardanoPlutusScriptV2 (C.PlutusScriptSerialised bytes) =
+    ScriptInPlutusV2 bytes
+
+fromCardanoScriptInAnyLang :: C.ScriptInAnyLang -> Maybe ScriptInPlutus
+fromCardanoScriptInAnyLang (C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV2) (C.PlutusScript C.PlutusScriptV2 (C.PlutusScriptSerialised bytes))) =
+    Just $ ScriptInPlutusV2 bytes
+fromCardanoScriptInAnyLang (C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV3) (C.PlutusScript C.PlutusScriptV3 (C.PlutusScriptSerialised bytes))) =
+    Just $ ScriptInPlutusV3 bytes
+fromCardanoScriptInAnyLang _ = Nothing
+
+fromJustThrowing :: String -> Maybe a -> a
+fromJustThrowing message = \case
+  Just a -> a
+  Nothing -> error message
+
+fromCardanoScriptThrowing :: C.ScriptInAnyLang -> ScriptInPlutus
+fromCardanoScriptThrowing = fromJustThrowing "Unsupported script language" . fromCardanoScriptInAnyLang
+
 data ReferenceScriptUtxo = ReferenceScriptUtxo
   { txOutRef :: TxOutRef
   , txOut :: Chain.TransactionOutput
   -- FIXME: Transition to `ScriptInAnyLang`
-  , script :: PlutusScript PlutusScriptV2
+  , script :: ScriptInPlutus
   }
   deriving (Show, Eq, Ord)
 
@@ -120,7 +162,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1MarloweScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1MarloweScript
                 }
             )
           ,
@@ -136,7 +178,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1MarloweScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1MarloweScript
                 }
             )
           ,
@@ -150,7 +192,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1MarloweScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1MarloweScript
                 }
             )
           ,
@@ -164,7 +206,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1MarloweScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1MarloweScript
                 }
             )
           ]
@@ -183,7 +225,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1PayoutScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1PayoutScript
                 }
             )
           ,
@@ -199,7 +241,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1PayoutScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1PayoutScript
                 }
             )
           ,
@@ -213,7 +255,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1PayoutScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1PayoutScript
                 }
             )
           ,
@@ -227,7 +269,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1PayoutScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1PayoutScript
                 }
             )
           ]
@@ -246,7 +288,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1OpenRoleScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1OpenRoleScript
                 }
             )
           ,
@@ -262,7 +304,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1OpenRoleScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1OpenRoleScript
                 }
             )
           ,
@@ -276,7 +318,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1OpenRoleScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1OpenRoleScript
                 }
             )
           ,
@@ -290,7 +332,7 @@ caseAsDataV1Scripts = do
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = caseAsDataV1OpenRoleScript
+                , script = fromCardanoPlutusScriptV2 caseAsDataV1OpenRoleScript
                 }
             )
           ]
@@ -339,7 +381,7 @@ plutus11500V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = plutus11500V1MarloweScript
+                , script = fromCardanoPlutusScriptV2 plutus11500V1MarloweScript
                 }
             )
           ,
@@ -353,7 +395,7 @@ plutus11500V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = plutus11500V1MarloweScript
+                , script = fromCardanoPlutusScriptV2 plutus11500V1MarloweScript
                 }
             )
           ,
@@ -367,7 +409,7 @@ plutus11500V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = plutus11500V1MarloweScript
+                , script = fromCardanoPlutusScriptV2 plutus11500V1MarloweScript
                 }
             )
           ]
@@ -386,7 +428,7 @@ plutus11500V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = plutus11500V1PayoutScript
+                , script = fromCardanoPlutusScriptV2 plutus11500V1PayoutScript
                 }
             )
           ,
@@ -400,7 +442,7 @@ plutus11500V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = plutus11500V1PayoutScript
+                , script = fromCardanoPlutusScriptV2 plutus11500V1PayoutScript
                 }
             )
           ,
@@ -414,7 +456,7 @@ plutus11500V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = plutus11500V1PayoutScript
+                , script = fromCardanoPlutusScriptV2 plutus11500V1PayoutScript
                 }
             )
           ]
@@ -433,7 +475,7 @@ plutus11500V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = plutus11500V1OpenRoleScript
+                , script = fromCardanoPlutusScriptV2 plutus11500V1OpenRoleScript
                 }
             )
           ,
@@ -447,7 +489,7 @@ plutus11500V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = plutus11500V1OpenRoleScript
+                , script = fromCardanoPlutusScriptV2 plutus11500V1OpenRoleScript
                 }
             )
           ,
@@ -461,7 +503,7 @@ plutus11500V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = plutus11500V1OpenRoleScript
+                , script = fromCardanoPlutusScriptV2 plutus11500V1OpenRoleScript
                 }
             )
           ]
@@ -510,7 +552,7 @@ node812V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = node812V1MarloweScript
+                , script = fromCardanoPlutusScriptV2 node812V1MarloweScript
                 }
             )
           ,
@@ -524,7 +566,7 @@ node812V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = node812V1MarloweScript
+                , script = fromCardanoPlutusScriptV2 node812V1MarloweScript
                 }
             )
           ,
@@ -538,7 +580,7 @@ node812V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = node812V1MarloweScript
+                , script = fromCardanoPlutusScriptV2 node812V1MarloweScript
                 }
             )
           ]
@@ -557,7 +599,7 @@ node812V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = node812V1PayoutScript
+                , script = fromCardanoPlutusScriptV2 node812V1PayoutScript
                 }
             )
           ,
@@ -571,7 +613,7 @@ node812V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = node812V1PayoutScript
+                , script = fromCardanoPlutusScriptV2 node812V1PayoutScript
                 }
             )
           ,
@@ -585,7 +627,7 @@ node812V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = node812V1PayoutScript
+                , script = fromCardanoPlutusScriptV2 node812V1PayoutScript
                 }
             )
           ]
@@ -604,7 +646,7 @@ node812V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = node812V1OpenRoleScript
+                , script = fromCardanoPlutusScriptV2 node812V1OpenRoleScript
                 }
             )
           ,
@@ -618,7 +660,7 @@ node812V1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = node812V1OpenRoleScript
+                , script = fromCardanoPlutusScriptV2 node812V1OpenRoleScript
                 }
             )
           ]
@@ -661,7 +703,7 @@ postAuditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = postAuditV1MarloweScript
+                , script = fromCardanoPlutusScriptV2 postAuditV1MarloweScript
                 }
             )
           ,
@@ -675,7 +717,7 @@ postAuditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = postAuditV1MarloweScript
+                , script = fromCardanoPlutusScriptV2 postAuditV1MarloweScript
                 }
             )
           ,
@@ -689,7 +731,7 @@ postAuditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = postAuditV1MarloweScript
+                , script = fromCardanoPlutusScriptV2 postAuditV1MarloweScript
                 }
             )
           ]
@@ -708,7 +750,7 @@ postAuditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = postAuditV1PayoutScript
+                , script = fromCardanoPlutusScriptV2 postAuditV1PayoutScript
                 }
             )
           ,
@@ -722,7 +764,7 @@ postAuditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = postAuditV1PayoutScript
+                , script = fromCardanoPlutusScriptV2 postAuditV1PayoutScript
                 }
             )
           ,
@@ -736,7 +778,7 @@ postAuditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = postAuditV1PayoutScript
+                , script = fromCardanoPlutusScriptV2 postAuditV1PayoutScript
                 }
             )
           ]
@@ -777,7 +819,7 @@ auditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = auditV1MarloweScript
+                , script = fromCardanoPlutusScriptV2 auditV1MarloweScript
                 }
             )
           ,
@@ -791,7 +833,7 @@ auditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = auditV1MarloweScript
+                , script = fromCardanoPlutusScriptV2 auditV1MarloweScript
                 }
             )
           ,
@@ -805,7 +847,7 @@ auditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = auditV1MarloweScript
+                , script = fromCardanoPlutusScriptV2 auditV1MarloweScript
                 }
             )
           ]
@@ -824,7 +866,7 @@ auditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = auditV1PayoutScript
+                , script = fromCardanoPlutusScriptV2 auditV1PayoutScript
                 }
             )
           ,
@@ -838,7 +880,7 @@ auditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = auditV1PayoutScript
+                , script = fromCardanoPlutusScriptV2 auditV1PayoutScript
                 }
             )
           ,
@@ -852,7 +894,7 @@ auditV1Scripts =
                       , datum = Nothing
                       , datumHash = Nothing
                       }
-                , script = auditV1PayoutScript
+                , script = fromCardanoPlutusScriptV2 auditV1PayoutScript
                 }
             )
           ]
