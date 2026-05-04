@@ -1,0 +1,28 @@
+{
+  "author": "paluh (aka Tomasz Rybarczyk)",
+  "bin": {
+    "marlowe-integration": "dist/index.js"
+  },
+  "description": "Integration framework for the Marlowe Runtime components.",
+  "devDependencies": {
+    "@tsconfig/node-lts": "^24.0.0",
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  },
+  "license": "BSD 3-Clause",
+  "main": "yes",
+  "name": "yes",
+  "repository": "https://github.com/marlowe-lang/marlowe-runtime-ng",
+  "scripts": {
+    "cli": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "type": "module",
+  "version": "0.0.1",
+  "dependencies": {
+    "vitest": "^4.1.5",
+    "yargs": "^18.0.0"
+  }
+}

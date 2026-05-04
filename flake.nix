@@ -9,6 +9,8 @@
       flake = false;
     };
 
+    capkgs.url = "github:input-output-hk/capkgs";
+
     CHaP = {
       url = "github:IntersectMBO/cardano-haskell-packages?ref=repo";
       flake = false;

@@ -36,7 +36,7 @@ import Language.Marlowe.Runtime.ChainSync.Api (
  )
 import qualified Language.Marlowe.Runtime.ChainSync.Api as Chain
 import Language.Marlowe.Runtime.Core.Api hiding (marloweVersion)
-import Language.Marlowe.Runtime.Core.ScriptRegistry (MarloweScripts (..), getMarloweVersion)
+import Language.Marlowe.Runtime.Core.ScriptRegistry (getMarloweVersion, MarloweScriptHashes (..))
 import qualified Marlowe.Plutus.Scripts.Types as V1
 import Ouroboros.Consensus.BlockchainTime (SystemStart, fromRelativeTime)
 import Ouroboros.Consensus.HardFork.History (interpretQuery, slotToWallclock)
@@ -249,7 +249,7 @@ extractCreation contractId tx@Chain.Transaction{metadata = txMetadata} = do
   Chain.TransactionOutput{assets, address = scriptAddress, datum = mdatum} <-
     getOutput (txIx $ unContractId contractId) tx
   marloweScriptHash <- getScriptHash scriptAddress
-  (SomeMarloweVersion version, MarloweScripts{..}) <- note InvalidScriptHash $ getMarloweVersion marloweScriptHash
+  (SomeMarloweVersion version, MarloweScriptHashes{..}) <- note InvalidScriptHash $ getMarloweVersion marloweScriptHash
   let payoutValidatorHash = payoutScript
   -- for_ inputs \Chain.TransactionInput{..} ->
   --   when (isScriptAddress marloweScriptHash address) $ Left NotCreationTransaction

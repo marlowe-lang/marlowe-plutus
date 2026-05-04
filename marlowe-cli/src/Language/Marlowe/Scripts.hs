@@ -1,19 +1,29 @@
 module Language.Marlowe.Scripts (
-  marloweValidator,
+  marloweDevelValidatorWithoutTraces,
+  payoutDevelValidatorWithoutTraces,
+  marloweDevelValidatorWithTraces,
+  payoutDevelValidatorWithTraces,
   openRolesValidator,
-  payoutValidator,
 ) where
 
 import Cardano.Api (PlutusScript (PlutusScriptSerialised), PlutusScriptV3)
-import Marlowe.Plutus.Binaries.Production qualified as Binaries
+import Marlowe.Plutus.Binaries.Devel qualified as WithTraces
+import Marlowe.Plutus.Binaries.Production qualified as WithoutTraces
 
-marloweValidator :: PlutusScript PlutusScriptV3
-marloweValidator = PlutusScriptSerialised Binaries.marloweValidatorBytes
+marloweDevelValidatorWithoutTraces :: PlutusScript PlutusScriptV3
+marloweDevelValidatorWithoutTraces = PlutusScriptSerialised WithoutTraces.marloweValidatorBytes
+
+payoutDevelValidatorWithoutTraces :: PlutusScript PlutusScriptV3
+payoutDevelValidatorWithoutTraces = PlutusScriptSerialised WithoutTraces.rolePayoutValidatorBytes
+
+marloweDevelValidatorWithTraces :: PlutusScript PlutusScriptV3
+marloweDevelValidatorWithTraces = PlutusScriptSerialised WithTraces.marloweValidatorBytes
+
+payoutDevelValidatorWithTraces :: PlutusScript PlutusScriptV3
+payoutDevelValidatorWithTraces = PlutusScriptSerialised WithTraces.rolePayoutValidatorBytes
 
 -- TODO: openRolesValidator is not compiled in marlowe-binaries yet.
 -- Using payoutValidator as placeholder - open roles won't work until this is fixed.
 openRolesValidator :: PlutusScript PlutusScriptV3
-openRolesValidator = PlutusScriptSerialised Binaries.rolePayoutValidatorBytes
+openRolesValidator = PlutusScriptSerialised WithoutTraces.rolePayoutValidatorBytes
 
-payoutValidator :: PlutusScript PlutusScriptV3
-payoutValidator = PlutusScriptSerialised Binaries.rolePayoutValidatorBytes

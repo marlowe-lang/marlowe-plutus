@@ -155,8 +155,11 @@ library command
     Language.Marlowe.CLI.Command.Parse
     Language.Marlowe.CLI.Command.Role
     Language.Marlowe.CLI.Command.Run
---     Language.Marlowe.CLI.Command.Template  -- TODO: Commented out - depends on marlowe-contracts (not in workspace)
---     Language.Marlowe.CLI.Command.Test  -- TODO: Commented out - depends on marlowe-runtime:config and cli-test (not in workspace)
+
+    -- -- You can find the original not migrated yet modules in the source directory
+    -- -- with a file extendsion `*.hs.disabled`.
+    -- Language.Marlowe.CLI.Command.Template.disabled
+    -- Language.Marlowe.CLI.Command.Test.disabled
     Language.Marlowe.CLI.Command.Transaction
     Language.Marlowe.CLI.Command.Util
 

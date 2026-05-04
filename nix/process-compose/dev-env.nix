@@ -19,6 +19,7 @@
   processes = lib.attrsets.unionOfDisjoint testnet-processes postgres-processes;
 in (formats.yaml {}).generate "process-compose.yaml" {
   version = "0.5";
+  log_location = ".pc.log";
   processes = processes;
 }
 

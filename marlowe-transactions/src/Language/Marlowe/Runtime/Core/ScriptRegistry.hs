@@ -25,6 +25,8 @@ import Language.Marlowe.Runtime.ChainSync.Api (
   fromBech32,
   mkTxOutAssets,
  )
+import Marlowe.Plutus.Binaries.Devel as Binaries.Devel
+import Marlowe.Plutus.Binaries.Production as Binaries.Production
 import qualified Language.Marlowe.Runtime.ChainSync.Api as Chain
 import Language.Marlowe.Runtime.Core.Api (
   MarloweVersion (..),
@@ -32,6 +34,7 @@ import Language.Marlowe.Runtime.Core.Api (
  )
 import Data.Variations (Variations)
 import qualified PlutusLedgerApi.Common as PLA
+import Language.Marlowe.Runtime.Plutus.V2.Api (fromPlutusValidatorHash)
 
 instance Ord NetworkId where
   compare Mainnet Mainnet = EQ
@@ -927,19 +930,42 @@ v1Scripts = Set.fromList [caseAsDataV1Scripts, plutus11500V1Scripts, node812V1Sc
 
 -- | Key a set of script hash sets by their Marlowe script hashes.
 toScriptMap :: Set MarloweScripts -> Map ScriptHash MarloweScripts
-toScriptMap = Map.mapKeys marloweScript . Map.fromSet id
+toScriptMap = Map.mapKeys (\scripts -> scripts.marloweScript) . Map.fromSet id
 
 -- | The map of script hash sets for Marlowe V1 keyed by their Marlowe script
 -- hash.
 v1ScriptMap :: Map ScriptHash MarloweScripts
 v1ScriptMap = toScriptMap v1Scripts
 
+v1ScriptHashMap :: Map ScriptHash MarloweScriptHashes
+v1ScriptHashMap = Map.map (\scripts -> MarloweScriptHashes scripts.marloweScript scripts.payoutScript) v1ScriptMap
+
+develScripts :: Map ScriptHash MarloweScriptHashes
+develScripts = do
+  let
+    rph = fromPlutusValidatorHash Binaries.Production.rolePayoutValidatorHash
+    mph = fromPlutusValidatorHash Binaries.Production.marloweValidatorHash
+    rdh = fromPlutusValidatorHash Binaries.Devel.rolePayoutValidatorHash
+    mdh = fromPlutusValidatorHash Binaries.Devel.marloweValidatorHash
+  Map.fromList
+    [ (rph, MarloweScriptHashes mph rph)
+    , (mph, MarloweScriptHashes mph rph)
+    , (rdh, MarloweScriptHashes mdh rdh)
+    , (mdh, MarloweScriptHashes mdh rdh)
+    ]
+
+data MarloweScriptHashes = MarloweScriptHashes
+  { marloweScript :: ScriptHash
+  , payoutScript :: ScriptHash
+  }
+
 -- | Lookup the Marlowe version and script hash set associated with the given
 -- Marlowe script hash.
-getMarloweVersion :: ScriptHash -> Maybe (SomeMarloweVersion, MarloweScripts)
+getMarloweVersion :: ScriptHash -> Maybe (SomeMarloweVersion, MarloweScriptHashes)
 getMarloweVersion hash =
   asum
-    [ (SomeMarloweVersion MarloweV1,) <$> Map.lookup hash v1ScriptMap
+    [ (SomeMarloweVersion MarloweV1,) <$> Map.lookup hash v1ScriptHashMap
+    , (SomeMarloweVersion MarloweV1,) <$> Map.lookup hash develScripts
     ]
 
 -- | Get the set of known script hash sets associated with the given Marlowe

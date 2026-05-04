@@ -120,10 +120,16 @@ import Codec.Serialise (serialise)
 import Control.Monad.Reader (MonadReader)
 import Data.ByteString.Short qualified as SBS
 import Language.Marlowe.CLI.Cardano.Api.PlutusScript (withPlutusScriptVersion)
-import Language.Marlowe.Scripts (marloweValidator, openRolesValidator, payoutValidator)
+import Language.Marlowe.Scripts as Scripts 
 import Language.Marlowe.Scripts.Types (marloweTxInputsFromInputs)
 import PlutusLedgerApi.Common (MajorProtocolVersion)
 import PlutusLedgerApi.V1 (DatumHash (..), toBuiltin, toData)
+
+marloweValidator :: C.PlutusScript C.PlutusScriptV3
+marloweValidator = Scripts.marloweDevelValidatorWithTraces
+
+payoutValidator :: C.PlutusScript C.PlutusScriptV3
+payoutValidator = Scripts.payoutDevelValidatorWithoutTraces
 
 -- | Build comprehensive information about a Marlowe contract and transaction.
 buildMarlowe

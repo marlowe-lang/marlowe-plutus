@@ -16,44 +16,44 @@ import Marlowe.Indexer.NodeFollower.Block (withCardanoEraTxs)
 import Language.Marlowe.Runtime.Indexer.MarloweBlock (MarloweBlock, MarloweUTxO)
 import UnliftIO (MonadUnliftIO, newTQueue, writeTQueue, atomically, readTQueue, MonadIO (..))
 import Log (MonadLog)
-import qualified Log (logInfo_, logInfo)
+import qualified Log (logInfo_, logInfo, logAttention)
 import Control.Concurrent.Component (Component, mkComponent)
 import Data.Foldable (for_)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (catMaybes)
 import qualified Data.Set as Set
 import Control.Monad (unless)
-import qualified Data.Text as T
 import Data.Aeson (ToJSON)
 import Data.Text (Text)
 import Marlowe.Indexer.MarloweChainFollower.Extractor (extractMarloweBlock)
 import Language.Marlowe.Runtime.ChainSync.Api (ChainTip, ChainPoint, WithGenesis(..), genesisChainTip, ScriptHash)
 import Language.Marlowe.Runtime.Cardano.Api (fromCardanoChainTip, fromCardanoBlockHeader, fromCardanoTransaction)
-import Marlowe.Indexer.NodeQuerier (NodeQuerier(..), Query (QueryHistory), hoistNodeQuerier)
+import Marlowe.Indexer.NodeQuerier (NodeQuerier(..), Query (QueryHistory, QueryStartup), hoistNodeQuerier)
 import Control.Monad.Reader.Class (MonadReader, ask)
 import Control.Monad.Trans.Reader (runReaderT, ReaderT (..))
 import Control.Monad.Trans.Class (lift, MonadTrans)
 import Data.Set (Set)
+import Control.Monad.State (runStateT)
+import Data.Traversable (for)
+import Control.Monad.Trans.Writer (runWriter)
 
 -- | The set of dependencies needed by the NodeFollower component.
 data MarloweChainFollowerDependencies m = MarloweChainFollowerDependencies
   { changes :: STM NodeFollower.Changes
-  , getMarloweUTxO :: m MarloweUTxO
+  , getLatestMarloweUTxO :: m MarloweUTxO
   , marloweScriptHashes  :: Set ScriptHash
   , nodeQuerier :: NodeQuerier m
-  , systemStart :: C.SystemStart
   }
 
 hoistMarloweChainFollowerDependencies
   :: (forall x. m x -> n x)
   -> MarloweChainFollowerDependencies m
   -> MarloweChainFollowerDependencies n
-hoistMarloweChainFollowerDependencies nat MarloweChainFollowerDependencies{..} =
+hoistMarloweChainFollowerDependencies f MarloweChainFollowerDependencies{..} =
   MarloweChainFollowerDependencies
     { changes = changes
-    , getMarloweUTxO = nat getMarloweUTxO
+    , getLatestMarloweUTxO = f getLatestMarloweUTxO
     , marloweScriptHashes = marloweScriptHashes
-    , nodeQuerier = hoistNodeQuerier nat nodeQuerier
-    , systemStart = systemStart
+    , nodeQuerier = hoistNodeQuerier f nodeQuerier
     }
 
 newtype NodeTip = NodeTip ChainTip
@@ -100,7 +100,7 @@ mkMarloweChainFollower deps = mkComponent "marlowe-chain-follower" do
     deps' = hoistMarloweChainFollowerDependencies lift deps
 
     follower :: ThreadT m ()
-    follower = mkFollowerThread emit
+    follower = mkFollowerThread emit Nothing
 
     process :: m ()
     process = runThreadT follower deps'
@@ -112,6 +112,9 @@ logInfo_ msg = Log.logInfo_ $ "[MarloweChainFollower] " <> msg
 
 logInfo :: ToJSON a => MonadLog m => Text -> a -> m ()
 logInfo msg = Log.logInfo ("[MarloweChainFollower] " <> msg)
+
+logAttention :: ToJSON a => MonadLog m => Text -> a -> m ()
+logAttention msg = Log.logAttention ("[MarloweChainFollower] " <> msg)
 
 chainPointFromCardanoRollback :: NodeFollower.RollbackToBlock -> ChainPoint
 chainPointFromCardanoRollback (NodeFollower.RollbackToBlock Nothing) = Genesis
@@ -127,14 +130,30 @@ instance MonadTrans ThreadT where
 runThreadT :: ThreadT m a -> MarloweChainFollowerDependencies (ThreadT m) -> m a
 runThreadT (ThreadT action) = runReaderT action
 
+getSystemStart
+  :: MonadLog m
+  => NodeQuerier m
+  -> Maybe C.SystemStart
+  -> m C.SystemStart
+getSystemStart nodeQuerier = \case
+  Just ss -> pure ss
+  Nothing -> do
+    logInfo_ "Querying system start from node..."
+    runQuery nodeQuerier QueryStartup >>= \case
+      (ss, _, _) -> do
+        logInfo "System start is" ss
+        pure ss
+
 mkFollowerThread
   :: MonadLog m
   => MonadIO m
   => MonadReader (MarloweChainFollowerDependencies m) m
   => (ChainEvent -> m ())
+  -> Maybe C.SystemStart
   -> m ()
-mkFollowerThread emit = do
+mkFollowerThread emit possibleSystemStart = do
   MarloweChainFollowerDependencies{..} <- ask
+  systemStart <- getSystemStart nodeQuerier possibleSystemStart
   NodeFollower.Changes{..} <- liftIO $ atomically changes
   for_ changesRollback $ \rollbackTo -> do
     let
@@ -143,25 +162,39 @@ mkFollowerThread emit = do
     emit $ RollBackward rollbackPoint (fromCardanoNodeTip changesTip)
 
   (eraHistory :: C.EraHistory) <- runQuery nodeQuerier QueryHistory
-  marloweUTxO <- getMarloweUTxO
-  let
-    marloweBlocks = flip mapMaybe changesBlocks \(C.BlockInMode _ block) -> do
-      let
-        blockHeader = fromCardanoBlockHeader . C.getBlockHeader $ block
-        chainPoint =  At blockHeader
-        transactions = withCardanoEraTxs block (Set.fromList . fmap fromCardanoTransaction)
+  marloweUTxO <- getLatestMarloweUTxO
 
-      (_, marloweBlock) <- extractMarloweBlock
+  blocks' <- for (reverse changesBlocks) \(C.BlockInMode _ block) -> do
+    let
+      blockHeader = fromCardanoBlockHeader . C.getBlockHeader $ block
+    case withCardanoEraTxs block (traverse fromCardanoTransaction) of
+      Right transactions -> pure (blockHeader, transactions)
+      Left info -> do
+        logAttention "Failed to extract transactions from block" info
+        error "Failed to extract transactions from block"
+
+  let
+    ((possibleBlocks, marloweUTxO'), logs) = runWriter $ flip runStateT marloweUTxO $ for blocks' \(blockHeader, transactions) -> do
+      let
+        chainPoint =  At blockHeader
+      possibleBlock <- extractMarloweBlock
         systemStart
         eraHistory
         marloweScriptHashes
         blockHeader
-        transactions
-        marloweUTxO
+        (Set.fromList transactions)
+      pure $ (chainPoint,) <$> possibleBlock
 
-      pure (chainPoint, marloweBlock)
+    marloweBlocks = catMaybes possibleBlocks
 
-  logInfo_ $ "Extracted MarloweBlocks: " <> T.pack (show (length marloweBlocks))
+  for_ logs $ \l ->
+    logInfo_ $ "Extract marlowe block: " <> l
+
   unless (null marloweBlocks) $ do
+    -- FIXME: Add JSON instance
+    -- logInfo "Extracted marlowe blocks" marloweBlocks
+    logInfo "Updated marlowe UTxO" marloweUTxO'
     emit $ RollForward marloweBlocks (fromCardanoNodeTip changesTip)
+
+  mkFollowerThread emit (Just systemStart)
 
