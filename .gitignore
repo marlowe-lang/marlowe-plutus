@@ -2,3 +2,11 @@
 .direnv
 dist-newstyle
 result
+.pc-postgres-init.log
+.pc-postgres.log
+.pc.log
+marlowe-integration/node_modules
+marlowe-integration/dist
+marlowe-integration/.yarn
+marlowe-integration/.pnp.*
+.run

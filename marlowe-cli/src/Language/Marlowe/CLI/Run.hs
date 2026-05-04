@@ -84,7 +84,6 @@ import Cardano.Api (
  )
 import Cardano.Api qualified as Api (Value)
 import Cardano.Api qualified as C
-import Cardano.Api.Byron qualified as CB
 import Cardano.Api (ReferenceScript (ReferenceScriptNone))
 import Cardano.Api qualified as CS
 import Cardano.Chain.Common (addrToBase58)
@@ -223,6 +222,8 @@ import Marlowe.Plutus.AssocMap qualified as AM (toList)
 import PlutusTx.AssocMap qualified as PAM (toList)
 import Prettyprinter (Pretty (..))
 import System.IO (hPutStrLn, stderr)
+import qualified Data.Text as T
+import Cardano.Crypto.Hash (hashToTextAsHex)
 
 -- | Serialise a deposit input to a file.
 makeDeposit
@@ -636,7 +637,7 @@ runTransaction
   -- ^ Assertion that the transaction is invalid.
   -> m TxId
   -- ^ Action to build the transaction body.
-runTransaction connection marloweInBundle marloweOutFile inputs outputs changeAddress signingKeyFiles metadataFile (TxBodyFile bodyFile) timeout printStats invalid =
+runTransaction connection marloweInBundle marloweOutFile inputs outputs changeAddress signingKeyFiles metadataFile (TxBodyFile _bodyFile) timeout printStats invalid =
   do
     metadata <- readMaybeMetadata metadataFile
     SomeMarloweTransaction _ era' marloweOut' <- decodeFileStrict marloweOutFile
@@ -662,7 +663,7 @@ runTransaction connection marloweInBundle marloweOutFile inputs outputs changeAd
               metadata
               printStats
               invalid
-          doWithShelleyBasedEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
+          -- doWithShelleyBasedEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
           pure $ getTxId body
 
     case testSameEra era era' of
@@ -724,8 +725,8 @@ runTransactionImpl txBuildupCtx marloweInBundle marloweOut' inputs outputs chang
 
                     marloweParams' = MarloweParams { rolesCurrency = mtRolesCurrency marloweIn }
                     redeemer = riRedeemer $ buildRedeemer (mtInputs marloweOut)
-                    inputDatum = diDatum $ buildMarloweDatum marloweParams (mtContract marloweIn) (mtState marloweIn)
-                    spend' = buildPayFromScript validator (Just inputDatum) redeemer spend
+                    -- inputDatum = diDatum $ buildMarloweDatum marloweParams (mtContract marloweIn) (mtState marloweIn)
+                    spend' = buildPayFromScript validator Nothing redeemer spend
                     -- SCP-3610: Remove when Babbage era features become available and the validator is revised.
                     merkles =
                       catMaybes
@@ -788,6 +789,7 @@ runTransactionImpl txBuildupCtx marloweInBundle marloweOut' inputs outputs chang
                         ]
                 ]
           outputs' <- for (payments <> outputs <> datumOutputs) (uncurry3 makeTxOut')
+          liftIO $ putStrLn "Selecting coins and building transaction body..."
           body <-
             doWithShelleyBasedEra $
               buildBody
@@ -805,6 +807,13 @@ runTransactionImpl txBuildupCtx marloweInBundle marloweOut' inputs outputs chang
                 metadata
                 printStats
                 invalid
+          liftIO $ putStrLn "Built transaction body successfully."
+          liftIO $ putStrLn "Submitting transaction with id:"
+          let
+            txId@(C.TxId txIdBytes) = getTxId body
+            bodyFile = File ((T.unpack . hashToTextAsHex $ txIdBytes) <> ".tx.json")
+          liftIO $ print txId
+          doWithShelleyBasedEra $ liftCliIO $ writeFileTextEnvelope bodyFile Nothing body
           void $ submitBody txBuildupCtx body signingKeys invalid
           pure body
     go marloweOut'

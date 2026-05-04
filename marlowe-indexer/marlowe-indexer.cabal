@@ -56,6 +56,7 @@ common lang
     -Wall -Wnoncanonical-monad-instances
     -Wincomplete-uni-patterns -Wincomplete-record-updates
     -Wredundant-constraints -Widentities -Werror
+    -threaded
 
 library db
   import:          lang
@@ -68,6 +69,7 @@ library db
     , cardano-api
     , containers
     , hasql
+    , hasql-pool
     , hasql-th >=0.5
     , hasql-transaction
     , log-base
@@ -85,6 +87,7 @@ library db
 
   exposed-modules:
     Language.Marlowe.Runtime.Indexer.Database
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitBlocks
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints
@@ -154,17 +157,30 @@ executable marlowe-indexer
   import:          lang
   hs-source-dirs:  app
   main-is:         Main.hs
+  other-modules:   Paths_marlowe_indexer
   build-depends:
+    , async-components
     , base >=4.9 && <5
     , binary
     , bytestring
+    , cardano-api
+    , cardano-ledger-core
     , containers
     , hasql
+    , hasql-pool
     , hasql-th >=0.5
     , hasql-transaction
+    , log-base
+    , log-base-inlined
+    , marlowe-binaries
     , marlowe-indexer
+    , marlowe-indexer:db
+    , marlowe-transactions
+    , optparse-applicative
+    , plutus-ledger-api
     , text
     , time
+    , unliftio
 
 test-suite marlowe-indexer-test
   import:          lang

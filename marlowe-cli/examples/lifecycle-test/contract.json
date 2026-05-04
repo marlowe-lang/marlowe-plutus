@@ -1,0 +1,15 @@
+{
+    "timeout": 1777893303400,
+    "timeout_continuation": "close",
+    "when": [
+        {
+            "case": {
+                "deposits": 12000000,
+                "into_account": { "address": "addr_test1vrlmqhejwwgkt5gkp2gkgzza4rfa6h4y2yx0s6vq6uajptqv66qgx" },
+                "of_token": { "currency_symbol": "", "token_name": "" },
+                "party": { "address": "addr_test1vrlmqhejwwgkt5gkp2gkgzza4rfa6h4y2yx0s6vq6uajptqv66qgx" }
+            },
+            "then": "close"
+        }
+    ]
+}

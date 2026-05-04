@@ -11,6 +11,8 @@ let
     stylish-haskell = project.tool "stylish-haskell" "latest";
   };
 
+  db-schema-info = pkgs.callPackage ./shell/db-schema-info.nix {};
+
   preCommitCheck = inputs.pre-commit-hooks.lib.${pkgs.system}.run {
     src = lib.cleanSources ../.;
 
@@ -60,6 +62,11 @@ let
     tools.implicit-hie
     tools.stylish-haskell
 
+    # Inspect capkgs:
+    # (builtins.trace (lib.concatStringsSep ", " (lib.attrNames inputs.capkgs.packages.${pkgs.system})) inputs.capkgs)
+    inputs.capkgs.packages.${pkgs.system}.bech32-input-output-hk-cardano-node-10-7-1-045bc18
+    inputs.capkgs.packages.${pkgs.system}."\"cardano-addresses:exe:cardano-address\"-IntersectMBO-cardano-addresses-4-0-2-5c00d7b"
+
     pkgs.act
     pkgs.bash
     pkgs.bzip2
@@ -78,8 +85,12 @@ let
     pkgs.postgresql.dev
     pkgs.python3
     pkgs.ripgrep
+    pkgs.sqitchPg
     pkgs.shellcheck
     pkgs.which
+    pkgs.yarn-berry
+    pkgs.yarn-berry_4.yarn-berry-fetcher
+    pkgs.yarn-bash-completion
     pkgs.z3
     pkgs.zlib
   ];
@@ -114,11 +125,15 @@ let
       "/home/paluh/.local/state/cabal"          # also include the classic cabal dir (safe)
       "/home/paluh/.local/bin/cabal-plan"          # also include the classic cabal dir (safe)
       "/home/paluh/.local/bin/ghcid"          # also include the classic cabal dir (safe)
+      "/home/paluh/.config/opencode"
+      "/home/paluh/.local/share/opencode"
+      "/home/paluh/.cache/opencode"
     ];
     # (builtins.trace (lib.concatStringsSep ", " (lib.attrNames project.hsPkgs.cardano-crypto-class.components.library)) project)
     # (builtins.trace (lib.concatStringsSep ", " cryptoShell.nativeBuildInputs) cryptoShell)
     # pkgs.haskell-nix.compiler.${ghc}
     extraPkgs = cryptoShell.nativeBuildInputs ++ cryptoShell.buildInputs ++ commonPackages ++ [
+      pkgs.stdenv.cc.cc.lib
     ];
   };
 
@@ -182,6 +197,12 @@ let
     '';
   };
 
+  ld-library-path = lib.makeLibraryPath [
+    pkgs.stdenv.cc.cc.lib
+    pkgs.bzip2
+    # add more only if you hit further .so errors (e.g. pkgs.zlib)
+  ];
+
   shell = project.shellFor {
     name = "marlowe-plutus-${project.args.compiler-nix-name}";
 
@@ -189,6 +210,8 @@ let
       cardano-node
       # inputs.process-compose
       pkgs.process-compose
+
+      # db-schema-info generator
 
       # The main process compose for the full dev env.
       process-compose-dev-env
@@ -199,6 +222,9 @@ let
 
       (inputs.jailed-agents.lib.${pkgs.system}.makeJailedOpencode {
         inherit (commonJail) baseJailOptions extraPkgs extraReadwriteDirs;
+        env = {
+          LD_LIBRARY_PATH = ld-library-path;
+        };
       })
       (inputs.jailed-agents.lib.${pkgs.system}.makeJailedOpencode {
         name = "jailed-bash";
@@ -239,7 +265,9 @@ let
       export PROCESS_COMPOSE_POSTGRES_YAML=${process-compose-postgres-yaml}
       export PROCESS_COMPOSE_DEV_ENV_YAML=${process-compose-dev-env-yaml}
 
-      export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [ pkgs.bzip2 ]}:$LD_LIBRARY_PATH"
+      export LD_LIBRARY_PATH="${ld-library-path}:$LD_LIBRARY_PATH"
+
+      # ${db-schema-info}/bin/db-schema-info sql/final
     '';
   };
 in

@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wno-orphans -Wno-deprecations #-}
 
--- | Utilities for converting to and from Cardano API types.
+-- FIXME: Move most of the types to thin newtype wrappers around the Cardano API types
+-- to avoid those Maybes
 module Language.Marlowe.Runtime.Cardano.Api where
 
 import Cardano.Api (getScriptData, unsafeHashableScriptData, TxBodyContent(..))
@@ -27,6 +28,11 @@ import Cardano.Ledger.Plutus (unData)
 import qualified Language.Marlowe.Runtime.Cardano.Api.Kupo as Kupo
 import Data.Functor ((<&>))
 import qualified Cardano.Ledger.BaseTypes as Ledger
+import Control.Error (note)
+import Data.Traversable (for)
+import Data.Aeson (ToJSON, (.=))
+import qualified Data.Aeson as A
+import qualified Data.Set as Set
 
 babbageEraOnwardsToMaryEraOnwards :: C.BabbageEraOnwards era -> C.MaryEraOnwards era
 babbageEraOnwardsToMaryEraOnwards = \case
@@ -115,8 +121,20 @@ fromCardanoLovelace (C.Coin l) = Lovelace l
 fromCardanoBlockHeaderHash :: C.Hash C.BlockHeader -> BlockHeaderHash
 fromCardanoBlockHeaderHash = BlockHeaderHash . C.serialiseToRawBytes
 
+toCardanoBlockHeaderHash :: BlockHeaderHash -> Maybe (C.Hash C.BlockHeader)
+toCardanoBlockHeaderHash = hush . C.deserialiseFromRawBytes (C.proxyToAsType (Proxy :: Proxy (C.Hash C.BlockHeader))) . unBlockHeaderHash
+
 fromCardanoBlockNo :: C.BlockNo -> BlockNo
 fromCardanoBlockNo (C.BlockNo n) = BlockNo n
+
+toCardanoBlockNo :: BlockNo -> C.BlockNo
+toCardanoBlockNo (BlockNo n) = C.BlockNo n
+
+fromCardanoSlotNo :: C.SlotNo -> SlotNo
+fromCardanoSlotNo (C.SlotNo slotNo) = SlotNo slotNo
+
+toCardanoSlotNo :: SlotNo -> C.SlotNo
+toCardanoSlotNo slotNo = C.SlotNo slotNo.unSlotNo
 
 fromCardanoBlockHeader :: C.BlockHeader -> BlockHeader
 fromCardanoBlockHeader (C.BlockHeader slotNo blockHash blockNo) =
@@ -125,6 +143,14 @@ fromCardanoBlockHeader (C.BlockHeader slotNo blockHash blockNo) =
     , headerHash = fromCardanoBlockHeaderHash blockHash
     , blockNo = fromCardanoBlockNo blockNo
     }
+
+toCardanoBlockHeader :: BlockHeader -> Maybe C.BlockHeader
+toCardanoBlockHeader BlockHeader{..} = do
+  h <- toCardanoBlockHeaderHash headerHash
+  pure $ C.BlockHeader
+    (toCardanoSlotNo slotNo)
+    h
+    (toCardanoBlockNo blockNo)
 
 fromCardanoChainTip :: C.ChainTip -> ChainTip
 fromCardanoChainTip = \case
@@ -307,12 +333,6 @@ toCardanoTxIx = C.TxIx . fromIntegral . unTxIx
 fromCardanoTxIx :: C.TxIx -> TxIx
 fromCardanoTxIx (C.TxIx txIx) = TxIx $ fromIntegral txIx
 
-toCardanoSlotNo :: SlotNo -> C.SlotNo
-toCardanoSlotNo slotNo = C.SlotNo slotNo.unSlotNo
-
-fromCardanoSlotNo :: C.SlotNo -> SlotNo
-fromCardanoSlotNo (C.SlotNo slotNo) = SlotNo slotNo
-
 fromCardanoTxValidity :: C.TxValidityLowerBound era -> C.TxValidityUpperBound era -> ValidityRange
 fromCardanoTxValidity l u = case (l, u) of
   (C.TxValidityNoLowerBound, C.TxValidityUpperBound _ Nothing) -> Unbounded
@@ -334,14 +354,23 @@ inputsFromCardanoTx :: C.IsCardanoEra era => C.Tx era -> Map.Map TxOutRef (Maybe
 inputsFromCardanoTx tx = do
   let
     tx' = Kupo.txFromCardanoTx tx
-    ledgerBasedResult = fst $ foldr
-      (\ref (refs, i) -> ((ref, Kupo.spendRedeemer tx' i):refs, i + 1))
-      (mempty, 0)
-      (Kupo.spentInputs tx')
+    ledgerBasedResult = foldr
+      (\(i, ref) refs -> (ref, Kupo.spendRedeemer tx' i):refs)
+      mempty
+      (zip [0 ..] (Set.toAscList $ Kupo.spentInputs tx'))
   Map.fromList $ ledgerBasedResult <&>
     bimap fromLedgerTxIn (fmap (Redeemer . fromLedgerBinaryData))
 
-fromCardanoTransaction :: forall era. C.IsCardanoEra era => C.Tx era -> Transaction
+data TxConversionFailure = FailedToExtractTxInfo { txOutRef :: TxOutRef, reason :: String }
+  deriving Show
+
+instance ToJSON TxConversionFailure where
+  toJSON (FailedToExtractTxInfo txOutRef reason) = A.object
+    [ "txOutRef" .= txOutRef
+    , "reason" .= reason
+    ]
+
+fromCardanoTransaction :: forall era. C.IsCardanoEra era => C.Tx era -> Either TxConversionFailure Transaction
 fromCardanoTransaction tx = do
   let
     txBody@(C.TxBody (C.TxBodyContent {..})) = C.getTxBody tx
@@ -352,7 +381,10 @@ fromCardanoTransaction tx = do
       C.TxMetadataNone -> TransactionMetadata Map.empty
       C.TxMetadataInEra _ md -> fromCardanoTxMetadata md
     inputs = inputsFromCardanoTx tx
-    outputs = mapMaybe (fromCardanoTxOut era) txOuts
     mintedTokens = tokensFromCardanoMintValue txMintValue
-  Transaction{..}
+  outputs <- for (zip [0::Int ..] txOuts) \(i, txOut) -> do
+    note
+      (FailedToExtractTxInfo (TxOutRef txId (TxIx $ fromIntegral i)) "Failed to extract transaction output")
+      $ fromCardanoTxOut era txOut
+  pure $ Transaction{..}
 

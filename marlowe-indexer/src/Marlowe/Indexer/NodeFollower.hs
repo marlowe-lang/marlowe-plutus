@@ -1,7 +1,7 @@
 module Marlowe.Indexer.NodeFollower (
   Changes (..),
-  GetIntersectionPoints (..),
   MemoryCostConfig (..),
+  ChangesMemoryCostModel (..),
   LocalTip (..),
   NodeTip (..),
   NodeFollower (..),
@@ -21,7 +21,6 @@ import Cardano.Api (
   ChainTip (..),
   LocalChainSyncClient (..),
   LocalNodeClientProtocols (..),
-  LocalNodeClientProtocolsInMode,
   SlotNo (..),
   getBlockHeader,
   serialiseToRawBytes, BlockHeader (..),
@@ -54,12 +53,11 @@ import Control.Monad.Reader (ReaderT (..), MonadReader, ask)
 import Control.Monad.Trans.Class (lift)
 import Data.Aeson (ToJSON, toJSON, (.=))
 import qualified Data.Aeson as A
-
-newtype GetIntersectionPoints m = GetIntersectionPoints
-  {runGetIntersectionPoints :: m [WithOrigin BlockHeader]}
-
-hoistGetIntersectionPoints :: (forall x. m x -> n x) -> GetIntersectionPoints m -> GetIntersectionPoints n
-hoistGetIntersectionPoints f (GetIntersectionPoints g) = GetIntersectionPoints (f g)
+import qualified Cardano.Api as C
+import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints (SecurityParameter(..))
+import Marlowe.Indexer.NodeQuerier (NodeQuerier, runQuery, Query (QueryStartup))
+import Data.Functor ((<&>))
+import Cardano.Ledger.BaseTypes (NonZero(..))
 
 type NumberedCardanoBlock = (BlockNo, BlockInMode)
 type NumberedChainTip = (WithOrigin BlockNo, ChainTip)
@@ -108,6 +106,7 @@ minRollbackPoint (RollbackToBlock (Just (BlockHeader s1 h1 n1))) (RollbackToBloc
   | otherwise = RollbackToBlock (Just (BlockHeader s2 h2 n2))
 
 -- | Describes a batch of chain data changes to write.
+-- | IMPORTANT: Blocks are stored in reverse order (newest first).
 data Changes = Changes
   { changesRollback :: !(Maybe RollbackToBlock)
   -- ^ Point to rollback to before writing any blocks.
@@ -144,13 +143,14 @@ data MemoryCostConfig = MemoryCostConfig
 
 -- | The set of dependencies needed by the NodeFollower component.
 data NodeFollowerDependencies m = NodeFollowerDependencies
-  { connectToLocalNode :: !(LocalNodeClientProtocolsInMode -> m ())
+  { localNodeConnectInfo :: !C.LocalNodeConnectInfo
   -- ^ Connect to the local node.
-  , getIntersectionPoints :: !(GetIntersectionPoints m)
+  , getIntersectionPoints :: SecurityParameter -> m [WithOrigin BlockHeader]
   -- ^ How to load the set of initial intersection points for the chain sync client.
   -- | The maximum cost a set of changes is allowed to incur before the
   -- NodeFollower blocks.
   , memoryCostConfig :: MemoryCostConfig
+  , nodeQuerier :: NodeQuerier m
   }
 
 -- | The public API of the NodeFollower component.
@@ -172,8 +172,9 @@ mkNodeFollower
 mkNodeFollower NodeFollowerDependencies{..}  = mkComponent "indexer-node-client" do
   changesVar <- newTVar emptyChanges
   connectedVar <- newTVar False
-
-  let changes :: STM Changes
+  securityParamVar <- newTVar Nothing
+  let
+      changes :: STM Changes
       changes = do
         -- Read the changes and reset the state
         currentChanges <- readTVar changesVar
@@ -183,12 +184,28 @@ mkNodeFollower NodeFollowerDependencies{..}  = mkComponent "indexer-node-client"
       pipelinedClient' :: ChainSyncClientPipelined BlockInMode ChainPoint ChainTip (FollowerT m) ()
       pipelinedClient' =
         mapChainSyncClientPipelined id id (blockToBlockNo &&& id) (chainTipToBlockNo &&& id) $
-          mkPipelinedClient changesVar (hoistGetIntersectionPoints lift getIntersectionPoints)
+          mkPipelinedClient
+            changesVar
+
+            -- querier = mkNodeQuerier NodeQuerierDependencies{localNodeConnectInfo}
+            -- (systemStart, C.GenesisParameters{protocolParamSecurity}, _eraHistory) <- querier.runQuery $ QueryRequest QueryStartup
+            -- . SecurityParameter . toInteger . unNonZero $ protocolParamSecurity
+            --
+            do
+              securityParam <- liftIO (atomically $ readTVar securityParamVar) >>= \case
+                Just s -> pure s
+                Nothing -> do
+                  s <- lift $ runQuery nodeQuerier QueryStartup <&> \(_, C.GenesisParameters{protocolParamSecurity}, _) ->
+                    SecurityParameter . toInteger . unNonZero $ protocolParamSecurity
+
+                  liftIO $ atomically $ writeTVar securityParamVar (Just s)
+                  pure s
+              lift $ getIntersectionPoints securityParam
 
       runNodeFollower :: m ()
       runNodeFollower = withRunInIO \runInIO ->
         runInIO $
-          connectToLocalNode $
+          C.connectToLocalNode localNodeConnectInfo $
             LocalNodeClientProtocols
               { localChainSyncClient = do
                   let ChainSyncClientPipelined client = pipelinedClient'
@@ -256,11 +273,11 @@ mkPipelinedClient
   => MonadLog m
   => MonadReader MemoryCostConfig m
   => TVar Changes
-  -> GetIntersectionPoints m
+  -> m [WithOrigin BlockHeader]
   -> ChainSyncClientPipelined NumberedCardanoBlock ChainPoint NumberedChainTip m ()
 mkPipelinedClient changesVar getIntersectionPoints =
   ChainSyncClientPipelined do
-    headers <- sortOn (Down . fmap blockHeaderToBlockNo) <$> runGetIntersectionPoints getIntersectionPoints
+    headers <- sortOn (Down . fmap blockHeaderToBlockNo) <$> getIntersectionPoints
     case headers of
       (At (BlockHeader _ hash no) : _) ->
         logInfo_ $ do

@@ -185,7 +185,7 @@ in {
   };
   "postgres-init" = {
     namespace = "marlowe@postgres";
-    log_location = "$POSTGRES_DIR/postgres-init.log";
+    log_location = "./.pc-postgres-init.log";
     depends_on = {
       "clear-postgres-state" = {
         condition = "process_completed_successfully";
@@ -195,7 +195,7 @@ in {
   };
   "postgres-server" = {
     namespace = "marlowe@postgres";
-    log_location = "$POSTGRES_DIR/postgres.log";
+    log_location = "./.pc-postgres.log";
     depends_on = {
       "postgres-init" = {
         condition = "process_completed_successfully";

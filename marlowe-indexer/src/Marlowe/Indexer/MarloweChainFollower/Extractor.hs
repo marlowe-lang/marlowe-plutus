@@ -1,15 +1,16 @@
 module Marlowe.Indexer.MarloweChainFollower.Extractor where
 
 import qualified Cardano.Api as C
+import qualified Data.Text.Encoding as T
 import Control.Applicative (empty)
 import Control.Monad (guard, mfilter, unless, join)
 import Control.Monad.Except (MonadError (throwError), runExceptT, withExceptT)
-import Control.Monad.State (State, runState)
+import Control.Monad.State (StateT)
 import Control.Monad.State.Class (gets, modify)
 import Control.Monad.Trans (lift)
 import Control.Monad.Trans.Except (except)
 import Control.Monad.Trans.Maybe (MaybeT (..))
-import Control.Monad.Trans.Writer (WriterT, execWriterT)
+import Control.Monad.Trans.Writer (WriterT, execWriterT, Writer)
 import Control.Monad.Writer.Class (MonadWriter, listens, tell)
 import Data.Foldable (for_)
 import Data.List.NonEmpty (NonEmpty (..))
@@ -17,9 +18,8 @@ import qualified Data.Map as Map
 import Data.Maybe (mapMaybe)
 import Data.Set (Set)
 import qualified Data.Set as Set
-import Data.Tuple (swap)
 import Language.Marlowe.Runtime.ChainSync.Api
-    ( BlockHeader,
+    ( BlockHeader(..),
       Credential(..),
       ScriptHash,
       Transaction(..),
@@ -43,11 +43,21 @@ import Language.Marlowe.Runtime.History.Api (
  )
 import Witherable (Witherable, wither)
 import Language.Marlowe.Runtime.Indexer.MarloweBlock (MarloweUTxO (..), MarloweBlock (..), MarloweTransaction (..))
+import Data.Text (Text)
+import qualified Data.Text as T
+import Data.Aeson (ToJSON, toJSON)
+import qualified Data.ByteString.Lazy as BSL
+import Data.Aeson.Encode.Pretty (encodePretty)
 
-type ExtractM = WriterT [MarloweTransaction] (State MarloweUTxO)
+type ExtractM = WriterT [MarloweTransaction] (StateT MarloweUTxO (Writer [Text]))
 
--- Extracts a MarloweBlock from Cardano Block information. Returns an updated
--- MarloweUTxO.
+logMsg :: Text -> ExtractM ()
+logMsg = lift . tell . pure
+
+logJson :: ToJSON a => a -> ExtractM ()
+logJson = logMsg . T.decodeUtf8 . BSL.toStrict . encodePretty . toJSON
+
+-- Extracts a MarloweBlock from Cardano Block information. Returns an updated MarloweUTxO.
 extractMarloweBlock
   :: C.SystemStart
   -> C.EraHistory
@@ -56,19 +66,22 @@ extractMarloweBlock
   -> BlockHeader
   -- ^ The BlockHeader of the block.
   -> Set Transaction
-  -- ^ The set of transactions in the block.
-  -> MarloweUTxO
   -- ^ The current MarloweUTxO
-  -> Maybe (MarloweUTxO, MarloweBlock)
-extractMarloweBlock systemStart eraHistory marloweScriptHashes blockHeader txs =
-  sequenceA . swap . runState do
-    transactions <- execWriterT $ retrySilentUntilAllSilent (Set.toList txs) \tx -> do
+  -> StateT MarloweUTxO (Writer [Text]) (Maybe MarloweBlock)
+extractMarloweBlock systemStart eraHistory marloweScriptHashes blockHeader txs = do
+  transactions <- execWriterT $ do
+    let
+      BlockHeader{blockNo} = blockHeader
+    logMsg $ "Processing block: " <> T.pack (show blockNo)
+    retrySilentUntilAllSilent (Set.toList txs) \tx -> do
+      logMsg "Extracting transaction: "
+      logJson tx
       extractCreateTx marloweScriptHashes tx
       extractApplyInputsTx systemStart eraHistory blockHeader tx
       extractWithdrawTx tx
-    pure case transactions of
-      [] -> Nothing
-      x : xs -> Just MarloweBlock{blockHeader, transactions = x :| xs}
+  pure case transactions of
+    [] -> Nothing
+    x : xs -> Just MarloweBlock{blockHeader, transactions = x :| xs}
 
 -- Runs the given writer action for each element in a structure. If any actions
 -- produce output, the silent elements
@@ -96,7 +109,8 @@ extractCreateTx marloweScriptHashes Transaction{..} = do
       contractIds =
         mapMaybe (uncurry $ extractContractId marloweScriptHashes) $
           zip (TxOutRef txId . TxIx <$> [0 ..]) outputs
-
+  logMsg $ "Found " <> T.pack (show (length contractIds))
+  logJson contractIds
   existingContracts <- gets $ Map.keysSet . unspentContractOutputs
 
   -- Try to extract a creation step for each prospective contract ID, reporting
@@ -167,7 +181,11 @@ extractApplyInputsTx systemStart eraHistory blockHeader tx@Transaction{inputs, t
       -- Update the MarloweUTxO to remove the unspent contract outputs.
       modify \utxo -> utxo{unspentContractOutputs = Map.withoutKeys (unspentContractOutputs utxo) contractIds}
       case matchingMarloweInputs of
-        [] -> lift empty
+        [] -> do
+          lift . lift $ do
+            logMsg "No matching Marlowe inputs found for transaction"
+            logJson contractUTxO
+          lift empty
         [x] -> pure x
         _ -> do
           let matchingRefs = Set.fromList $ txOutRef . snd <$> matchingMarloweInputs
@@ -178,6 +196,15 @@ extractApplyInputsTx systemStart eraHistory blockHeader tx@Transaction{inputs, t
       Core.SomeMarloweVersion v -> do
         let
           possibleRedeemer = join $ Map.lookup txOutRef inputs
+
+        lift . lift $ do
+          logMsg "Extracted Redeemer:"
+          logJson possibleRedeemer
+          logMsg "Inputs provided to Marlowe transaction:"
+          logJson inputs
+          logMsg "Input txOutRef:"
+          logJson txOutRef
+
         marloweTransaction <-
           withExceptT (Set.singleton txOutRef,) $
             except $

@@ -9,8 +9,10 @@ import Hasql.TH (singletonStatement, vectorStatement)
 import qualified Hasql.Transaction as H
 import Language.Marlowe.Runtime.ChainSync.Api
 
-getIntersectionPoints :: Int -> H.Transaction [BlockHeader]
-getIntersectionPoints securityParameter = do
+newtype SecurityParameter = SecurityParameter Integer
+
+getIntersectionPoints :: SecurityParameter -> H.Transaction [BlockHeader]
+getIntersectionPoints (SecurityParameter securityParameter) = do
   mTipBlockNo <-
     H.statement
       ()

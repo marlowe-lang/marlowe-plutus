@@ -22,7 +22,7 @@ import Language.Marlowe.Runtime.ChainSync.Api
   , WithGenesis(..)
   )
 import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback (commitRollback)
-import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints (getIntersectionPoints)
+import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints (getIntersectionPoints, SecurityParameter(..))
 import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetMarloweUTxO (getMarloweUTxO)
 import Language.Marlowe.Runtime.Indexer.MarloweBlock (MarloweUTxO(..))
 
@@ -139,7 +139,7 @@ testCommitBlockAndQuery = withConnection $ \conn -> do
 testGetIntersectionPointsEmpty :: IO ()
 testGetIntersectionPointsEmpty = withConnection $ \conn -> do
   clearDatabase conn
-  let tx = HT.transaction HT.ReadCommitted HT.Write (getIntersectionPoints 10)
+  let tx = HT.transaction HT.ReadCommitted HT.Write (getIntersectionPoints $ SecurityParameter 10)
   result <- HC.use conn tx
   case result of
     Left err -> error $ "Query failed: " ++ show err
@@ -148,12 +148,8 @@ testGetIntersectionPointsEmpty = withConnection $ \conn -> do
 testGetMarloweUTxOEmpty :: IO ()
 testGetMarloweUTxOEmpty = withConnection $ \conn -> do
   clearDatabase conn
-  let blockHeader = BlockHeader 
-        { slotNo = SlotNo 0
-        , headerHash = BlockHeaderHash (BS.pack "")
-        , blockNo = BlockNo 0
-        }
-  let tx = HT.transaction HT.ReadCommitted HT.Write (getMarloweUTxO blockHeader)
+  let slotNo = SlotNo 0
+  let tx = HT.transaction HT.ReadCommitted HT.Write (getMarloweUTxO slotNo)
   result <- HC.use conn tx
   case result of
     Left err -> error $ "Query failed: " ++ show err

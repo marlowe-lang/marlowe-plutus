@@ -27,6 +27,7 @@ packages:
   libs/async-components
   libs/base16-aeson
   libs/cardano-debug
+  libs/log-base-inlined
   libs/multiplate
   libs/plutus-ledger-ada
   libs/plutus-ledger-slot

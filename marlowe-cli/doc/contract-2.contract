@@ -1,0 +1,37 @@
+{
+    "timeout": 90000000,
+    "when": [
+        {
+            "then": {
+                "to": {
+                    "party": {
+                        "address": "addr_test1vq9prvx8ufwutkwxx9cmmuuajaqmjqwujqlp9d8pvg6gupczgtm9j"
+                    }
+                },
+                "then": "close",
+                "token": {
+                    "currency_symbol": "",
+                    "token_name": ""
+                },
+                "from_account": {
+                    "address": "addr_test1vq9prvx8ufwutkwxx9cmmuuajaqmjqwujqlp9d8pvg6gupczgtm9j"
+                },
+                "pay": 5000000
+            },
+            "case": {
+                "deposits": 10000000,
+                "party": {
+                    "address": "addr_test1vq9prvx8ufwutkwxx9cmmuuajaqmjqwujqlp9d8pvg6gupczgtm9j"
+                },
+                "of_token": {
+                    "currency_symbol": "",
+                    "token_name": ""
+                },
+                "into_account": {
+                    "address": "addr_test1vq9prvx8ufwutkwxx9cmmuuajaqmjqwujqlp9d8pvg6gupczgtm9j"
+                }
+            }
+        }
+    ],
+    "timeout_continuation": "close"
+}

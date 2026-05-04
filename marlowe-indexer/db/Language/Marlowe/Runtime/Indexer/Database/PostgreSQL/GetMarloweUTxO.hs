@@ -17,8 +17,8 @@ import qualified Language.Marlowe.Runtime.Core.Api as Core
 import Language.Marlowe.Runtime.History.Api (UnspentContractOutput (..))
 import Language.Marlowe.Runtime.Indexer.MarloweBlock (MarloweUTxO (..))
 
-getMarloweUTxO :: BlockHeader -> H.Transaction MarloweUTxO
-getMarloweUTxO BlockHeader{slotNo} = do
+getMarloweUTxO :: SlotNo -> H.Transaction MarloweUTxO
+getMarloweUTxO slotNo = do
   unspentContractOutputs <-
     Map.fromDistinctAscList . V.toList . fmap decodeContractOutputRow
       <$> H.statement
@@ -91,6 +91,92 @@ getMarloweUTxO BlockHeader{slotNo} = do
              , withdrawalTxIn.payoutTxIx
           FROM marlowe.withdrawalTxIn
           WHERE withdrawalTxIn.slotNo <= $1 :: bigint
+      )
+    SELECT payoutOut.createTxId :: bytea
+         , payoutOut.createTxIx :: smallint
+         , payoutOut.txId :: bytea
+         , payoutOut.txIx :: smallint
+      FROM payoutOut
+      LEFT JOIN withdrawalIn USING (txId, txIx)
+      WHERE withdrawalIn.txId IS NULL
+      ORDER BY payoutOut.createTxId, payoutOut.createTxIx
+  |]
+
+  let unspentPayoutOutputs =
+        Map.fromDistinctAscList $
+          fmap (fst . head &&& Set.fromList . fmap snd) $
+            groupBy (on (==) fst) unspentContractOutputsFlat
+
+  pure MarloweUTxO{..}
+
+getLatestMarloweUTxO :: H.Transaction MarloweUTxO
+getLatestMarloweUTxO = do
+  unspentContractOutputs <-
+    Map.fromDistinctAscList . V.toList . fmap decodeContractOutputRow
+      <$> H.statement
+        ()
+        [vectorStatement|
+    WITH contractOut (createTxId, createTxIx, txId, txIx, address, payoutScriptHash) AS
+      ( SELECT createTxOut.txId
+             , createTxOut.txIx
+             , txOut.txId
+             , txOut.txIx
+             , txOut.address
+             , contractTxOut.payoutScriptHash
+          FROM marlowe.txOut
+          JOIN marlowe.contractTxOut USING (txId, txIx)
+          JOIN marlowe.createTxOut USING (txId, txIx)
+         UNION
+        SELECT applyTx.createTxId
+             , applyTx.createTxIx
+             , txOut.txId
+             , txOut.txIx
+             , txOut.address
+             , contractTxOut.payoutScriptHash
+          FROM marlowe.txOut
+          JOIN marlowe.contractTxOut USING (txId, txIx)
+          JOIN marlowe.applyTx ON txOut.txId = applyTx.txId AND txOut.txIx = applyTx.outputTxIx
+      )
+    , contractIn (txId, txIx) AS
+      ( SELECT applyTx.inputTxId
+             , applyTx.inputTxIx
+          FROM marlowe.applyTx
+         UNION
+        SELECT invalidApplyTx.inputTxId
+             , invalidApplyTx.inputTxIx
+          FROM marlowe.invalidApplyTx
+          JOIN marlowe.block ON block.id = invalidApplyTx.blockId
+      )
+    SELECT contractOut.createTxId :: bytea
+         , contractOut.createTxIx :: smallint
+         , contractOut.txId :: bytea
+         , contractOut.txIx :: smallint
+         , contractOut.address :: bytea
+         , contractOut.payoutScriptHash :: bytea
+      FROM contractOut
+      LEFT JOIN contractIn USING (txId, txIx)
+      WHERE contractIn.txId IS NULL
+      ORDER BY contractOut.createTxId, contractOut.createTxIx
+  |]
+
+  unspentContractOutputsFlat <-
+    V.toList . fmap decodePayoutOutputRow
+      <$> H.statement
+        ()
+        [vectorStatement|
+    WITH payoutOut (createTxId, createTxIx, txId, txIx) AS
+      ( SELECT applyTx.createTxId
+             , applyTx.createTxIx
+             , txOut.txId
+             , txOut.txIx
+          FROM marlowe.txOut
+          JOIN marlowe.payoutTxOut USING (txId, txIx)
+          JOIN marlowe.applyTx USING (txId)
+      )
+    , withdrawalIn (txId, txIx) AS
+      ( SELECT withdrawalTxIn.payoutTxId
+             , withdrawalTxIn.payoutTxIx
+          FROM marlowe.withdrawalTxIn
       )
     SELECT payoutOut.createTxId :: bytea
          , payoutOut.createTxIx :: smallint

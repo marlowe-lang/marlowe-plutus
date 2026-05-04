@@ -71,6 +71,7 @@ module Language.Marlowe.CLI.Transaction (
   selectCoins,
 ) where
 
+-- import Data.Aeson.Encode.Pretty (encodePretty)
 import Cardano.Api (
   AddressInEra (..),
   AllegraEraOnwards (..),
@@ -217,8 +218,7 @@ import GHC.Natural (Natural)
 import GHC.IsList (fromList, toList)
 import Language.Marlowe.CLI.Cardano.Api (
   adjustMinimumUTxO,
-  toTxOutDatumInTx,
-  txOutValueValue,
+  txOutValueValue, toTxOutDatumInline,
  )
 import Language.Marlowe.CLI.Cardano.Api.Address.ProofOfBurn (permanentPublisher)
 import Language.Marlowe.CLI.Cardano.Api.PlutusScript (toScript, toScriptLanguageInEra)
@@ -285,7 +285,16 @@ import Ouroboros.Consensus.HardFork.History (interpreterToEpochInfo)
 import Ouroboros.Network.Protocol.LocalStateQuery.Type (Target (VolatileTip))
 import Plutus.V1.Ledger.SlotConfig (SlotConfig (..))
 import PlutusLedgerApi.V1 (Datum (..), POSIXTime (..), Redeemer (..), TokenName (..), fromBuiltin, toData)
+-- import qualified Data.Text.Encoding as T
 import System.IO (hPutStrLn, stderr)
+-- import qualified Data.ByteString.Lazy as BSL
+import qualified Cardano.Api.Error as CE
+
+marloweValidator :: C.PlutusScript C.PlutusScriptV3
+marloweValidator = marloweDevelValidatorWithTraces
+
+payoutValidator :: C.PlutusScript C.PlutusScriptV3
+payoutValidator = payoutDevelValidatorWithoutTraces
 
 -- | Build a non-Marlowe transaction.
 buildSimple
@@ -1422,7 +1431,7 @@ buildPayToScript
   -> PayToScript era
   -- ^ The payment information.
 buildPayToScript era address value plutusDatum =
-  let datumOut = toTxOutDatumInTx era plutusDatum
+  let datumOut = toTxOutDatumInline era plutusDatum
    in PayToScript{..}
 
 -- | Hash a signing key.
@@ -1620,7 +1629,8 @@ buildBodyWithContent queryCtx payFromScript payToScript extraInputs inputs outpu
             -- Correct for a negative balance in cases where execution units, and hence fees, have increased.
             Left (TxBodyErrorBalanceNegative delta _) -> do
               balancingLoop (counter - 1) (C.lovelaceToValue delta <> changeValue)
-            Left err -> throwError . CliError $ show err
+            -- Left err -> throwError . CliError . T.unpack . T.decodeUtf8 . BSL.toStrict . encodePretty . toJSON $ err
+            Left err -> throwError . CliError . CE.displayError $ err
             Right balanced@(BalancedTxBody _ (TxBody TxBodyContent{txFee = fee}) _ _) ->
               pure (buildTxBodyContent{txFee = fee}, balanced)
 
@@ -1716,7 +1726,6 @@ submit
   -- ^ The action to submit the transaction.
 submit connection (TxBodyFile bodyFile) signingKeyFiles timeout =
   do
-    era <- askEra
     body <- doWithCardanoEra $ liftCliIO $ readFileTextEnvelope $ File bodyFile
     signings <- mapM readSigningKey signingKeyFiles
     let txBuildupCtx = mkNodeTxBuildup connection (Just timeout)
@@ -1879,9 +1888,9 @@ filterUtxos :: OutputQuery era result -> UTxO era -> result
 filterUtxos = do
   let filterByValue check (UTxO candidates) = do
         let query' (_, TxOut _ v _ _) = check $ txOutValueToValue v
-            fromList = UTxO . M.fromList
+            utxoFromList = UTxO . M.fromList
             (oqrMatching, oqrNonMatching) =
-              (fromList *** fromList)
+              (utxoFromList *** utxoFromList)
                 . partition query'
                 $ M.toList candidates
         OutputQueryResult{..}

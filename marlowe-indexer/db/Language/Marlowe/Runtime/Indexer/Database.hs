@@ -2,21 +2,24 @@
 
 module Language.Marlowe.Runtime.Indexer.Database where
 
-import Language.Marlowe.Runtime.ChainSync.Api (BlockHeader, ChainPoint)
+import Language.Marlowe.Runtime.ChainSync.Api (BlockHeader, ChainPoint, SlotNo)
 import Language.Marlowe.Runtime.Indexer.MarloweBlock (MarloweBlock, MarloweUTxO)
+import qualified Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints as GetIntersectionPoints
 
 data DatabaseQueries m = DatabaseQueries
   { commitRollback :: ChainPoint -> m ()
   , commitBlocks :: [MarloweBlock] -> m ()
-  , getIntersectionPoints :: m [BlockHeader]
-  , getMarloweUTxO :: BlockHeader -> m MarloweUTxO
+  , getIntersectionPoints :: GetIntersectionPoints.SecurityParameter -> m [BlockHeader]
+  , getMarloweUTxO :: SlotNo -> m MarloweUTxO
+  , getLatestMarloweUTxO :: m MarloweUTxO
   }
 
 hoistDatabaseQueries :: (forall a. m a -> n a) -> DatabaseQueries m -> DatabaseQueries n
-hoistDatabaseQueries transformation DatabaseQueries{..} =
+hoistDatabaseQueries f DatabaseQueries{..} =
   DatabaseQueries
-    { commitBlocks = transformation <$> commitBlocks
-    , commitRollback = transformation <$> commitRollback
-    , getIntersectionPoints = transformation getIntersectionPoints
-    , getMarloweUTxO = transformation <$> getMarloweUTxO
+    { commitBlocks = f <$> commitBlocks
+    , commitRollback = f <$> commitRollback
+    , getIntersectionPoints = f <$> getIntersectionPoints
+    , getMarloweUTxO = f <$> getMarloweUTxO
+    , getLatestMarloweUTxO = f getLatestMarloweUTxO
     }

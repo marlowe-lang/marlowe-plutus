@@ -34,7 +34,7 @@ import Cardano.Api (
   TxIn,
   UTxO (..),
   caseByronOrShelleyBasedEra,
-  toAddressAny, LocalNodeClientProtocolsInMode, LocalStateQueryClient (..), LocalNodeClientProtocols (..),
+  toAddressAny, LocalStateQueryClient (..), LocalNodeClientProtocols (..),
  )
 import Cardano.Api.Network (Target (..))
 import Control.Exception (
@@ -79,8 +79,8 @@ tenSecondsTimeout = case mkTimeoutSeconds 10 of
   Just timeout -> timeout
   Nothing -> error "Impossible: Invalid timeout value"
 
-data NodeQuerierDependencies m = NodeQuerierDependencies
-  { connectToLocalNode :: !(LocalNodeClientProtocolsInMode -> m ()) }
+newtype NodeQuerierDependencies = NodeQuerierDependencies
+  { localNodeConnectInfo :: C.LocalNodeConnectInfo }
 
 newtype TimeBoundedNodeQuerier m = TimeBoundedNodeQuerier { query :: forall a. Query a -> m (Maybe a) }
 
@@ -88,7 +88,7 @@ mkTimeBoundNodeFollower
   :: forall m
    . MonadUnliftIO m
   => MonadLog m
-  => NodeQuerierDependencies m
+  => NodeQuerierDependencies
   -> TimeoutSeconds
   -> Component m (TimeBoundedNodeQuerier m)
 mkTimeBoundNodeFollower NodeQuerierDependencies{..} (TimeoutSeconds _timeoutSeconds) = mkComponent "time-bounded-node-querier" $ do
@@ -110,7 +110,7 @@ mkTimeBoundNodeFollower NodeQuerierDependencies{..} (TimeoutSeconds _timeoutSeco
             client
 
       runInIO $
-        connectToLocalNode $
+        C.connectToLocalNode localNodeConnectInfo $
           C.LocalNodeClientProtocols
             { localChainSyncClient = C.NoLocalChainSyncClient
             , localTxSubmissionClient = Nothing
@@ -146,7 +146,7 @@ mkNodeQuerier
   :: forall m
    . MonadUnliftIO m
   => MonadLog m
-  => NodeQuerierDependencies m
+  => NodeQuerierDependencies
   -> Component m (NodeQuerier m)
 mkNodeQuerier NodeQuerierDependencies{..} = mkComponent "node-querier" $ do
   connectedVar <- newTVar False
@@ -167,7 +167,7 @@ mkNodeQuerier NodeQuerierDependencies{..} = mkComponent "node-querier" $ do
             client
 
       runInIO $
-        connectToLocalNode $
+        C.connectToLocalNode localNodeConnectInfo $
           C.LocalNodeClientProtocols
             { localChainSyncClient = C.NoLocalChainSyncClient
             , localTxSubmissionClient = Nothing

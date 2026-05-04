@@ -1,0 +1,13 @@
+{
+    "that_deposits": 10000000,
+    "input_from_party": {
+        "address": "addr_test1vq9prvx8ufwutkwxx9cmmuuajaqmjqwujqlp9d8pvg6gupczgtm9j"
+    },
+    "of_token": {
+        "currency_symbol": "",
+        "token_name": ""
+    },
+    "into_account": {
+        "address": "addr_test1vq9prvx8ufwutkwxx9cmmuuajaqmjqwujqlp9d8pvg6gupczgtm9j"
+    }
+}
