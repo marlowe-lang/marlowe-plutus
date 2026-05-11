@@ -7,10 +7,10 @@
         "inputs": [
             {
                 "input_from_party": {
-                    "address": "addr_test1vrlmqhejwwgkt5gkp2gkgzza4rfa6h4y2yx0s6vq6uajptqv66qgx"
+                    "address": "addr_test1vr6hth2ehggc6z0gsz3gzvl7jq53qe3tvcx88lzkgx0dduq47mngg"
                 },
                 "into_account": {
-                    "address": "addr_test1vrlmqhejwwgkt5gkp2gkgzza4rfa6h4y2yx0s6vq6uajptqv66qgx"
+                    "address": "addr_test1vr6hth2ehggc6z0gsz3gzvl7jq53qe3tvcx88lzkgx0dduq47mngg"
                 },
                 "of_token": {
                     "currency_symbol": "",
@@ -53,11 +53,11 @@
             {
                 "amount": 15000000,
                 "payment_from": {
-                    "address": "addr_test1vrlmqhejwwgkt5gkp2gkgzza4rfa6h4y2yx0s6vq6uajptqv66qgx"
+                    "address": "addr_test1vr6hth2ehggc6z0gsz3gzvl7jq53qe3tvcx88lzkgx0dduq47mngg"
                 },
                 "to": {
                     "party": {
-                        "address": "addr_test1vrlmqhejwwgkt5gkp2gkgzza4rfa6h4y2yx0s6vq6uajptqv66qgx"
+                        "address": "addr_test1vr6hth2ehggc6z0gsz3gzvl7jq53qe3tvcx88lzkgx0dduq47mngg"
                     }
                 },
                 "token": {
@@ -67,7 +67,7 @@
             }
         ],
         "range": [
-            60,
+            65,
             976
         ],
         "roles": {
@@ -90,13 +90,13 @@
         },
         "slotConfig": {
             "scSlotLength": 199,
-            "scSlotZeroTime": 1777889503000
+            "scSlotZeroTime": 1777970677000
         },
         "state": {
             "accounts": [],
             "boundValues": [],
             "choices": [],
-            "minTime": 1777889514940
+            "minTime": 1777970689935
         }
     }
 }

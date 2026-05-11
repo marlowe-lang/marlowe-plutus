@@ -18,12 +18,14 @@ index-state:
 packages:
   marlowe-binaries
   marlowe-cli
+  marlowe-contract-store
   marlowe-indexer
   marlowe-object
   marlowe-plutus
   marlowe-plutus-extended
+  marlowe-runtime
   marlowe-transactions
-  marlowe-web
+
   libs/async-components
   libs/base16-aeson
   libs/cardano-debug
