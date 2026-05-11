@@ -1,11 +1,11 @@
 cabal-version: 3.4
-name:          marlowe-web
+name:          marlowe-runtime
 version:       0.1.0.0
 license:       Apache-2.0
 build-type:    Simple
 maintainer:    paluh (aka Tomasz Rybarczyk)
 stability:     experimental
-author:        Based on marlowe-runtime-web by Jamie Bertram
+author:        Jamie Bertram, Tomasz Rybarczyk
 synopsis:      Self-contained Marlowe Runtime Web API
 category:      Language
 license-files:
@@ -65,7 +65,9 @@ library
   hs-source-dirs:  src
   build-depends:
     , aeson
+    , async-components
     , base
+    , base16
     , bytestring
     , cardano-api
     , cardano-crypto-class
@@ -76,10 +78,15 @@ library
     , deepseq
     , errors
     , hashable
+    , http-media
     , lens
+    , marlowe-object
     , marlowe-plutus ^>=0.2
+    , marlowe-transactions
+    , monad-control ^>=1
     , network-uri
     , nonempty-containers
+    , openapi3 >=3.2 && <4
     , ouroboros-consensus
     , ouroboros-network-api
     , plutus-core ^>=1.57
@@ -88,17 +95,54 @@ library
     , scientific
     , semialign
     , semigroups
+    , servant ^>=0.20
+    , servant-client ^>=0.20
+    , servant-client-core ^>=0.20
+    , servant-openapi3 ^>=2.0
+    , servant-pagination >=2.5 && <3
+    , servant-pipes ^>=0.16
+    , servant-server ^>=0.20
     , text
     , time
     , transformers
+    , unliftio-core
     , unordered-containers
     , vector
 
   exposed-modules:
+    Language.Marlowe.Runtime.Web.Adapter.ByteString
+    Language.Marlowe.Runtime.Web.Adapter.CommaList
+    Language.Marlowe.Runtime.Web.Adapter.Links
+    Language.Marlowe.Runtime.Web.Adapter.Pagination
+    Language.Marlowe.Runtime.Web.Adapter.Servant
+    Language.Marlowe.Runtime.Web.Adapter.Server.ApiError
+    Language.Marlowe.Runtime.Web.Adapter.Server.ContractClient
+    Language.Marlowe.Runtime.Web.Adapter.Server.DTO
+    Language.Marlowe.Runtime.Web.Adapter.Server.Monad
+    Language.Marlowe.Runtime.Web.Adapter.Server.SyncClient
+    Language.Marlowe.Runtime.Web.Adapter.Server.TxClient
+    Language.Marlowe.Runtime.Web.Adapter.Server.Util
+    Language.Marlowe.Runtime.Web.Adapter.URI
     Language.Marlowe.Runtime.Web.Core.Address
+    Language.Marlowe.Runtime.Web.Contract.API
+    Language.Marlowe.Runtime.Web.Contract.Next.API
+    Language.Marlowe.Runtime.Web.Contract.Next.Client
+    Language.Marlowe.Runtime.Web.Contract.Next.Schema
+    Language.Marlowe.Runtime.Web.Contract.Next.Server
+    Language.Marlowe.Runtime.Web.Contract.Server
+    Language.Marlowe.Runtime.Web.Contract.Source.Server
+    Language.Marlowe.Runtime.Web.Contract.Transaction.API
+    Language.Marlowe.Runtime.Web.Contract.Transaction.Client
+    Language.Marlowe.Runtime.Web.Contract.Transaction.Server
+    Language.Marlowe.Runtime.Web.Core.Asset
     Language.Marlowe.Runtime.Web.Core.Base16
     Language.Marlowe.Runtime.Web.Core.BlockHeader
     Language.Marlowe.Runtime.Web.Core.MarloweVersion
+    Language.Marlowe.Runtime.Web.Core.Metadata
     Language.Marlowe.Runtime.Web.Core.NetworkId
     Language.Marlowe.Runtime.Web.Core.Semantics.Schema
+    Language.Marlowe.Runtime.Web.Core.Tx
+    Language.Marlowe.Runtime.Web.Payout.API
+    Language.Marlowe.Runtime.Web.Payout.Server
     Language.Marlowe.Runtime.Web.Runtime.Types
+    Language.Marlowe.Runtime.Web.Tx.API
