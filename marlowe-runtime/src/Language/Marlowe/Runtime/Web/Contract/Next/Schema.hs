@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE OverloadedLists #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
@@ -9,6 +7,7 @@ module Language.Marlowe.Runtime.Web.Contract.Next.Schema (
 
 ) where
 
+import qualified Data.HashMap.Strict.InsOrd as HashMap
 import Control.Lens ((&), (.~), (?~))
 import Data.OpenApi (
   HasDescription (description),
@@ -24,15 +23,15 @@ import Data.Proxy (Proxy (Proxy))
 
 import Language.Marlowe.Runtime.Web.Core.Semantics.Schema ()
 
-import Language.Marlowe.Core.V1.Next (Next)
-import Language.Marlowe.Core.V1.Next.Applicables (ApplicableInputs)
-import Language.Marlowe.Core.V1.Next.Applicables.CanChoose (CanChoose)
-import Language.Marlowe.Core.V1.Next.Applicables.CanDeposit (CanDeposit)
-import Language.Marlowe.Core.V1.Next.Applicables.CanNotify (CanNotify)
-import Language.Marlowe.Core.V1.Next.CanReduce (CanReduce)
-import Language.Marlowe.Core.V1.Next.Indexed (CaseIndex, Indexed)
-import Language.Marlowe.Core.V1.Next.IsMerkleizedContinuation (IsMerkleizedContinuation)
-import Language.Marlowe.Core.V1.Semantics.Types (AccountId, Bound, ChoiceId, Party, Token)
+import Marlowe.Plutus.Next (Next)
+import Marlowe.Plutus.Next.Applicables (ApplicableInputs)
+import Marlowe.Plutus.Next.Applicables.CanChoose (CanChoose)
+import Marlowe.Plutus.Next.Applicables.CanDeposit (CanDeposit)
+import Marlowe.Plutus.Next.Applicables.CanNotify (CanNotify)
+import Marlowe.Plutus.Next.CanReduce (CanReduce)
+import Marlowe.Plutus.Next.Indexed (CaseIndex, Indexed)
+import Marlowe.Plutus.Next.IsMerkleizedContinuation (IsMerkleizedContinuation)
+import Marlowe.Plutus.Semantics.Types (AccountId, Bound, ChoiceId, Party, Token)
 
 instance ToSchema Next where
   declareNamedSchema _ = do
@@ -48,7 +47,7 @@ instance ToSchema Next where
           & description
             ?~ "Describe the reducibility (Can be Reduced ?) and the applicability (Can Inputs be Applied ?) for a given contract."
           & required .~ fmap fst [can_reduce, applicable_generalized_inputs]
-          & properties .~ [can_reduce, applicable_generalized_inputs]
+          & properties .~ HashMap.fromList [can_reduce, applicable_generalized_inputs]
 
 instance ToSchema ApplicableInputs where
   declareNamedSchema _ = do
@@ -64,7 +63,7 @@ instance ToSchema ApplicableInputs where
           & type_ ?~ OpenApiObject
           & description ?~ "Applicable Inputs for a given contract"
           & required .~ fmap fst [deposits, choices]
-          & properties .~ [notify, deposits, choices]
+          & properties .~ HashMap.fromList [notify, deposits, choices]
 
 instance ToSchema (Indexed CanDeposit) where
   declareNamedSchema _ = do
@@ -86,7 +85,7 @@ instance ToSchema (Indexed CanDeposit) where
           & type_ ?~ OpenApiObject
           & description ?~ "Deposit Input that can be applied for a given contract"
           & required .~ fmap fst [party, can_deposit, of_token, into_account, case_index, is_merkleized_continuation]
-          & properties .~ [party, can_deposit, of_token, into_account, case_index, is_merkleized_continuation]
+          & properties .~ HashMap.fromList [party, can_deposit, of_token, into_account, case_index, is_merkleized_continuation]
 
 instance ToSchema (Indexed CanNotify) where
   declareNamedSchema _ = do
@@ -100,7 +99,7 @@ instance ToSchema (Indexed CanNotify) where
           & type_ ?~ OpenApiObject
           & description ?~ "Notify Input tha can be applied for a given contract"
           & required .~ fmap fst [is_merkleized_continuation, case_index]
-          & properties .~ [is_merkleized_continuation, case_index]
+          & properties .~ HashMap.fromList [is_merkleized_continuation, case_index]
 
 instance ToSchema (Indexed CanChoose) where
   declareNamedSchema _ = do
@@ -118,7 +117,7 @@ instance ToSchema (Indexed CanChoose) where
           & type_ ?~ OpenApiObject
           & description ?~ "Choice Inputs that can be applied for a given contract"
           & required .~ fmap fst [for_choice, can_choose_between, case_index, is_merkleized_continuation]
-          & properties .~ [for_choice, can_choose_between, case_index, is_merkleized_continuation]
+          & properties .~ HashMap.fromList [for_choice, can_choose_between, case_index, is_merkleized_continuation]
 
 instance ToSchema CaseIndex where
   declareNamedSchema _ = do

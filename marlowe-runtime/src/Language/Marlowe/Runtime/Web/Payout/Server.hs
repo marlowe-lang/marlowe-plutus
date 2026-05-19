@@ -1,7 +1,4 @@
-{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE ExplicitNamespaces #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
 
 -- | This module defines a server for the /payouts REST API.
 module Language.Marlowe.Runtime.Web.Payout.Server (server) where
@@ -9,7 +6,7 @@ module Language.Marlowe.Runtime.Web.Payout.Server (server) where
 import Data.Functor ((<&>))
 import Data.Maybe (fromMaybe)
 import qualified Data.Set as Set
-import Language.Marlowe.Protocol.Query.Types (Page (..), PayoutFilter (..))
+import Language.Marlowe.Runtime.Query (Page (..), PayoutFilter (..))
 import Language.Marlowe.Runtime.Web.Adapter.Links (
   WithLink (IncludeLink),
  )
@@ -19,12 +16,12 @@ import Language.Marlowe.Runtime.Web.Adapter.Pagination (
 import Language.Marlowe.Runtime.Web.Adapter.Servant (
   ListObject (ListObject),
  )
-import Language.Marlowe.Runtime.Web.Adapter.Server.ApiError (badRequest', notFound', rangeNotSatisfiable')
-import Language.Marlowe.Runtime.Web.Adapter.Server.DTO (FromDTO (..), ToDTO (..), fromDTOThrow, fromPaginationRange)
-import Language.Marlowe.Runtime.Web.Adapter.Server.Monad (
+import Language.Marlowe.Runtime.Web.Server.ApiError (badRequest', notFound', rangeNotSatisfiable')
+import Language.Marlowe.Runtime.Web.Server.DTO (FromDTO (..), ToDTO (..), fromDTOThrow, fromPaginationRange)
+import Language.Marlowe.Runtime.Web.Server.Monad (
   ServerM,
-  loadPayout,
-  loadPayouts,
+  loadPayoutL,
+  loadPayoutsL, runEff2, runEff1,
  )
 import Language.Marlowe.Runtime.Web.Payout.API (
   GetPayoutResponse,
@@ -41,7 +38,7 @@ import Servant (
   Proxy (Proxy),
   addHeader,
   throwError,
-  type (:<|>) ((:<|>)),
+  type (:<|>) ((:<|>)), Union,
  )
 import Servant.Pagination (
   ExtractRange (extractRange),
@@ -50,28 +47,28 @@ import Servant.Pagination (
   Ranges,
   returnRange,
  )
+import Language.Marlowe.Runtime.Web.Adapter.Servant.UVerbT (runUVerbT)
+import Control.Monad.Trans (MonadTrans(lift))
 
 server :: ServerT PayoutsAPI ServerM
-server =
-  get
-    :<|> getOne
+server = get :<|> getOne
 
 get
   :: [TxOutRef]
   -> [AssetId]
   -> Maybe PayoutStatus
   -> Maybe (Ranges '["payoutId"] GetPayoutsResponse)
-  -> ServerM (PaginatedResponse '["payoutId"] GetPayoutsResponse)
-get contractIds roleTokens status ranges = do
+  -> ServerM (Union '[ PaginatedResponse '["payoutId"] GetPayoutsResponse ])
+get contractIds roleTokens status ranges = runUVerbT do
   let range :: Range "payoutId" TxOutRef
       range = fromMaybe (getDefaultRange (Proxy @PayoutHeader)) $ extractRange =<< ranges
-  range' <- maybe (throwError $ rangeNotSatisfiable' "Invalid range value") pure $ fromPaginationRange range
-  contractIds' <-
+  range' <- lift $ maybe (throwError $ rangeNotSatisfiable' "Invalid range value") pure $ fromPaginationRange range
+  contractIds' <- lift $
     traverse
       ( \contractId -> maybe (throwError $ badRequest' $ "Invalid contractId value " <> show contractId) pure $ fromDTO contractId
       )
       contractIds
-  roleTokens' <-
+  roleTokens' <- lift $
     traverse
       (\assetId -> maybe (throwError $ badRequest' $ "Invalid contractId value " <> show assetId) pure $ fromDTO assetId)
       roleTokens
@@ -80,18 +77,25 @@ get contractIds roleTokens status ranges = do
           Available -> False
           Withdrawn -> True
   let pFilter = PayoutFilter status' (Set.fromList contractIds') (Set.fromList roleTokens')
-  loadPayouts pFilter range' >>= \case
-    Nothing -> throwError $ rangeNotSatisfiable' "Initial payout ID not found"
+  runEff2 loadPayoutsL pFilter range' >>= \case
+    Nothing -> lift $ throwError $ rangeNotSatisfiable' "Initial payout ID not found"
     Just Page{..} -> do
-      let payouts = toDTO items
-      let response = IncludeLink (Proxy @"payout") <$> payouts
-      addHeader totalCount . fmap ListObject <$> returnRange range response
+      let
+        payouts :: [GetPayoutsResponse]
+        payouts = IncludeLink (Proxy @"payout") <$> toDTO items
 
-getOne :: TxOutRef -> ServerM GetPayoutResponse
-getOne payoutId = do
-  payoutId' <- fromDTOThrow (badRequest' "Invalid payout id value") payoutId
-  loadPayout payoutId' >>= \case
-    Nothing -> throwError $ notFound' "Payout not found"
+      response  <- returnRange range payouts
+      let
+        -- Without this type annotation compilation fails
+        response' :: PaginatedResponse '["payoutId"] GetPayoutsResponse
+        response' = addHeader @"Total-Count" totalCount $ ListObject <$> response
+      pure response'
+
+getOne :: TxOutRef -> ServerM (Union '[GetPayoutResponse])
+getOne payoutId = runUVerbT do
+  payoutId' <- lift $ fromDTOThrow (badRequest' "Invalid payout id value") payoutId
+  runEff1 loadPayoutL payoutId' >>= \case
+    Nothing -> lift $ throwError $ notFound' "Payout not found"
     Just result ->
       pure $
         IncludeLink (Proxy @"contract") $

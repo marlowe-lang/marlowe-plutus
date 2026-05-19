@@ -1,14 +1,7 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Language.Marlowe.Runtime.Web.Adapter.Server.ApiError where
+module Language.Marlowe.Runtime.Web.Server.ApiError where
 
 import Control.Monad.Except (MonadError (throwError))
 import Data.Aeson (FromJSON, ToJSON (toJSON), Value (Null), encode, object, withObject, (.:), (.=))
@@ -27,7 +20,7 @@ import Language.Marlowe.Runtime.Transaction.Api (
   WithdrawError (..),
  )
 
-import Language.Marlowe.Runtime.Web.Adapter.Server.DTO (DTO, FromDTO (..), HasDTO, ToDTO, toDTO)
+import Language.Marlowe.Runtime.Web.Server.DTO (DTO, FromDTO (..), HasDTO, ToDTO, toDTO)
 import Servant (ServerError (ServerError))
 
 import Control.Category ((>>>))

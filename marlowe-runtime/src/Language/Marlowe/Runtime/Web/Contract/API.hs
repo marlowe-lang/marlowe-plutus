@@ -1,17 +1,9 @@
-{-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+
+-- FIXME: Drop this after the contract endpoint is finished.
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 
 module Language.Marlowe.Runtime.Web.Contract.API (
   ContractId,
@@ -42,15 +34,14 @@ import Data.Map (Map)
 import Data.Text (Text)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
-import Language.Marlowe.Core.V1.Semantics.Types (Contract)
-import qualified Language.Marlowe.Core.V1.Semantics.Types as Semantics
+import Marlowe.Plutus.Semantics.Types (Contract)
+import qualified Marlowe.Plutus.Semantics.Types as Semantics
 import Language.Marlowe.Object.Types (Label, ObjectBundle)
 import Language.Marlowe.Runtime.Web.Adapter.Links (WithLink)
 import Language.Marlowe.Runtime.Web.Adapter.Pagination (PaginatedGet)
 import Language.Marlowe.Runtime.Web.Adapter.Servant (ListObject, OperationId, RenameResponseSchema)
 import Language.Marlowe.Runtime.Web.Contract.Next.API (NextAPI)
 import Language.Marlowe.Runtime.Web.Contract.Next.Schema ()
-import Language.Marlowe.Runtime.Web.Contract.Transaction.API (TransactionsAPI)
 import Language.Marlowe.Runtime.Web.Core.Address (
   Address,
   StakeAddress,
@@ -87,7 +78,6 @@ import Servant (
   NewlineFraming,
   Optional,
   Post,
-  PostCreated,
   Proxy (..),
   QueryFlag,
   QueryParam',
@@ -99,9 +89,9 @@ import Servant (
   Summary,
   ToHttpApiData,
   type (:<|>),
-  type (:>),
+  type (:>), HasStatus, StatusOf
  )
-import Servant.API (FromHttpApiData (..))
+import Servant.API (FromHttpApiData (..), UVerb, StdMethod (GET, POST))
 import Servant.Pagination (
   HasPagination (RangeType, getFieldValue),
  )
@@ -126,21 +116,18 @@ import Language.Marlowe.Runtime.Web.Adapter.ByteString (hasLength)
 import Language.Marlowe.Runtime.Web.Core.Base16 (Base16 (..))
 import Language.Marlowe.Runtime.Web.Tx.API (
   CardanoTx,
-  CardanoTxBody,
-  ContractTx,
   CreateTxEnvelope,
   PostTxAPI,
-  PutSignedTxAPI,
-  TxJSON,
  )
+import Language.Marlowe.Runtime.Web.Contract.Transaction.API (TransactionsAPI)
 
 type ContractId = TxOutRef
 
 type ContractsAPI =
-  GetContractsAPI
-    :<|> PostContractsAPI
-    :<|> Capture "contractId" TxOutRef :> ContractAPI
-    :<|> "sources" :> ContractSourcesAPI
+  Capture "contractId" ContractId :> ContractAPI
+  :<|> PostContractsAPI
+  -- :<|> GetContractsAPI
+  -- :<|> "sources" :> ContractSourcesAPI
 
 -- | GET /contracts sub-API
 type GetContractsAPI =
@@ -158,11 +145,14 @@ type GetContractsAPI =
 
 type GetContractsResponse = WithLink "transactions" (WithLink "contract" ContractHeader)
 
+instance HasStatus GetContractsResponse where
+  type StatusOf GetContractsResponse = 200
+
 -- | POST /contracts sub-API
 type PostContractsAPI =
   Summary "Create a new contract"
     :> Description
-        "Build an unsigned (Cardano) transaction body which opens a new Marlowe contract. \
+        "Build an unsigned (Cardano) transaction which opens a new Marlowe contract. \
         \This unsigned transaction must be signed by a wallet (such as a CIP-30 or CIP-45 wallet) before being submitted. \
         \To submit the signed transaction, use the PUT /contracts/{contractId} endpoint."
     :> OperationId "createContract"
@@ -171,32 +161,44 @@ type PostContractsAPI =
         '[Optional, Strict, Description "Where to send staking rewards for the Marlowe script outputs of this contract."]
         "X-Stake-Address"
         StakeAddress
-    :> ( ReqBody '[JSON] PostContractsRequest :> PostTxAPI (PostCreated '[JSON] (PostContractsResponse CardanoTxBody))
-          :<|> ReqBody '[JSON] PostContractsRequest :> PostTxAPI (PostCreated '[TxJSON ContractTx] (PostContractsResponse CardanoTx))
-       )
+    :> ReqBody '[JSON] PostContractsRequest
+    :> PostTxAPI
+        -- (PostCreated '[TxJSON ContractTx] (PostContractsResponse CardanoTx))
+        ( UVerb
+            'POST
+            '[JSON]
+            '[PostContractsResponse CardanoTx]
+        )
 
 -- | /contracts/:contractId sub-API
 type ContractAPI =
   GetContractAPI
-    :<|> Summary "Submit contract to chain"
-      :> Description
-          "Submit a signed (Cardano) transaction that opens a new Marlowe contract. \
-          \The transaction must have originally been created by the POST /contracts endpoint. \
-          \This endpoint will respond when the transaction is submitted successfully to the local node, which means \
-          \it will not wait for the transaction to be published in a block. \
-          \Use the GET /contracts/{contractId} endpoint to poll the on-chain status."
-      :> OperationId "submitContract"
-      :> PutSignedTxAPI
     :<|> "next" :> NextAPI
     :<|> "transactions" :> TransactionsAPI
+
+--    :<|> Summary "Submit contract to chain"
+--      :> Description
+--          "Submit a signed (Cardano) transaction that opens a new Marlowe contract. \
+--          \The transaction must have originally been created by the POST /contracts endpoint. \
+--          \This endpoint will respond when the transaction is submitted successfully to the local node, which means \
+--          \it will not wait for the transaction to be published in a block. \
+--          \Use the GET /contracts/{contractId} endpoint to poll the on-chain status."
+--      :> OperationId "submitContract"
+--      :> PutSignedTxAPI
 
 type GetContractAPI =
   Summary "Get contract by ID"
     :> OperationId "getContractById"
     :> RenameResponseSchema "GetContractResponse"
-    :> Get '[JSON] GetContractResponse
+    :> UVerb
+        'GET
+        '[JSON]
+        '[ GetContractResponse ]
 
 type GetContractResponse = WithLink "transactions" ContractState
+
+instance HasStatus GetContractResponse where
+  type StatusOf GetContractResponse = 200
 
 -- | /contracts/sources sub-API
 type ContractSourcesAPI =
@@ -238,6 +240,9 @@ type GetContractSourceAPI =
 type GetContractSourceIdsAPI = RenameResponseSchema "ContractSourceIds" :> Get '[JSON] (ListObject ContractSourceId)
 
 type PostContractsResponse tx = WithLink "contract" (CreateTxEnvelope tx)
+
+instance HasStatus (PostContractsResponse CardanoTx) where
+  type StatusOf (PostContractsResponse CardanoTx) = 201
 
 data ContractState = ContractState
   { contractId :: ContractId

@@ -1,9 +1,3 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE TypeFamilies #-}
-
 module Language.Marlowe.Runtime.History.Api where
 
 import Cardano.Api (EraHistory (EraHistory))
@@ -243,6 +237,37 @@ deriving instance Eq (ContractStep 'V1)
 instance Binary (ContractStep 'V1)
 instance ToJSON (ContractStep 'V1)
 instance Variations (ContractStep 'V1)
+
+data SomeContractStep = forall v. SomeContractStep (MarloweVersion v) (ContractStep v)
+
+instance Eq SomeContractStep where
+  SomeContractStep MarloweV1 a == SomeContractStep MarloweV1 b = a == b
+
+instance Show SomeContractStep where
+  show (SomeContractStep MarloweV1 contractStep) = show contractStep
+
+instance ToJSON SomeContractStep where
+  toJSON (SomeContractStep MarloweV1 contractStep) =
+    object
+      [ "version" .= MarloweV1
+      , "contractStep" .= contractStep
+      ]
+
+instance Variations SomeContractStep where
+  variations =
+    join $
+      NE.fromList
+        [ SomeContractStep MarloweV1 <$> variations
+        ]
+
+instance Binary SomeContractStep where
+  put (SomeContractStep MarloweV1 contractStep) = do
+    put $ SomeMarloweVersion MarloweV1
+    put contractStep
+  get =
+    get >>= \case
+      SomeMarloweVersion MarloweV1 ->
+        SomeContractStep MarloweV1 <$> get
 
 extractCreation :: ContractId -> Chain.Transaction -> Either ExtractCreationError SomeCreateStep
 extractCreation contractId tx@Chain.Transaction{metadata = txMetadata} = do

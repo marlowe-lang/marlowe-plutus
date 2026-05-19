@@ -36,10 +36,12 @@ common lang
     DoAndIfThenElse
     DuplicateRecordFields
     EmptyCase
+    EmptyDataDeriving
     ExplicitForAll
     ExplicitNamespaces
     FlexibleContexts
     FlexibleInstances
+    FunctionalDependencies
     GADTs
     GeneralizedNewtypeDeriving
     ImportQualifiedPost
