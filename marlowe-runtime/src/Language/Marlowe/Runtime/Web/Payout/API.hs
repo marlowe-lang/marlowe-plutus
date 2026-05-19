@@ -1,14 +1,3 @@
-{-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 
@@ -43,10 +32,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Language.Marlowe.Runtime.Web.Adapter.Links (WithLink)
-import Language.Marlowe.Runtime.Web.Adapter.Pagination (PaginatedGet)
 import Language.Marlowe.Runtime.Web.Adapter.Servant (
   OperationId,
-  RenameResponseSchema,
+  RenameResponseSchema, ListObject,
  )
 import Language.Marlowe.Runtime.Web.Core.Address (Address)
 import Language.Marlowe.Runtime.Web.Core.Asset (AssetId, Assets)
@@ -55,7 +43,6 @@ import Servant.API (
   Capture,
   Description,
   FromHttpApiData (parseQueryParam),
-  Get,
   JSON,
   Optional,
   QueryParam',
@@ -63,11 +50,12 @@ import Servant.API (
   Summary,
   ToHttpApiData (toQueryParam),
   type (:<|>),
-  type (:>),
+  type (:>), UVerb, StdMethod (GET), Header, HasStatus, StatusOf
  )
 import Servant.Pagination (
-  HasPagination (RangeType, getFieldValue),
+  HasPagination (RangeType, getFieldValue), Ranges,
  )
+import Language.Marlowe.Runtime.Web.Adapter.Pagination (PaginatedResponse)
 
 data PayoutHeader = PayoutHeader
   { payoutId :: TxOutRef
@@ -110,9 +98,16 @@ type GetPayoutAPI =
   Summary "Get payout by ID"
     :> OperationId "getPayoutById"
     :> RenameResponseSchema "GetPayoutResponse"
-    :> Get '[JSON] GetPayoutResponse
+    -- :> Get '[JSON] GetPayoutResponse
+    :> UVerb
+        'GET
+        '[JSON]
+        '[ GetPayoutResponse ]
 
 type GetPayoutResponse = WithLink "contract" (WithLink "transaction" (WithLink "withdrawal" PayoutState))
+
+instance HasStatus GetPayoutResponse where
+  type StatusOf GetPayoutResponse = 200
 
 -- | GET /payouts sub-API
 type GetPayoutsAPI =
@@ -128,9 +123,56 @@ type GetPayoutsAPI =
         "status"
         PayoutStatus
     :> RenameResponseSchema "GetPayoutsResponse"
-    :> PaginatedGet '["payoutId"] GetPayoutsResponse
+    -- :> PaginatedGet '["payoutId"] GetPayoutsResponse
+    :> Header "Range" (Ranges '["payoutId"] GetPayoutsResponse)
+    :> UVerb
+        'GET
+        '[JSON]
+        '[ PaginatedResponse '["payoutId"] GetPayoutsResponse ]
 
+--    • Expected one of:
+--          '[PaginatedResponse '["payoutId"] GetPayoutsResponse]
+--      But got:
+--          Servant.API.ResponseHeaders.Headers
+--            [Servant.API.Header.Header'
+--               [Servant.API.Modifiers.Optional, Servant.API.Modifiers.Strict]
+--               h0
+--               Int,
+--             Servant.API.Header.Header'
+--               [Servant.API.Modifiers.Optional, Servant.API.Modifiers.Strict]
+--               "Accept-Ranges"
+--               (Servant.Pagination.AcceptRanges fields0),
+--             Servant.API.Header.Header
+--               "Content-Range"
+--               (Servant.Pagination.ContentRange
+--                  fields0 (WithLink "payout" PayoutHeader)),
+--             Servant.API.Header.Header
+--               "Next-Range" (Ranges fields0 (WithLink "payout" PayoutHeader))]
+--            (ListObject (WithLink "payout" PayoutHeader))
+--
+
+-- :> PaginatedGet '["payoutId"] GetPayoutsResponse
+--
+-- type PaginatedGet rangeFields resource =
+--    Header "Range" (Ranges rangeFields resource)
+--      :> GetPartialContent '[JSON] (PaginatedResponse rangeFields resource)
+--
+-- type GetPartialContent = Verb 'GET 206
+--
+
+--    :> UVerb
+--        'GET
+--        '[JSON]
+--        '[ GetContractResponse ]
+--
+--
+-- type PaginatedResponse fields resource =
+--   Headers (Header "Total-Count" Int ': PageHeaders fields resource) (ListObject resource)
+--
 type GetPayoutsResponse = WithLink "payout" PayoutHeader
+
+instance HasStatus (ListObject GetPayoutsResponse) where
+  type StatusOf (ListObject GetPayoutsResponse) = 206
 
 instance ToJSON PayoutStatus where
   toJSON =

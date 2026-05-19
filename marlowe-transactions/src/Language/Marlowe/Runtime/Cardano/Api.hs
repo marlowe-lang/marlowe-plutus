@@ -6,7 +6,7 @@ module Language.Marlowe.Runtime.Cardano.Api where
 
 import Cardano.Api (getScriptData, unsafeHashableScriptData, TxBodyContent(..))
 import qualified Cardano.Api as C
-import Cardano.Api.Value (valueFromList, valueToList)
+import qualified Cardano.Api.Value as Value
 import Control.Applicative (Alternative ((<|>)))
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.Foldable (fold)
@@ -161,7 +161,7 @@ fromCardanoChainTip = \case
     (fromCardanoBlockNo blockNo)
 
 tokensToCardanoValue :: Tokens -> Maybe C.Value
-tokensToCardanoValue = fmap valueFromList . traverse toCardanoValue' . Map.toList . unTokens
+tokensToCardanoValue = fmap Value.valueFromList . traverse toCardanoValue' . Map.toList . unTokens
   where
     toCardanoValue' :: (AssetId, Quantity) -> Maybe (C.AssetId, C.Quantity)
     toCardanoValue' (AssetId policyId tokenName, quantity) =
@@ -170,7 +170,7 @@ tokensToCardanoValue = fmap valueFromList . traverse toCardanoValue' . Map.toLis
         <*> pure (toCardanoQuantity quantity)
 
 tokensFromCardanoValue :: C.Value -> Tokens
-tokensFromCardanoValue = Tokens . Map.fromList . mapMaybe fromCardanoValue' . valueToList
+tokensFromCardanoValue = Tokens . Map.fromList . mapMaybe fromCardanoValue' . Value.valueToList
   where
     fromCardanoValue' :: (C.AssetId, C.Quantity) -> Maybe (AssetId, Quantity)
     fromCardanoValue' (C.AdaAssetId, _) = Nothing
@@ -189,7 +189,7 @@ assetsToCardanoValue :: TxOutAssets -> Maybe C.Value
 assetsToCardanoValue (TxOutAssets (Assets ada tokens)) =
   fold
     <$> sequence
-      [ Just $ valueFromList [(C.AdaAssetId, C.lovelaceToQuantity $ toCardanoLovelace ada)]
+      [ Just $ Value.valueFromList [(C.AdaAssetId, C.lovelaceToQuantity $ toCardanoLovelace ada)]
       , tokensToCardanoValue tokens
       ]
 

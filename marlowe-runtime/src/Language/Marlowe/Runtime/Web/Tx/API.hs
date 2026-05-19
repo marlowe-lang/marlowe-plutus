@@ -1,16 +1,3 @@
-{-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE StrictData #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 
@@ -30,6 +17,7 @@ module Language.Marlowe.Runtime.Web.Tx.API (
   TxJSON,
 ) where
 
+import qualified Data.HashMap.Strict.InsOrd as HashMap
 import Control.Lens ((&), (.~), (?~))
 import Data.Aeson (
   FromJSON (parseJSON),
@@ -217,10 +205,11 @@ instance ToSchema (CreateTxEnvelope CardanoTx) where
           & type_ ?~ OpenApiObject
           & OpenApi.description ?~ "The \"type\" property of \"tx\" must be \"Tx BabbageEra\" or \"Tx ConwayEra\""
           & properties
-            .~ [ ("contractId", contractIdSchema)
-               , ("tx", txEnvelopeSchema)
-               , ("safetyErrors", safetyErrorsSchema)
-               ]
+            .~ HashMap.fromList
+                [ ("contractId", contractIdSchema)
+                , ("tx", txEnvelopeSchema)
+                , ("safetyErrors", safetyErrorsSchema)
+                ]
           & required .~ ["contractId", "tx"]
 
 instance ToSchema (CreateTxEnvelope CardanoTxBody) where
@@ -234,10 +223,11 @@ instance ToSchema (CreateTxEnvelope CardanoTxBody) where
           & type_ ?~ OpenApiObject
           & OpenApi.description ?~ "The \"type\" property of \"txBody\" must be \"TxBody BabbageEra\" or \"TxBody ConwayEra\""
           & properties
-            .~ [ ("contractId", contractIdSchema)
-               , ("txBody", txEnvelopeSchema)
-               , ("safetyErrors", safetyErrorsSchema)
-               ]
+            .~ HashMap.fromList
+                [ ("contractId", contractIdSchema)
+                , ("txBody", txEnvelopeSchema)
+                , ("safetyErrors", safetyErrorsSchema)
+                ]
           & required .~ ["contractId", "txBody"]
 
 data WithdrawTxEnvelope tx = WithdrawTxEnvelope
@@ -289,9 +279,10 @@ instance ToSchema (WithdrawTxEnvelope CardanoTx) where
           & type_ ?~ OpenApiObject
           & OpenApi.description ?~ "The \"type\" property of \"tx\" must be \"Tx BabbageEra\" or \"Tx ConwayEra\""
           & properties
-            .~ [ ("withdrawalId", withdrawalIdSchema)
-               , ("tx", txEnvelopeSchema)
-               ]
+            .~ HashMap.fromList
+                [ ("withdrawalId", withdrawalIdSchema)
+                , ("tx", txEnvelopeSchema)
+                ]
           & required .~ ["withdrawalId", "tx"]
 
 instance ToSchema (WithdrawTxEnvelope CardanoTxBody) where
@@ -304,9 +295,10 @@ instance ToSchema (WithdrawTxEnvelope CardanoTxBody) where
           & type_ ?~ OpenApiObject
           & OpenApi.description ?~ "The \"type\" property of \"txBody\" must be \"TxBody BabbageEra\" or \"TxBody ConwayEra\""
           & properties
-            .~ [ ("withdrawalId", withdrawalIdSchema)
-               , ("txBody", txEnvelopeSchema)
-               ]
+            .~ HashMap.fromList
+                [ ("withdrawalId", withdrawalIdSchema)
+                , ("txBody", txEnvelopeSchema)
+                ]
           & required .~ ["withdrawalId", "txBody"]
 
 data ApplyInputsTxEnvelope tx = ApplyInputsTxEnvelope
@@ -370,11 +362,12 @@ instance ToSchema (ApplyInputsTxEnvelope CardanoTx) where
           & type_ ?~ OpenApiObject
           & OpenApi.description ?~ "The \"type\" property of \"tx\" must be \"Tx BabbageEra\" or \"Tx ConwayEra\""
           & properties
-            .~ [ ("contractId", contractIdSchema)
-               , ("transactionId", transactionIdSchema)
-               , ("tx", txEnvelopeSchema)
-               , ("safetyErrors", safetyErrorsSchema)
-               ]
+            .~ HashMap.fromList
+                 [ ("contractId", contractIdSchema)
+                 , ("transactionId", transactionIdSchema)
+                 , ("tx", txEnvelopeSchema)
+                 , ("safetyErrors", safetyErrorsSchema)
+                 ]
           & required .~ ["contractId", "transactionId", "tx"]
 
 instance ToSchema (ApplyInputsTxEnvelope CardanoTxBody) where
@@ -389,9 +382,10 @@ instance ToSchema (ApplyInputsTxEnvelope CardanoTxBody) where
           & type_ ?~ OpenApiObject
           & OpenApi.description ?~ "The \"type\" property of \"txBody\" must be \"TxBody BabbageEra\" or \"TxBody ConwayEra\""
           & properties
-            .~ [ ("contractId", contractIdSchema)
-               , ("transactionId", transactionIdSchema)
-               , ("txBody", txEnvelopeSchema)
-               , ("safetyErrors", safetyErrorsSchema)
-               ]
+            .~ HashMap.fromList
+                 [ ("contractId", contractIdSchema)
+                 , ("transactionId", transactionIdSchema)
+                 , ("txBody", txEnvelopeSchema)
+                 , ("safetyErrors", safetyErrorsSchema)
+                 ]
           & required .~ ["contractId", "transactionId", "txBody"]

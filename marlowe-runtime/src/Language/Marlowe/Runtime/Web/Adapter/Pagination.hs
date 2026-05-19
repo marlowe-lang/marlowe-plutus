@@ -26,7 +26,7 @@ import Servant (
   Header,
   Headers,
   JSON,
-  type (:>),
+  type (:>), Optional, Strict, Header',
  )
 
 -- | Helper type for defining generic paginated GET endpoints
@@ -36,4 +36,4 @@ type PaginatedGet rangeFields resource =
 
 -- | Helper type for describing the response type of generic paginated APIs
 type PaginatedResponse fields resource =
-  Headers (Header "Total-Count" Int ': PageHeaders fields resource) (ListObject resource)
+  Headers (Header' [Optional, Strict] "Total-Count" Int ': PageHeaders fields resource) (ListObject resource)

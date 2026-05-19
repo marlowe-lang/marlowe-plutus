@@ -1,4 +1,3 @@
-{-# LANGUAGE GADTs #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Language.Marlowe.Runtime.Core.ScriptRegistry where

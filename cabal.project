@@ -30,6 +30,7 @@ packages:
   libs/base16-aeson
   libs/cardano-debug
   libs/log-base-inlined
+  libs/hasql-dynamic-syntax
   libs/multiplate
   libs/plutus-ledger-ada
   libs/plutus-ledger-slot

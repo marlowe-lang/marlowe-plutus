@@ -66,8 +66,8 @@ import Data.OpenApi.Schema (ToSchema (..))
 import Data.Text (Text, splitOn)
 import qualified Data.Text as T
 import Data.Word (Word16)
-import Language.Marlowe.Runtime.Web.Adapter.ByteString (hasLength)
 import Language.Marlowe.Runtime.Web.Core.Semantics.Schema ()
+import qualified Data.ByteString as BS
 
 data TxBodyInAnyEra where
   TxBodyInAnyEra :: (IsShelleyBasedEra era) => TxBody era -> TxBodyInAnyEra
@@ -143,8 +143,15 @@ instance ToJSON TxOutRef where
 instance ToJSONKey TxOutRef where
   toJSONKey = toJSONKeyText toUrlPiece
 
+
 instance FromHttpApiData TxId where
-  parseUrlPiece = fmap TxId . (hasLength 32 . unBase16 <=< parseUrlPiece)
+  parseUrlPiece = do
+    let
+      hasLength :: Int -> ByteString -> Either T.Text ByteString
+      hasLength l bytes
+        | BS.length bytes == l = pure bytes
+        | otherwise = Left $ "Expected " <> T.pack (show l) <> " bytes"
+    fmap TxId . (hasLength 32 . unBase16 <=< parseUrlPiece)
 
 instance FromJSON TxId where
   parseJSON =
