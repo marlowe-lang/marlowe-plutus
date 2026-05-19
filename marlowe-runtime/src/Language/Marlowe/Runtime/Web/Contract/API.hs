@@ -189,7 +189,7 @@ type ContractAPI =
 type GetContractAPI =
   Summary "Get contract by ID"
     :> OperationId "getContractById"
-    :> RenameResponseSchema "GetContractResponse"
+    -- :> RenameResponseSchema "GetContractResponse"
     :> UVerb
         'GET
         '[JSON]

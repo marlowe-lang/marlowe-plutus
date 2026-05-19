@@ -44,6 +44,7 @@ common lang
     GADTs
     GeneralizedNewtypeDeriving
     ImportQualifiedPost
+    KindSignatures
     LambdaCase
     MultiParamTypeClasses
     NamedFieldPuns
@@ -70,6 +71,8 @@ common lang
 
 library
   import:          lang
+  ghc-options:
+    -threaded -j8
   hs-source-dirs:  src
   build-depends:
     , aeson
@@ -99,6 +102,7 @@ library
     , http-media
     , insert-ordered-containers
     , lens
+    , lens-aeson
     , log-base
     , marlowe-object
     , marlowe-plutus ^>=0.2
@@ -139,6 +143,9 @@ library
     , variations
     , vector
 
+  other-modules:
+    Paths_marlowe_runtime
+
   exposed-modules:
     Language.Marlowe.Runtime.Query
     Language.Marlowe.Runtime.Query.Database
@@ -168,6 +175,7 @@ library
     Language.Marlowe.Runtime.Web.Adapter.Links
     Language.Marlowe.Runtime.Web.Adapter.Pagination
     Language.Marlowe.Runtime.Web.Adapter.Servant
+    Language.Marlowe.Runtime.Web.Adapter.Servant.Html
     Language.Marlowe.Runtime.Web.Adapter.Servant.UVerbT
     Language.Marlowe.Runtime.Web.Adapter.URI
     Language.Marlowe.Runtime.Web.API
@@ -201,24 +209,19 @@ library
     Language.Marlowe.Runtime.Web.Server.ApiError
     Language.Marlowe.Runtime.Web.Server.DTO
     Language.Marlowe.Runtime.Web.Server.Monad
+    Language.Marlowe.Runtime.Web.Server.OpenAPI
     Language.Marlowe.Runtime.Web.Server.Util
     Language.Marlowe.Runtime.Web.Status
     Language.Marlowe.Runtime.Web.Tx.API
     Language.Marlowe.Runtime.Web.Withdrawal.API
     Language.Marlowe.Runtime.Web.Withdrawal.Server
-    -- Language.Marlowe.Runtime.Web.Adapter.Server.SyncClient
-    -- Language.Marlowe.Runtime.Web.Adapter.Server.TxClient
-    -- Language.Marlowe.Runtime.Web.Contract.Next.Client
-    -- Language.Marlowe.Runtime.Web.Contract.Next.Server
-    -- Language.Marlowe.Runtime.Web.Contract.Server
-    -- Language.Marlowe.Runtime.Web.Contract.Source.Server
-    -- Language.Marlowe.Runtime.Web.Contract.Transaction.Client
-    -- Language.Marlowe.Runtime.Web.Contract.Transaction.Server
 
 executable marlowe-runtime
   import:          lang
   hs-source-dirs:  app
   main-is:         App.hs
+  ghc-options:
+    -threaded -j8
   other-modules:
     Paths_marlowe_runtime
     App.Contrib.Servant.Err500

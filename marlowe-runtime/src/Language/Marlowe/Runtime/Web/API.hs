@@ -139,18 +139,16 @@ runtimeApi :: Proxy RuntimeAPI
 runtimeApi = Proxy
 
 type RuntimeAPI =
-  WithRuntimeStatus
-    ( "contracts" :> ContractsAPI
-      :<|> "withdrawals" :> WithdrawalsAPI
-      :<|> "payouts" :> PayoutsAPI
-      :<|> "role" :> RoleAPI
-      :<|> "healthcheck"
-        :> ( Summary "Test server status"
-              :> Description "Check if the server is running and ready to respond to requests."
-              :> OperationId "healthcheck"
-              :> Get '[JSON] NoContent
-           )
-    )
+  "contracts" :> ContractsAPI
+  :<|> "withdrawals" :> WithdrawalsAPI
+  :<|> "payouts" :> PayoutsAPI
+  :<|> "role" :> RoleAPI
+  :<|> "healthcheck"
+    :> ( Summary "Test server status"
+          :> Description "Check if the server is running and ready to respond to requests."
+          :> OperationId "healthcheck"
+          :> Get '[JSON] NoContent
+       )
 
 -- | Todo : Move these MimeRender and MimeUnrender instances to their appropriate module
 -- | For now, they are here because toJSON `WithLink" has a dependency on these RuntimeApi types and runtimeApi`
