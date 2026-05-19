@@ -12,24 +12,21 @@ import Control.Exception.Lifted qualified as Exception.Lifted
 import Log (LogLevel (..), runLogT, Logger, logAttention, LogT)
 import Log.Backend.StandardOutput (withStdOutLogger)
 import Log.Backend.StandardOutputInlined (withStdOutInlinedLogger)
-import Log.Class (logInfo_, logInfo)
 import Network.HTTP.Types qualified as H
-import Control.Concurrent.Component (runComponent_)
 import Control.Monad (join, when, (<=<))
 import Data.Version (showVersion)
-import qualified Data.Set as Set
 import qualified Hasql.Pool as Pool
-import Language.Marlowe.Runtime.Plutus.V2.Api (fromPlutusValidatorHash)
 import Language.Marlowe.Runtime.Query.Database.PostgreSQL (databaseQueries)
-import Language.Marlowe.Runtime.Query.Database (hoistDatabaseQueries, logDatabaseQueries)
+import Language.Marlowe.Runtime.Query.Database
+    ( hoistDatabaseQueries,
+      logDatabaseQueries,
+      DatabaseQueries(getContractState) )
 import Paths_marlowe_runtime (version)
 import Servant (
   Application,
   ServerError (..),
-  Union,
   hoistServer,
   serve,
-  (:<|>) ((:<|>)),
  )
 import Servant.Server.Internal.ServerError (responseServerError)
 import qualified Network.Wai as Wai
@@ -44,7 +41,6 @@ import Network.Wai.Middleware.Cors (
 import Options.Applicative (
   Parser,
   ParserInfo,
-  auto,
   execParser,
   fullDesc,
   header,
@@ -56,25 +52,21 @@ import Options.Applicative (
   metavar,
   option,
   progDesc,
-  short,
-  strOption, ReadM, asum, flag', eitherReader,
+  short, ReadM, asum, flag', eitherReader,
  )
-import Cardano.Api qualified as C
-import Cardano.Api.Network (NetworkId (..))
 import Data.Foldable (Foldable(..))
 import qualified Hasql.Connection.Settings as Hasql
 import qualified Hasql.Pool.Config as Hasql
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.CaseInsensitive as CI
-import Language.Marlowe.Runtime.Web.Server (runServer, server, ServerDependencies(..))
+import Language.Marlowe.Runtime.Web.Server
+  (runServer, serverWithOpenApi, ServerDependencies(..), RuntimeAPIWithOpenAPI)
 import qualified Data.ByteString.Lazy as BSL
 import Data.Proxy (Proxy(Proxy))
 import Data.Functor ((<&>))
-import Language.Marlowe.Runtime.Query.Database (DatabaseQueries(getContractState))
 import Language.Marlowe.Runtime.Web.Server.Monad (ServerM)
 import Data.Text (Text)
-import Language.Marlowe.Runtime.Web.API (RuntimeAPI)
 
 data Options = Options
   { databaseUri :: Hasql.Settings
@@ -163,7 +155,7 @@ mkServerDependencies pool = do
     { applyInputs = undefined
     , burnRoleTokens = undefined
     , createContract = undefined
-    , loadContract = \contractId -> fmap Right <$> (getContractState dbQueries contractId)
+    , loadContract = fmap (fmap Right) . getContractState dbQueries
     , loadPayout = undefined
     , loadPayouts = undefined
     , loadTransaction = undefined
@@ -183,7 +175,7 @@ runApp Options{..} = do
 
   let
     -- FIXME: Move these to Options
-    port = 8080
+    port = 8090
     debugInfoHttpResponse = True
 
   Wai.withStdoutLogger \waiLogger -> do
@@ -210,7 +202,7 @@ runApp Options{..} = do
           Wai.setPort port $
             Wai.setLogger waiLogger Wai.defaultSettings
 
-      api :: Proxy RuntimeAPI
+      api :: Proxy RuntimeAPIWithOpenAPI
       api = Proxy
 
     withLogger \appLogger -> do
@@ -221,7 +213,7 @@ runApp Options{..} = do
               hoistServer
                 api
                 (runServer appLogger logLevel dependencies)
-                server
+                serverWithOpenApi
 
 parser :: Parser (IO ())
 parser = do
