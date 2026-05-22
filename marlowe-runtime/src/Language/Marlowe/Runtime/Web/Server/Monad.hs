@@ -27,7 +27,7 @@ module Language.Marlowe.Runtime.Web.Server.Monad (
 ) where
 
 import Language.Marlowe.Runtime.ChainSync.Api (DatumHash, Lovelace, StakeCredential, TokenName, TxId, TxOutRef)
-import Language.Marlowe.Runtime.Transaction.Api (Accounts, ContractCreatedInEra, WalletAddresses, RoleTokenFilter, RoleTokensConfig, BurnRoleTokensError, BurnRoleTokensTx, WithdrawTx, CreateError)
+import Language.Marlowe.Runtime.Transaction.Api (Accounts, ContractCreatedInEra, WalletAddresses, RoleTokenFilter, RoleTokensConfig, BurnRoleTokensError, BurnRoleTokensTx, WithdrawTx, InitError)
 import Language.Marlowe.Runtime.Web.Adapter.Control.Lens (makeSuffixedLenses)
 
 import Control.Monad.Base (MonadBase)
@@ -157,7 +157,7 @@ type CreateContract m =
   -> Maybe Lovelace
   -> Accounts
   -> Either (Contract V1) DatumHash
-  -> m (Either CreateError (ContractCreated V1))
+  -> m (Either InitError (ContractCreated V1))
 
 type LoadContract m =
   ContractId

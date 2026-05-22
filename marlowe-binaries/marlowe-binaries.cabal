@@ -132,7 +132,7 @@ library
     , base
     , bytestring
     , cardano-crypto-class
-    , marlowe-plutus ^>=0.2
+    , marlowe-plutus:{marlowe-plutus} ^>=0.2
     , plutus-core ^>=1.57
     , plutus-ledger-api ^>=1.57
     , plutus-tx ^>=1.57
@@ -202,8 +202,7 @@ test-suite marlowe-binaries-test
     , plutus-ledger-api ^>=1.57
     , plutus-tx ^>=1.57
     , marlowe-binaries
-    , marlowe-plutus ^>=0.2
-    , marlowe-plutus:marlowe-testing
+    , marlowe-plutus:{marlowe-plutus, marlowe-testing}
     , these
     , transformers
 
@@ -230,8 +229,10 @@ executable marlowe-binaries
     , filepath
     , marlowe-binaries
     , marlowe-binaries:marlowe-binaries-api
+    , marlowe-plutus:{marlowe-plutus, marlowe-testing}
     , optparse-applicative
     , plutus-ledger-api ^>=1.57
+    , plutus-tx ^>=1.57
     , text
     , transformers
     , yaml

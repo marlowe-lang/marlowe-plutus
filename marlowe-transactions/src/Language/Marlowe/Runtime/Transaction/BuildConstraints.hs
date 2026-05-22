@@ -12,7 +12,7 @@ module Language.Marlowe.Runtime.Transaction.BuildConstraints (
   RolesPolicyId (..),
   ThreadTokenAssetId (..),
   buildApplyInputsConstraints,
-  buildCreateConstraints,
+  buildInitConstraints,
   buildWithdrawConstraints,
   initialMarloweState,
   initialMarloweDatum,
@@ -108,13 +108,13 @@ import Language.Marlowe.Runtime.Transaction.Api (
   Accounts (..),
   ApplyInputsConstraintsBuildupError (..),
   ApplyInputsError (..),
-  CreateBuildupError (
+  InitBuildupError (
     AddressesDecodingFailed,
     InvalidInitialState,
     MintingScriptDecodingFailed,
     MintingUtxoSelectionFailed
   ),
-  CreateError (..),
+  InitError (..),
   Destination (..),
   Mint (..),
   MintRole (..),
@@ -164,9 +164,9 @@ runTxConstraintsBuilder
   -> m (Either err (a, TxConstraints era v))
 runTxConstraintsBuilder v = runExceptT . runWriterT . withMarloweVersion v
 
--- | Creates a set of Tx constraints that are used to build a transaction that
+-- | Inits a set of Tx constraints that are used to build a transaction that
 -- instantiates a contract.
-buildCreateConstraints
+buildInitConstraints
   :: forall era v m
    . (Monad m)
   => MkRoleTokenMintingPolicy m
@@ -191,11 +191,11 @@ buildCreateConstraints
   -- ^ Adjust a value to account for the minimum UTxO ledger rule.
   -> Contract v
   -- ^ The contract being instantiated.
-  -> m (Either CreateError ((Datum v, TxOutAssets, RolesPolicyId), TxConstraints era v))
-buildCreateConstraints mkRoleTokenMintingPolicy era version walletCtx roles threadName metadata minAda accounts adjustMinUtxo contract = case version of
+  -> m (Either InitError ((Datum v, TxOutAssets, RolesPolicyId), TxConstraints era v))
+buildInitConstraints mkRoleTokenMintingPolicy era version walletCtx roles threadName metadata minAda accounts adjustMinUtxo contract = case version of
   MarloweV1 ->
     runTxConstraintsBuilder version $
-      buildCreateConstraintsV1
+      buildInitConstraintsV1
         mkRoleTokenMintingPolicy
         era
         walletCtx
@@ -212,9 +212,9 @@ type MkRoleTokenMintingPolicy m = TxOutRef -> Map TokenName Integer -> m CS.Plut
 newtype ThreadTokenAssetId = ThreadTokenAssetId {unThreadTokenAssetId :: AssetId}
   deriving (Eq, Show)
 
--- | Creates a set of Tx constraints that are used to build a transaction that
+-- | Inits a set of Tx constraints that are used to build a transaction that
 -- instantiates a contract.
-buildCreateConstraintsV1
+buildInitConstraintsV1
   :: forall era m
    . (Monad m)
   => MkRoleTokenMintingPolicy m
@@ -237,8 +237,8 @@ buildCreateConstraintsV1
   -- ^ Adjust a value to account for the minimum UTxO ledger rule.
   -> Contract 'V1
   -- ^ The contract being instantiated.
-  -> TxConstraintsBuilderM CreateError era 'V1 m (Datum 'V1, TxOutAssets, RolesPolicyId)
-buildCreateConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName roles metadata minAda accounts adjustMinUtxo contract = do
+  -> TxConstraintsBuilderM InitError era 'V1 m (Datum 'V1, TxOutAssets, RolesPolicyId)
+buildInitConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName roles metadata minAda accounts adjustMinUtxo contract = do
   -- Output constraints.
 
   -- Role tokens minting and distribution.
@@ -263,7 +263,7 @@ buildCreateConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName 
           metadata' -> TransactionMetadata (Map.singleton 721 (MetadataMap [(MetadataBytes policyId, MetadataMap metadata')]))
       _ -> mempty
 
-    liftMaybe err = lift . except . note (CreateBuildupFailed err)
+    liftMaybe err = lift . except . note (InitBuildupFailed err)
 
     sendMarloweOutput policyId threadToken = do
       datum@(V1.MarloweData _ marloweState _) <- do
@@ -278,7 +278,7 @@ buildCreateConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName 
       pure (datum, assets)
 
     -- Role token distribution constraints
-    buildRoleTokenConstraints :: TxConstraintsBuilderM CreateError era 'V1 m (RolesPolicyId, Maybe ThreadTokenAssetId)
+    buildRoleTokenConstraints :: TxConstraintsBuilderM InitError era 'V1 m (RolesPolicyId, Maybe ThreadTokenAssetId)
     buildRoleTokenConstraints = case roles of
       RoleTokensUsePolicy policyId distribution -> do
         for_ (Map.toList distribution) \(tokenName, dist') ->
@@ -371,9 +371,9 @@ newtype InvalidAddresses = InvalidAddresses [Address]
 deriving newtype instance Semigroup InvalidAddresses
 deriving newtype instance Monoid InvalidAddresses
 
-invalidAddressesError :: InvalidAddresses -> CreateError
+invalidAddressesError :: InvalidAddresses -> InitError
 invalidAddressesError (InvalidAddresses addresses) =
-  CreateBuildupFailed $ AddressesDecodingFailed addresses
+  InitBuildupFailed $ AddressesDecodingFailed addresses
 
 newtype MinAdaProvider = MinAdaProvider Address
   deriving (Eq, Show)
@@ -518,7 +518,7 @@ buildApplyInputsConstraints merkleizeInputs systemStart eraHistory version marlo
         invalidHereafter
         inputs
 
--- | Creates a set of Tx constraints that are used to build a transaction that
+-- | Inits a set of Tx constraints that are used to build a transaction that
 -- applies an input to a contract.
 buildApplyInputsConstraintsV1
   :: forall era m
@@ -707,7 +707,7 @@ buildApplyInputsConstraintsV1 merkleizeInputs systemStart eraHistory marloweOutp
       EraEnd Bound{..} -> O.SlotNo $ O.unSlotNo boundSlot - 1 -- subtract 1 because the era end bound is exclusive
       EraUnbounded -> maxBound
 
--- | Creates a set of Tx constraints that are used to build a transaction that
+-- | Inits a set of Tx constraints that are used to build a transaction that
 -- withdraws payments from a payout validator.
 buildWithdrawConstraints
   :: forall m era v

@@ -1,14 +1,5 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE EmptyDataDeriving #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE ViewPatterns #-}
+
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Language.Marlowe.Runtime.Transaction.Api (
@@ -17,10 +8,10 @@ module Language.Marlowe.Runtime.Transaction.Api (
   Accounts (..),
   CoinSelectionError (..),
   ConstraintError (..),
-  ContractCreated (..),
-  ContractCreatedInEra (..),
-  CreateBuildupError (..),
-  CreateError (..),
+  ContractInitd (..),
+  ContractInitdInEra (..),
+  InitBuildupError (..),
+  InitError (..),
   Mint (..),
   MintRole (..),
   NFTMetadataFile (..),
@@ -476,84 +467,84 @@ pattern RoleTokensMint mint <- UnsafeRoleTokensMint mint
           )
         $ mint
 
-data ContractCreated v where
-  ContractCreated
-    :: BabbageEraOnwards era -> ContractCreatedInEra era v -> ContractCreated v
+data ContractInitd v where
+  ContractInitd
+    :: BabbageEraOnwards era -> ContractInitdInEra era v -> ContractInitd v
 
-instance Variations (ContractCreated 'V1) where
+instance Variations (ContractInitd 'V1) where
   variations =
     sconcat
-      [ ContractCreated BabbageEraOnwardsBabbage <$> variations
-      , ContractCreated BabbageEraOnwardsConway <$> variations
+      [ ContractInitd BabbageEraOnwardsBabbage <$> variations
+      , ContractInitd BabbageEraOnwardsConway <$> variations
       ]
 
-instance Show (ContractCreated 'V1) where
-  showsPrec p (ContractCreated BabbageEraOnwardsBabbage created) =
+instance Show (ContractInitd 'V1) where
+  showsPrec p (ContractInitd BabbageEraOnwardsBabbage created) =
     showParen (p > 10) $
-      showString "ContractCreated"
+      showString "ContractInitd"
         . showSpace
         . showString "BabbageEraOnwardsBabbage"
         . showsPrec 11 created
-  showsPrec p (ContractCreated BabbageEraOnwardsConway created) =
+  showsPrec p (ContractInitd BabbageEraOnwardsConway created) =
     showParen (p > 10) $
-      showString "ContractCreated"
+      showString "ContractInitd"
         . showSpace
         . showString "BabbageEraOnwardsConway"
         . showsPrec 11 created
-  showsPrec p (ContractCreated BabbageEraOnwardsDijkstra created) =
+  showsPrec p (ContractInitd BabbageEraOnwardsDijkstra created) =
     showParen (p > 10) $
-      showString "ContractCreated"
+      showString "ContractInitd"
         . showSpace
         . showString "BabbageEraOnwardsDijkstra"
         . showsPrec 11 created
 
-instance Eq (ContractCreated 'V1) where
-  ContractCreated BabbageEraOnwardsBabbage a == ContractCreated BabbageEraOnwardsBabbage b =
+instance Eq (ContractInitd 'V1) where
+  ContractInitd BabbageEraOnwardsBabbage a == ContractInitd BabbageEraOnwardsBabbage b =
     a == b
-  ContractCreated BabbageEraOnwardsBabbage _ == _ = False
-  ContractCreated BabbageEraOnwardsConway a == ContractCreated BabbageEraOnwardsConway b =
+  ContractInitd BabbageEraOnwardsBabbage _ == _ = False
+  ContractInitd BabbageEraOnwardsConway a == ContractInitd BabbageEraOnwardsConway b =
     a == b
-  ContractCreated BabbageEraOnwardsConway _ == _ = False
-  ContractCreated BabbageEraOnwardsDijkstra a == ContractCreated BabbageEraOnwardsDijkstra b =
+  ContractInitd BabbageEraOnwardsConway _ == _ = False
+  ContractInitd BabbageEraOnwardsDijkstra a == ContractInitd BabbageEraOnwardsDijkstra b =
     a == b
-  ContractCreated BabbageEraOnwardsDijkstra _ == _ = False
+  ContractInitd BabbageEraOnwardsDijkstra _ == _ = False
 
-instance ToJSON (ContractCreated 'V1) where
-  toJSON (ContractCreated BabbageEraOnwardsBabbage created) =
+instance ToJSON (ContractInitd 'V1) where
+  toJSON (ContractInitd BabbageEraOnwardsBabbage created) =
     object
       [ "era" .= String "babbage"
-      , "contractCreated" .= created
+      , "contractInitd" .= created
       ]
-  toJSON (ContractCreated BabbageEraOnwardsConway created) =
+  toJSON (ContractInitd BabbageEraOnwardsConway created) =
     object
       [ "era" .= String "conway"
-      , "contractCreated" .= created
+      , "contractInitd" .= created
       ]
-  toJSON (ContractCreated BabbageEraOnwardsDijkstra created) =
+  toJSON (ContractInitd BabbageEraOnwardsDijkstra created) =
     object
       [ "era" .= String "dijkstra"
-      , "contractCreated" .= created
+      , "contractInitd" .= created
       ]
 
-instance Binary (ContractCreated 'V1) where
-  put (ContractCreated BabbageEraOnwardsBabbage created) = do
+instance Binary (ContractInitd 'V1) where
+  put (ContractInitd BabbageEraOnwardsBabbage created) = do
     putWord8 0
     put created
-  put (ContractCreated BabbageEraOnwardsConway created) = do
+  put (ContractInitd BabbageEraOnwardsConway created) = do
     putWord8 1
     put created
-  put (ContractCreated BabbageEraOnwardsDijkstra created) = do
+  put (ContractInitd BabbageEraOnwardsDijkstra created) = do
     putWord8 2
     put created
   get = do
     eraTag <- getWord8
     case eraTag of
-      0 -> ContractCreated BabbageEraOnwardsBabbage <$> get
-      1 -> ContractCreated BabbageEraOnwardsConway <$> get
-      2 -> ContractCreated BabbageEraOnwardsDijkstra <$> get
+      0 -> ContractInitd BabbageEraOnwardsBabbage <$> get
+      1 -> ContractInitd BabbageEraOnwardsConway <$> get
+      2 -> ContractInitd BabbageEraOnwardsDijkstra <$> get
       _ -> fail $ "Invalid era tag value: " <> show eraTag
 
-data ContractCreatedInEra era v = ContractCreatedInEra
+data ContractInitdInEra era v = ContractInitdInEra
   { contractId :: ContractId
   , rolesCurrency :: PolicyId
   , metadata :: MarloweTransactionMetadata
@@ -568,16 +559,16 @@ data ContractCreatedInEra era v = ContractCreatedInEra
   , safetyErrors :: ![SafetyError]
   }
 
-deriving instance Show (ContractCreatedInEra BabbageEra 'V1)
-deriving instance Show (ContractCreatedInEra ConwayEra 'V1)
-deriving instance Show (ContractCreatedInEra DijkstraEra 'V1)
-deriving instance Eq (ContractCreatedInEra BabbageEra 'V1)
-deriving instance Eq (ContractCreatedInEra ConwayEra 'V1)
-deriving instance Eq (ContractCreatedInEra DijkstraEra 'V1)
+deriving instance Show (ContractInitdInEra BabbageEra 'V1)
+deriving instance Show (ContractInitdInEra ConwayEra 'V1)
+deriving instance Show (ContractInitdInEra DijkstraEra 'V1)
+deriving instance Eq (ContractInitdInEra BabbageEra 'V1)
+deriving instance Eq (ContractInitdInEra ConwayEra 'V1)
+deriving instance Eq (ContractInitdInEra DijkstraEra 'V1)
 
-instance (IsShelleyBasedEra era) => Variations (ContractCreatedInEra era 'V1) where
+instance (IsShelleyBasedEra era) => Variations (ContractInitdInEra era 'V1) where
   variations =
-    ContractCreatedInEra
+    ContractInitdInEra
       <$> variations
         `varyAp` variations
         `varyAp` variations
@@ -591,8 +582,8 @@ instance (IsShelleyBasedEra era) => Variations (ContractCreatedInEra era 'V1) wh
         `varyAp` variations
         `varyAp` variations
 
-instance (IsShelleyBasedEra era) => ToJSON (ContractCreatedInEra era 'V1) where
-  toJSON ContractCreatedInEra{..} =
+instance (IsShelleyBasedEra era) => ToJSON (ContractInitdInEra era 'V1) where
+  toJSON ContractInitdInEra{..} =
     object
       [ "contract-id" .= contractId
       , "roles-currency" .= rolesCurrency
@@ -607,8 +598,8 @@ instance (IsShelleyBasedEra era) => ToJSON (ContractCreatedInEra era 'V1) where
       , "safety-errors" .= safetyErrors
       ]
 
-instance (IsShelleyBasedEra era) => Binary (ContractCreatedInEra era 'V1) where
-  put ContractCreatedInEra{..} = do
+instance (IsShelleyBasedEra era) => Binary (ContractInitdInEra era 'V1) where
+  put ContractInitdInEra{..} = do
     put contractId
     put rolesCurrency
     put metadata
@@ -633,7 +624,7 @@ instance (IsShelleyBasedEra era) => Binary (ContractCreatedInEra era 'V1) where
     txBody <- getTxBody
     safetyErrors <- get
     let version = MarloweV1
-    pure ContractCreatedInEra{..}
+    pure ContractInitdInEra{..}
 
 data InputsApplied v where
   InputsApplied
@@ -678,17 +669,17 @@ instance ToJSON (InputsApplied 'V1) where
   toJSON (InputsApplied BabbageEraOnwardsBabbage created) =
     object
       [ "era" .= String "babbage"
-      , "contractCreated" .= created
+      , "contractInitd" .= created
       ]
   toJSON (InputsApplied BabbageEraOnwardsConway created) =
     object
       [ "era" .= String "conway"
-      , "contractCreated" .= created
+      , "contractInitd" .= created
       ]
   toJSON (InputsApplied BabbageEraOnwardsDijkstra created) =
     object
       [ "era" .= String "dijkstra"
-      , "contractCreated" .= created
+      , "contractInitd" .= created
       ]
 
 instance Binary (InputsApplied 'V1) where
@@ -1217,7 +1208,7 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 --   -- resulting, unsigned transaction can be signed via the cardano API or a
 --   -- wallet provider. When signed, the 'Submit' command can be used to submit
 --   -- the transaction to the attached Cardano node.
---   Create
+--   Init
 --     :: Maybe StakeCredential
 --     -- ^ A reference to the stake address to use for script addresses.
 --     -> MarloweVersion v
@@ -1236,7 +1227,7 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 --     -- ^ Initial account balances. The min ADA deposit will be added to this.
 --     -> Either (Contract v) DatumHash
 --     -- ^ The contract to run, or the hash of the contract to load from the store.
---     -> MarloweTxCommand Void CreateError (ContractCreated v)
+--     -> MarloweTxCommand Void InitError (ContractInitd v)
 --   -- | Construct a transaction that advances an active Marlowe contract by
 --   -- applying a sequence of inputs. The resulting, unsigned transaction can be
 --   -- signed via the cardano API or a wallet provider. When signed, the 'Submit'
@@ -1301,7 +1292,7 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 -- instance OTelCommand MarloweTxCommand where
 --   commandTypeName _ = "marlowe_tx_command"
 --   commandName = \case
---     TagCreate _ -> "create"
+--     TagInit _ -> "create"
 --     TagApplyInputs _ -> "apply_inputs"
 --     TagWithdraw _ -> "withdraw"
 --     TagBurnRoleTokens _ -> "burn_role_tokens"
@@ -1309,7 +1300,7 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 -- 
 -- instance Command MarloweTxCommand where
 --   data Tag MarloweTxCommand status err result where
---     TagCreate :: MarloweVersion v -> Tag MarloweTxCommand Void CreateError (ContractCreated v)
+--     TagInit :: MarloweVersion v -> Tag MarloweTxCommand Void InitError (ContractInitd v)
 --     TagApplyInputs :: MarloweVersion v -> Tag MarloweTxCommand Void ApplyInputsError (InputsApplied v)
 --     TagWithdraw :: MarloweVersion v -> Tag MarloweTxCommand Void WithdrawError (WithdrawTx v)
 --     TagBurnRoleTokens :: MarloweVersion v -> Tag MarloweTxCommand Void BurnRoleTokensError (BurnRoleTokensTx v)
@@ -1319,7 +1310,7 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 --     JobIdSubmit :: TxId -> JobId MarloweTxCommand SubmitStatus SubmitError BlockHeader
 -- 
 --   tagFromCommand = \case
---     Create _ version _ _ _ _ _ _ _ -> TagCreate version
+--     Init _ version _ _ _ _ _ _ _ -> TagInit version
 --     ApplyInputs version _ _ _ _ _ _ -> TagApplyInputs version
 --     Withdraw version _ _ -> TagWithdraw version
 --     BurnRoleTokens version _ _ -> TagBurnRoleTokens version
@@ -1329,8 +1320,8 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 --     JobIdSubmit _ -> TagSubmit
 -- 
 --   tagEq t1 t2 = case (t1, t2) of
---     (TagCreate MarloweV1, TagCreate MarloweV1) -> pure (Refl, Refl, Refl)
---     (TagCreate _, _) -> Nothing
+--     (TagInit MarloweV1, TagInit MarloweV1) -> pure (Refl, Refl, Refl)
+--     (TagInit _, _) -> Nothing
 --     (TagApplyInputs MarloweV1, TagApplyInputs MarloweV1) -> pure (Refl, Refl, Refl)
 --     (TagApplyInputs _, _) -> Nothing
 --     (TagWithdraw MarloweV1, TagWithdraw MarloweV1) -> pure (Refl, Refl, Refl)
@@ -1341,7 +1332,7 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 --     (TagSubmit, _) -> Nothing
 -- 
 --   putTag = \case
---     TagCreate version -> putWord8 0x01 *> put (SomeMarloweVersion version)
+--     TagInit version -> putWord8 0x01 *> put (SomeMarloweVersion version)
 --     TagApplyInputs version -> putWord8 0x02 *> put (SomeMarloweVersion version)
 --     TagWithdraw version -> putWord8 0x03 *> put (SomeMarloweVersion version)
 --     TagSubmit -> putWord8 0x04
@@ -1352,7 +1343,7 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 --     case tag of
 --       0x01 -> do
 --         SomeMarloweVersion version <- get
---         pure $ SomeTag $ TagCreate version
+--         pure $ SomeTag $ TagInit version
 --       0x02 -> do
 --         SomeMarloweVersion version <- get
 --         pure $ SomeTag $ TagApplyInputs version
@@ -1369,14 +1360,14 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 --     JobIdSubmit txId -> put txId
 -- 
 --   getJobId = \case
---     TagCreate _ -> fail "create has no job ID"
+--     TagInit _ -> fail "create has no job ID"
 --     TagApplyInputs _ -> fail "apply inputs has no job ID"
 --     TagWithdraw _ -> fail "withdraw has no job ID"
 --     TagBurnRoleTokens _ -> fail "burn role tokens has no job ID"
 --     TagSubmit -> JobIdSubmit <$> get
 -- 
 --   putCommand = \case
---     Create mStakeCredential MarloweV1 walletAddresses threadName roles metadata minAda (Accounts accounts) contract -> do
+--     Init mStakeCredential MarloweV1 walletAddresses threadName roles metadata minAda (Accounts accounts) contract -> do
 --       put mStakeCredential
 --       put walletAddresses
 --       put threadName
@@ -1407,13 +1398,13 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 --         put $ serialiseToCBOR tx
 -- 
 --   getCommand = \case
---     TagCreate MarloweV1 -> do
+--     TagInit MarloweV1 -> do
 --       let getAccounts = do
 --             accounts <- get
 --             case mkAccounts accounts of
 --               Left err -> fail $ "Invalid accounts: " <> show err
 --               Right accounts' -> pure accounts'
---       Create <$> get <*> pure MarloweV1 <*> get <*> get <*> get <*> get <*> get <*> getAccounts <*> get
+--       Init <$> get <*> pure MarloweV1 <*> get <*> get <*> get <*> get <*> get <*> getAccounts <*> get
 --     TagApplyInputs version -> do
 --       walletAddresses <- get
 --       contractId <- get
@@ -1450,42 +1441,42 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 --         _ -> fail $ "Invalid era tag: " <> show eraTag
 -- 
 --   putStatus = \case
---     TagCreate _ -> absurd
+--     TagInit _ -> absurd
 --     TagApplyInputs _ -> absurd
 --     TagWithdraw _ -> absurd
 --     TagBurnRoleTokens _ -> absurd
 --     TagSubmit -> put
 -- 
 --   getStatus = \case
---     TagCreate _ -> fail "create has no status"
+--     TagInit _ -> fail "create has no status"
 --     TagApplyInputs _ -> fail "apply inputs has no status"
 --     TagWithdraw _ -> fail "withdraw has no status"
 --     TagBurnRoleTokens _ -> fail "burn role tokens has no status"
 --     TagSubmit -> get
 -- 
 --   putErr = \case
---     TagCreate MarloweV1 -> put
+--     TagInit MarloweV1 -> put
 --     TagApplyInputs MarloweV1 -> put
 --     TagWithdraw MarloweV1 -> put
 --     TagBurnRoleTokens _ -> put
 --     TagSubmit -> put
 -- 
 --   getErr = \case
---     TagCreate MarloweV1 -> get
+--     TagInit MarloweV1 -> get
 --     TagApplyInputs MarloweV1 -> get
 --     TagWithdraw MarloweV1 -> get
 --     TagBurnRoleTokens _ -> get
 --     TagSubmit -> get
 -- 
 --   putResult = \case
---     TagCreate MarloweV1 -> put
+--     TagInit MarloweV1 -> put
 --     TagApplyInputs MarloweV1 -> put
 --     TagWithdraw MarloweV1 -> put
 --     TagBurnRoleTokens MarloweV1 -> put
 --     TagSubmit -> put
 -- 
 --   getResult = \case
---     TagCreate MarloweV1 -> get
+--     TagInit MarloweV1 -> get
 --     TagApplyInputs MarloweV1 -> get
 --     TagWithdraw MarloweV1 -> get
 --     TagBurnRoleTokens MarloweV1 -> get
@@ -1534,7 +1525,7 @@ data ConstraintError
   | MarloweInputInWithdraw
   | MarloweOutputInWithdraw
   | PayoutOutputInWithdraw
-  | PayoutInputInCreateOrApply
+  | PayoutInputInInitOrApply
   | UnknownPayoutScript ScriptHash
   | HelperScriptNotFound Chain.TokenName
   deriving (Generic)
@@ -1546,29 +1537,30 @@ deriving instance Binary ConstraintError
 deriving instance Variations ConstraintError
 deriving instance ToJSON ConstraintError
 
-data CreateError
-  = CreateEraUnsupported AnyCardanoEra
-  | CreateConstraintError ConstraintError
-  | CreateLoadMarloweContextFailed LoadMarloweContextError
-  | CreateLoadHelpersContextFailed LoadHelpersContextError
-  | CreateBuildupFailed CreateBuildupError
-  | CreateToCardanoError
-  | CreateSafetyAnalysisFailed [SafetyError]
+data InitError
+  = InitEraUnsupported AnyCardanoEra
+  | InitConstraintError ConstraintError
+  | InitLoadMarloweContextFailed LoadMarloweContextError
+  | InitLoadHelpersContextFailed LoadHelpersContextError
+  | InitBuildupFailed InitBuildupError
+  | InitTxOutputNotFound
+  | InitToCardanoError
+  | InitSafetyAnalysisFailed [SafetyError]
   | -- | This error is thrown when the safety analysis process fails itself
     -- due to a timeout or other reasons, such as missing merkleization data.
-    CreateSafetyAnalysisError String
-  | CreateContractNotFound
+    InitSafetyAnalysisError String
+  | InitContractNotFound String
   | ProtocolParamNoUTxOCostPerByte
   | InsufficientMinAdaDeposit Lovelace
   deriving (Generic)
 
-deriving instance Eq CreateError
-deriving instance Show CreateError
-instance Binary CreateError
-instance Variations CreateError
-instance ToJSON CreateError
+deriving instance Eq InitError
+deriving instance Show InitError
+instance Binary InitError
+instance Variations InitError
+instance ToJSON InitError
 
-data CreateBuildupError
+data InitBuildupError
   = MintingUtxoSelectionFailed
   | AddressesDecodingFailed [Address]
   | InvalidInitialState
@@ -1652,8 +1644,8 @@ data SubmitStatus
 
 -- instance CommandEq MarloweTxCommand where
 --   commandEq = \case
---     Create stake MarloweV1 wallet threadName roleTokenConfig metadata minAda accounts contract -> \case
---       Create stake' MarloweV1 wallet' threadName' roleTokenConfig' metadata' minAda' accounts' contract' ->
+--     Init stake MarloweV1 wallet threadName roleTokenConfig metadata minAda accounts contract -> \case
+--       Init stake' MarloweV1 wallet' threadName' roleTokenConfig' metadata' minAda' accounts' contract' ->
 --         stake == stake'
 --           && wallet == wallet'
 --           && threadName == threadName'
@@ -1690,21 +1682,21 @@ data SubmitStatus
 --       JobIdSubmit txId' -> txId == txId'
 -- 
 --   statusEq = \case
---     TagCreate MarloweV1 -> (==)
+--     TagInit MarloweV1 -> (==)
 --     TagApplyInputs MarloweV1 -> (==)
 --     TagWithdraw MarloweV1 -> (==)
 --     TagBurnRoleTokens MarloweV1 -> (==)
 --     TagSubmit -> (==)
 -- 
 --   errEq = \case
---     TagCreate MarloweV1 -> (==)
+--     TagInit MarloweV1 -> (==)
 --     TagApplyInputs MarloweV1 -> (==)
 --     TagWithdraw MarloweV1 -> (==)
 --     TagBurnRoleTokens MarloweV1 -> (==)
 --     TagSubmit -> (==)
 -- 
 --   resultEq = \case
---     TagCreate MarloweV1 -> (==)
+--     TagInit MarloweV1 -> (==)
 --     TagApplyInputs MarloweV1 -> (==)
 --     TagWithdraw MarloweV1 -> (==)
 --     TagBurnRoleTokens MarloweV1 -> (==)
@@ -1712,10 +1704,10 @@ data SubmitStatus
 -- 
 -- instance ShowCommand MarloweTxCommand where
 --   showsPrecTag p = \case
---     TagCreate MarloweV1 ->
+--     TagInit MarloweV1 ->
 --       showParen
 --         (p >= 11)
---         ( showString "TagCreate"
+--         ( showString "TagInit"
 --             . showSpace
 --             . showString "MarloweV1"
 --         )
@@ -1738,8 +1730,8 @@ data SubmitStatus
 -- 
 --   showsPrecCommand p =
 --     showParen (p >= 11) . \case
---       Create stake MarloweV1 wallet threadName roleTokenConfig metadata minAda accounts contract ->
---         ( showString "Create"
+--       Init stake MarloweV1 wallet threadName roleTokenConfig metadata minAda accounts contract ->
+--         ( showString "Init"
 --             . showSpace
 --             . showsPrec 11 stake
 --             . showSpace
@@ -1817,21 +1809,21 @@ data SubmitStatus
 --         )
 -- 
 --   showsPrecStatus p = \case
---     TagCreate MarloweV1 -> showsPrec p
+--     TagInit MarloweV1 -> showsPrec p
 --     TagApplyInputs MarloweV1 -> showsPrec p
 --     TagWithdraw MarloweV1 -> showsPrec p
 --     TagBurnRoleTokens MarloweV1 -> showsPrec p
 --     TagSubmit -> showsPrec p
 -- 
 --   showsPrecErr p = \case
---     TagCreate MarloweV1 -> showsPrec p
+--     TagInit MarloweV1 -> showsPrec p
 --     TagApplyInputs MarloweV1 -> showsPrec p
 --     TagWithdraw MarloweV1 -> showsPrec p
 --     TagBurnRoleTokens MarloweV1 -> showsPrec p
 --     TagSubmit -> showsPrec p
 -- 
 --   showsPrecResult p = \case
---     TagCreate MarloweV1 -> showsPrec p
+--     TagInit MarloweV1 -> showsPrec p
 --     TagApplyInputs MarloweV1 -> showsPrec p
 --     TagWithdraw MarloweV1 -> showsPrec p
 --     TagBurnRoleTokens MarloweV1 -> showsPrec p

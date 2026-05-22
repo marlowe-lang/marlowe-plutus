@@ -4,7 +4,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
-{--
+{-- Old flags:
 {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
 {-# OPTIONS_GHC -fno-omit-interface-pragmas #-}
 {-# OPTIONS_GHC -fno-specialise #-}

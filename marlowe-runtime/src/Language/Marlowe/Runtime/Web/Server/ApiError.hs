@@ -14,8 +14,8 @@ import Language.Marlowe.Runtime.Transaction.Api (
   ApplyInputsError (..),
   CoinSelectionError (..),
   ConstraintError (..),
-  CreateBuildupError (..),
-  CreateError (..),
+  InitBuildupError (..),
+  InitError (..),
   LoadMarloweContextError (..),
   WithdrawError (..),
  )
@@ -142,7 +142,7 @@ constraintErrorToApiError err = ApiError (show err) errorCode details statusCode
       MarloweInputInWithdraw -> tagged "MarloweInputInWithdraw" []
       MarloweOutputInWithdraw -> tagged "MarloweOutputInWithdraw" []
       PayoutOutputInWithdraw -> tagged "PayoutOutputInWithdraw" []
-      PayoutInputInCreateOrApply -> tagged "PayoutInputInCreateOrApply" []
+      PayoutInputInInitOrApply -> tagged "PayoutInputInInitOrApply" []
       UnknownPayoutScript scriptHash ->
         tagged
           "UnknownPayoutScript"
@@ -168,7 +168,7 @@ constraintErrorToApiError err = ApiError (show err) errorCode details statusCode
       MarloweInputInWithdraw -> 500
       MarloweOutputInWithdraw -> 500
       PayoutOutputInWithdraw -> 500
-      PayoutInputInCreateOrApply -> 500
+      PayoutInputInInitOrApply -> 500
       UnknownPayoutScript _ -> 500
       HelperScriptNotFound _ -> 503
 
@@ -188,7 +188,7 @@ constraintErrorToApiError err = ApiError (show err) errorCode details statusCode
       MarloweInputInWithdraw -> "MarloweInputInWithdraw"
       MarloweOutputInWithdraw -> "MarloweOutputInWithdraw"
       PayoutOutputInWithdraw -> "PayoutOutputInWithdraw"
-      PayoutInputInCreateOrApply -> "PayoutInputInCreateOrApply"
+      PayoutInputInInitOrApply -> "PayoutInputInInitOrApply"
       UnknownPayoutScript _ -> "UnknownPayoutScript"
       HelperScriptNotFound _ -> "HelperScriptNotFound"
 
@@ -248,7 +248,7 @@ decodeConstraintError = A.withObject "ConstraintError" $ \o -> do
     "MarloweInputInWithdraw" -> pure MarloweInputInWithdraw
     "MarloweOutputInWithdraw" -> pure MarloweOutputInWithdraw
     "PayoutOutputInWithdraw" -> pure PayoutOutputInWithdraw
-    "PayoutInputInCreateOrApply" -> pure PayoutInputInCreateOrApply
+    "PayoutInputInInitOrApply" -> pure PayoutInputInInitOrApply
     "UnknownPayoutScript" ->
       UnknownPayoutScript <$> do
         scriptHash :: ScriptHash <- o .: "scriptHash"
@@ -262,8 +262,8 @@ extractCreationErrorDetails = \case
   H.ByronAddress -> tagged "ByronAddress" []
   H.NonScriptAddress -> tagged "NonScriptAddress" []
   H.InvalidScriptHash -> tagged "InvalidScriptHash" []
-  H.NoCreateDatum -> tagged "NoCreateDatum" []
-  H.InvalidCreateDatum -> tagged "InvalidCreateDatum" []
+  H.NoInitDatum -> tagged "NoInitDatum" []
+  H.InvalidInitDatum -> tagged "InvalidInitDatum" []
   H.NotCreationTransaction -> tagged "NotCreationTransaction" []
 
 extractMarloweTransactionErrorDetails :: H.ExtractMarloweTransactionError -> Value
@@ -333,7 +333,7 @@ loadMarloweContextErrorToApiError err = ApiError (show err) errorCode details st
       ExtractCreationError _ -> "ExtractCreationError"
       ExtractMarloweTransactionError _ -> "ExtractMarloweTransactionError"
 
-createBuildupErrorToApiError :: CreateBuildupError -> ApiError
+createBuildupErrorToApiError :: InitBuildupError -> ApiError
 createBuildupErrorToApiError err = ApiError (show err) errorCode details statusCode
   where
     details = case err of
@@ -360,23 +360,23 @@ createBuildupErrorToApiError err = ApiError (show err) errorCode details statusC
       InvalidInitialState -> "InvalidInitialState"
       MintingScriptDecodingFailed _ -> "MintingScriptDecodingFailed"
 
-instance HasDTO CreateError where
-  type DTO CreateError = ApiError
+instance HasDTO InitError where
+  type DTO InitError = ApiError
 
-instance ToDTO CreateError where
+instance ToDTO InitError where
   toDTO = \case
-    CreateEraUnsupported era -> ApiError ("Current network era not supported: " <> show era) "CreateEraUnsupported" Null 503
-    CreateConstraintError err -> constraintErrorToApiError err
-    CreateLoadMarloweContextFailed err -> loadMarloweContextErrorToApiError err
-    CreateBuildupFailed err -> createBuildupErrorToApiError err
-    CreateToCardanoError -> ApiError "Internal error" "CreateToCardanoError" Null 400
-    CreateSafetyAnalysisError safetyAnalysisError -> do
+    InitEraUnsupported era -> ApiError ("Current network era not supported: " <> show era) "InitEraUnsupported" Null 503
+    InitConstraintError err -> constraintErrorToApiError err
+    InitLoadMarloweContextFailed err -> loadMarloweContextErrorToApiError err
+    InitBuildupFailed err -> createBuildupErrorToApiError err
+    InitToCardanoError -> ApiError "Internal error" "InitToCardanoError" Null 400
+    InitSafetyAnalysisError safetyAnalysisError -> do
       let details =
             object
               ["safetyAnalysisProcessFailed" .= safetyAnalysisError]
       ApiError "Safety analysis failed" "SafetyAnalysisFailed" details 400
-    CreateSafetyAnalysisFailed errors -> ApiError "Contract unsafe, refusing to create" "SafetyAnalysisFailed" (toJSON errors) 400
-    CreateContractNotFound -> ApiError "Contract not found" "ContractNotFound" Null 404
+    InitSafetyAnalysisFailed errors -> ApiError "Contract unsafe, refusing to create" "SafetyAnalysisFailed" (toJSON errors) 400
+    InitContractNotFound -> ApiError "Contract not found" "ContractNotFound" Null 404
     ProtocolParamNoUTxOCostPerByte ->
       ApiError
         "Internal error. Unable to compute min Ada deposit bound because of probably server misconfiguration"
@@ -385,7 +385,7 @@ instance ToDTO CreateError where
         500
     InsufficientMinAdaDeposit required ->
       ApiError "Min Ada deposit insufficient." "InsufficientMinAdaDeposit" (object ["minimumRequiredDeposit" .= required]) 400
-    CreateLoadHelpersContextFailed err -> ApiError ("Failed to load helper-script context: " <> show err) "CreateLoadHelperContextFailed" Null 503
+    InitLoadHelpersContextFailed err -> ApiError ("Failed to load helper-script context: " <> show err) "InitLoadHelperContextFailed" Null 503
 
 applyInputsConstraintsBuildupErrorToApiError :: ApplyInputsConstraintsBuildupError -> ApiError
 applyInputsConstraintsBuildupErrorToApiError err = ApiError (show err) errorCode details statusCode

@@ -52,13 +52,13 @@ import qualified Language.Marlowe.Runtime.Core.Api as Core
 import Language.Marlowe.Runtime.Core.ScriptRegistry (ReferenceScriptUtxo (..), ScriptInPlutus(..))
 import Language.Marlowe.Runtime.Cardano.Api (fromCardanoAddressInEra)
 import Language.Marlowe.Runtime.Transaction.Api (
-  CreateError,
+  InitError,
   RoleTokensConfig (..),
   WithdrawError,
   )
 import Language.Marlowe.Runtime.Transaction.BuildConstraints (
   AdjustMinUTxO (..),
-  buildCreateConstraints,
+  buildInitConstraints,
   buildWithdrawConstraints,
   RolesPolicyId (..), buildApplyInputsConstraints,
   )
@@ -96,7 +96,7 @@ testEraHistory =
 
 buildConstraintsSpec :: Spec
 buildConstraintsSpec = do
-  describe "buildCreateConstraints" buildCreateSpec
+  describe "buildInitConstraints" buildCreateSpec
   describe "buildWithdrawConstraints" withdrawSpec
   describe "E2E: Signing key pair and deposit contract" e2eSpec
 
@@ -104,10 +104,10 @@ runCreateTest
   :: WalletContext
   -> RoleTokensConfig
   -> V1.Contract
-  -> Either CreateError ((Core.Datum 'Core.V1, Chain.TxOutAssets, RolesPolicyId), TxConstraints TestEra 'Core.V1)
+  -> Either InitError ((Core.Datum 'Core.V1, Chain.TxOutAssets, RolesPolicyId), TxConstraints TestEra 'Core.V1)
 runCreateTest walletCtx roles contract =
   let adjustMinUTxO = AdjustMinUTxO id
-  in runIdentity $ buildCreateConstraints
+  in runIdentity $ buildInitConstraints
         (\_ _ -> pure $ Chain.PlutusScript mempty)
         babbageEraOnwardsTest
         Core.MarloweV1
@@ -129,7 +129,7 @@ runWithdrawTest payoutContext payoutRefs =
 
 buildCreateSpec :: Spec
 buildCreateSpec  = do
-  it "buildCreateConstraints returns constraints for a Close contract" $ ioProperty $ do
+  it "buildInitConstraints returns constraints for a Close contract" $ ioProperty $ do
     signingKey <- generateSigningKey AsPaymentKey
     let
       verificationKey = getVerificationKey signingKey
@@ -139,7 +139,7 @@ buildCreateSpec  = do
       Left _ -> property True
       Right _ -> property True
 
-  it "buildCreateConstraints returns constraints for a contract with Notify action" $ ioProperty $ do
+  it "buildInitConstraints returns constraints for a contract with Notify action" $ ioProperty $ do
     signingKey <- generateSigningKey AsPaymentKey
     let
       verificationKey = getVerificationKey signingKey

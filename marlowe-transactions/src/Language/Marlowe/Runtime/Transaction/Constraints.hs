@@ -1,12 +1,3 @@
-{-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE EmptyDataDeriving #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ViewPatterns #-}
-
 module Language.Marlowe.Runtime.Transaction.Constraints (
   ConstraintError (..),
   Distribution (..),
@@ -1229,7 +1220,7 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
                     (C.unsafeHashableScriptData $ C.ScriptDataConstructor 0 [])
                     (C.ExecutionUnits 0 0)
             pure ((txIn, C.BuildTxWith $ C.ScriptWitness C.ScriptWitnessForSpending scriptWitness), scriptHash)
-          Left _ -> Left PayoutInputInCreateOrApply
+          Left _ -> Left PayoutInputInInitOrApply
 
     solveTxIns = do
       helperInputs <- getHelperInputs
@@ -1277,7 +1268,7 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
               ScriptRegistry.ReferenceScriptUtxo{..} <-
                 note (UnknownPayoutScript payoutScriptHash) $ Map.lookup payoutScriptHash payoutScriptOutputs
               note ToCardanoError $ toCardanoTxIn txOutRef
-          Left _ -> [Just $ Left PayoutInputInCreateOrApply]
+          Left _ -> [Just $ Left PayoutInputInInitOrApply]
 
     getMarloweOutput :: Either ConstraintError (Maybe Chain.TransactionOutput)
     getMarloweOutput = case (marloweOutputConstraints, scriptCtx) of

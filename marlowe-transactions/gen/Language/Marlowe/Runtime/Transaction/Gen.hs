@@ -20,7 +20,7 @@ import Language.Marlowe.Runtime.Core.ScriptRegistry (HelperScript)
 import Language.Marlowe.Runtime.ChainSync.Gen ()
 import Language.Marlowe.Runtime.History.Gen ()
 import Language.Marlowe.Runtime.Transaction.Api
-import qualified Language.Marlowe.Runtime.Transaction.Api as ContractCreatedInEra (ContractCreatedInEra (..))
+import qualified Language.Marlowe.Runtime.Transaction.Api as ContractInitdInEra (ContractInitdInEra (..))
 import qualified Language.Marlowe.Runtime.Transaction.Api as InputsAppliedInEra (InputsAppliedInEra (..))
 import qualified Language.Marlowe.Runtime.Transaction.Api as WithdrawTxInEra (WithdrawTxInEra (..))
 import Network.HTTP.Media (MediaType, (//))
@@ -190,11 +190,11 @@ instance Arbitrary ConstraintError where
       , pure MarloweInputInWithdraw
       , pure MarloweOutputInWithdraw
       , pure PayoutOutputInWithdraw
-      , pure PayoutInputInCreateOrApply
+      , pure PayoutInputInInitOrApply
       ]
   shrink = genericShrink
 
-instance Arbitrary CreateBuildupError where
+instance Arbitrary InitBuildupError where
   arbitrary =
     oneof
       [ pure MintingUtxoSelectionFailed
@@ -203,14 +203,14 @@ instance Arbitrary CreateBuildupError where
       ]
   shrink = genericShrink
 
-instance Arbitrary CreateError where
+instance Arbitrary InitError where
   arbitrary =
     oneof
-      [ CreateConstraintError <$> arbitrary
-      , CreateEraUnsupported <$> arbitrary
-      , CreateLoadMarloweContextFailed <$> arbitrary
-      , CreateBuildupFailed <$> arbitrary
-      , pure CreateToCardanoError
+      [ InitConstraintError <$> arbitrary
+      , InitEraUnsupported <$> arbitrary
+      , InitLoadMarloweContextFailed <$> arbitrary
+      , InitBuildupFailed <$> arbitrary
+      , pure InitToCardanoError
       ]
   shrink = genericShrink
 
@@ -256,22 +256,22 @@ instance Arbitrary SubmitError where
       ]
   shrink = genericShrink
 
-instance (ArbitraryMarloweVersion v) => Arbitrary (ContractCreated v) where
+instance (ArbitraryMarloweVersion v) => Arbitrary (ContractInitd v) where
   arbitrary =
     oneof
-      [ ContractCreated BabbageEraOnwardsBabbage <$> arbitrary
-      , ContractCreated BabbageEraOnwardsConway <$> arbitrary
+      [ ContractInitd BabbageEraOnwardsBabbage <$> arbitrary
+      , ContractInitd BabbageEraOnwardsConway <$> arbitrary
       ]
-  shrink (ContractCreated BabbageEraOnwardsBabbage created) =
-    ContractCreated BabbageEraOnwardsBabbage <$> shrink created
-  shrink (ContractCreated BabbageEraOnwardsConway created) =
-    ContractCreated BabbageEraOnwardsConway <$> shrink created
-  shrink (ContractCreated BabbageEraOnwardsDijkstra created) =
-    ContractCreated BabbageEraOnwardsDijkstra <$> shrink created
+  shrink (ContractInitd BabbageEraOnwardsBabbage created) =
+    ContractInitd BabbageEraOnwardsBabbage <$> shrink created
+  shrink (ContractInitd BabbageEraOnwardsConway created) =
+    ContractInitd BabbageEraOnwardsConway <$> shrink created
+  shrink (ContractInitd BabbageEraOnwardsDijkstra created) =
+    ContractInitd BabbageEraOnwardsDijkstra <$> shrink created
 
-instance (ArbitraryMarloweVersion v, IsShelleyBasedEra era) => Arbitrary (ContractCreatedInEra era v) where
+instance (ArbitraryMarloweVersion v, IsShelleyBasedEra era) => Arbitrary (ContractInitdInEra era v) where
   arbitrary =
-    ContractCreatedInEra
+    ContractInitdInEra
       <$> arbitrary
       <*> arbitrary
       <*> arbitrary
@@ -284,12 +284,12 @@ instance (ArbitraryMarloweVersion v, IsShelleyBasedEra era) => Arbitrary (Contra
       <*> arbitrary
       <*> hedgehog (fst <$> genValidTxBody shelleyBasedEra)
       <*> arbitrary
-  shrink ContractCreatedInEra{..} =
+  shrink ContractInitdInEra{..} =
     fold
-      [ [ContractCreatedInEra{..}{ContractCreatedInEra.metadata = metadata'} | metadata' <- shrink metadata]
-      , [ContractCreatedInEra{..}{ContractCreatedInEra.datum = datum'} | datum' <- shrink datum]
-      , [ContractCreatedInEra{..}{ContractCreatedInEra.assets = assets'} | assets' <- shrink assets]
-      , [ContractCreatedInEra{..}{ContractCreatedInEra.safetyErrors = safetyErrors'} | safetyErrors' <- shrink safetyErrors]
+      [ [ContractInitdInEra{..}{ContractInitdInEra.metadata = metadata'} | metadata' <- shrink metadata]
+      , [ContractInitdInEra{..}{ContractInitdInEra.datum = datum'} | datum' <- shrink datum]
+      , [ContractInitdInEra{..}{ContractInitdInEra.assets = assets'} | assets' <- shrink assets]
+      , [ContractInitdInEra{..}{ContractInitdInEra.safetyErrors = safetyErrors'} | safetyErrors' <- shrink safetyErrors]
       ]
 
 instance (ArbitraryMarloweVersion v) => Arbitrary (InputsApplied v) where
@@ -416,18 +416,18 @@ instance Arbitrary Accounts where
 -- instance ArbitraryCommand MarloweTxCommand where
 --   arbitraryTag =
 --     elements
---       [ SomeTag $ TagCreate Core.MarloweV1
+--       [ SomeTag $ TagInit Core.MarloweV1
 --       , SomeTag $ TagApplyInputs Core.MarloweV1
 --       , SomeTag $ TagWithdraw Core.MarloweV1
 --       , SomeTag $ TagBurnRoleTokens Core.MarloweV1
 --       , SomeTag TagSubmit
 --       ]
 --   arbitraryCmd = \case
---     TagCreate Core.MarloweV1 -> do
+--     TagInit Core.MarloweV1 -> do
 --       let arbitraryAccounts = do
 --             m <- arbitrary
 --             maybe arbitraryAccounts pure $ hush $ mkAccounts m
---       Create
+--       Init
 --         <$> arbitrary
 --         <*> pure Core.MarloweV1
 --         <*> arbitrary
@@ -456,33 +456,33 @@ instance Arbitrary Accounts where
 --         , Submit BabbageEraOnwardsConway <$> hedgehog (genTx ShelleyBasedEraConway)
 --         ]
 --   arbitraryJobId = \case
---     TagCreate Core.MarloweV1 -> Nothing
+--     TagInit Core.MarloweV1 -> Nothing
 --     TagApplyInputs Core.MarloweV1 -> Nothing
 --     TagWithdraw Core.MarloweV1 -> Nothing
 --     TagBurnRoleTokens Core.MarloweV1 -> Nothing
 --     TagSubmit -> Just $ JobIdSubmit <$> arbitrary
 --   arbitraryStatus = \case
---     TagCreate Core.MarloweV1 -> Nothing
+--     TagInit Core.MarloweV1 -> Nothing
 --     TagApplyInputs Core.MarloweV1 -> Nothing
 --     TagWithdraw Core.MarloweV1 -> Nothing
 --     TagBurnRoleTokens Core.MarloweV1 -> Nothing
 --     TagSubmit -> Just arbitrary
 --   arbitraryErr = \case
---     TagCreate Core.MarloweV1 -> Just arbitrary
+--     TagInit Core.MarloweV1 -> Just arbitrary
 --     TagApplyInputs Core.MarloweV1 -> Just arbitrary
 --     TagWithdraw Core.MarloweV1 -> Just arbitrary
 --     TagBurnRoleTokens Core.MarloweV1 -> Just arbitrary
 --     TagSubmit -> Just arbitrary
 --   arbitraryResult = \case
---     TagCreate Core.MarloweV1 -> arbitrary
+--     TagInit Core.MarloweV1 -> arbitrary
 --     TagApplyInputs Core.MarloweV1 -> arbitrary
 --     TagWithdraw Core.MarloweV1 -> arbitrary
 --     TagBurnRoleTokens Core.MarloweV1 -> arbitrary
 --     TagSubmit -> arbitrary
 --   shrinkCommand = \case
---     Create staking Core.MarloweV1 wallet thread roleConfig meta minAda accounts contract ->
+--     Init staking Core.MarloweV1 wallet thread roleConfig meta minAda accounts contract ->
 --       concat
---         [ Create
+--         [ Init
 --             <$> shrink staking
 --             <*> pure Core.MarloweV1
 --             <*> pure wallet
@@ -492,7 +492,7 @@ instance Arbitrary Accounts where
 --             <*> pure minAda
 --             <*> pure accounts
 --             <*> pure contract
---         , Create staking Core.MarloweV1
+--         , Init staking Core.MarloweV1
 --             <$> shrink wallet
 --             <*> pure thread
 --             <*> pure roleConfig
@@ -500,32 +500,32 @@ instance Arbitrary Accounts where
 --             <*> pure minAda
 --             <*> pure accounts
 --             <*> pure contract
---         , Create staking Core.MarloweV1 wallet
+--         , Init staking Core.MarloweV1 wallet
 --             <$> shrink thread
 --             <*> pure roleConfig
 --             <*> pure meta
 --             <*> pure minAda
 --             <*> pure accounts
 --             <*> pure contract
---         , Create staking Core.MarloweV1 wallet thread
+--         , Init staking Core.MarloweV1 wallet thread
 --             <$> shrink roleConfig
 --             <*> pure meta
 --             <*> pure minAda
 --             <*> pure accounts
 --             <*> pure contract
---         , Create staking Core.MarloweV1 wallet thread roleConfig
+--         , Init staking Core.MarloweV1 wallet thread roleConfig
 --             <$> shrink meta
 --             <*> pure minAda
 --             <*> pure accounts
 --             <*> pure contract
---         , Create staking Core.MarloweV1 wallet thread roleConfig meta
+--         , Init staking Core.MarloweV1 wallet thread roleConfig meta
 --             <$> shrink minAda
 --             <*> pure accounts
 --             <*> pure contract
---         , Create staking Core.MarloweV1 wallet thread roleConfig meta minAda
+--         , Init staking Core.MarloweV1 wallet thread roleConfig meta minAda
 --             <$> shrink accounts
 --             <*> pure contract
---         , Create staking Core.MarloweV1 wallet thread roleConfig meta minAda accounts
+--         , Init staking Core.MarloweV1 wallet thread roleConfig meta minAda accounts
 --             <$> shrink contract
 --         ]
 --     ApplyInputs Core.MarloweV1 wallet contractId meta minValid maxValid inputs ->
@@ -568,19 +568,19 @@ instance Arbitrary Accounts where
 --   shrinkJobId = \case
 --     JobIdSubmit txId -> JobIdSubmit <$> shrink txId
 --   shrinkErr = \case
---     TagCreate Core.MarloweV1 -> shrink
+--     TagInit Core.MarloweV1 -> shrink
 --     TagApplyInputs Core.MarloweV1 -> shrink
 --     TagWithdraw Core.MarloweV1 -> shrink
 --     TagBurnRoleTokens Core.MarloweV1 -> shrink
 --     TagSubmit -> shrink
 --   shrinkResult = \case
---     TagCreate Core.MarloweV1 -> shrink
+--     TagInit Core.MarloweV1 -> shrink
 --     TagApplyInputs Core.MarloweV1 -> shrink
 --     TagWithdraw Core.MarloweV1 -> shrink
 --     TagBurnRoleTokens Core.MarloweV1 -> shrink
 --     TagSubmit -> shrink
 --   shrinkStatus = \case
---     TagCreate Core.MarloweV1 -> \case {}
+--     TagInit Core.MarloweV1 -> \case {}
 --     TagApplyInputs Core.MarloweV1 -> \case {}
 --     TagWithdraw Core.MarloweV1 -> \case {}
 --     TagBurnRoleTokens Core.MarloweV1 -> \case {}
@@ -589,15 +589,15 @@ instance Arbitrary Accounts where
 -- instance CommandVariations MarloweTxCommand where
 --   tags =
 --     NE.fromList
---       [ SomeTag $ TagCreate Core.MarloweV1
+--       [ SomeTag $ TagInit Core.MarloweV1
 --       , SomeTag $ TagApplyInputs Core.MarloweV1
 --       , SomeTag $ TagWithdraw Core.MarloweV1
 --       , SomeTag TagSubmit
 --       , SomeTag $ TagBurnRoleTokens Core.MarloweV1
 --       ]
 --   cmdVariations = \case
---     TagCreate Core.MarloweV1 ->
---       Create
+--     TagInit Core.MarloweV1 ->
+--       Init
 --         <$> variations
 --           `varyAp` variations
 --           `varyAp` variations
@@ -626,25 +626,25 @@ instance Arbitrary Accounts where
 --           , Submit BabbageEraOnwardsConway <$> variations
 --           ]
 --   jobIdVariations = \case
---     TagCreate Core.MarloweV1 -> []
+--     TagInit Core.MarloweV1 -> []
 --     TagApplyInputs Core.MarloweV1 -> []
 --     TagWithdraw Core.MarloweV1 -> []
 --     TagBurnRoleTokens Core.MarloweV1 -> []
 --     TagSubmit -> NE.toList $ JobIdSubmit <$> variations
 --   statusVariations = \case
---     TagCreate Core.MarloweV1 -> []
+--     TagInit Core.MarloweV1 -> []
 --     TagApplyInputs Core.MarloweV1 -> []
 --     TagWithdraw Core.MarloweV1 -> []
 --     TagBurnRoleTokens Core.MarloweV1 -> []
 --     TagSubmit -> NE.toList variations
 --   errVariations = \case
---     TagCreate Core.MarloweV1 -> NE.toList variations
+--     TagInit Core.MarloweV1 -> NE.toList variations
 --     TagApplyInputs Core.MarloweV1 -> NE.toList variations
 --     TagWithdraw Core.MarloweV1 -> NE.toList variations
 --     TagBurnRoleTokens Core.MarloweV1 -> NE.toList variations
 --     TagSubmit -> NE.toList variations
 --   resultVariations = \case
---     TagCreate Core.MarloweV1 -> variations
+--     TagInit Core.MarloweV1 -> variations
 --     TagApplyInputs Core.MarloweV1 -> variations
 --     TagWithdraw Core.MarloweV1 -> variations
 --     TagBurnRoleTokens Core.MarloweV1 -> variations

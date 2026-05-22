@@ -50,7 +50,7 @@ import Language.Marlowe.Runtime.Plutus.V2.Api (fromPlutusValue, toAssetId)
 import Language.Marlowe.Runtime.Transaction.Api (
   ApplyInputsConstraintsBuildupError (..),
   ApplyInputsError (..),
-  CreateError,
+  InitError,
   Destination (..),
   Mint (..),
   MintRole (..),
@@ -60,7 +60,7 @@ import qualified Language.Marlowe.Runtime.Transaction.Api as Transaction.Api
 import Language.Marlowe.Runtime.Transaction.BuildConstraints (
   AdjustMinUTxO (..),
   buildApplyInputsConstraints,
-  buildCreateConstraints,
+  buildInitConstraints,
   safeLovelace,
  )
 import qualified Language.Marlowe.Runtime.Transaction.BuildConstraints as BuildConstraints
@@ -123,28 +123,28 @@ spec = do
   buildApplyInputsConstraintsSpec
 
 createSpec :: Spec
-createSpec = Hspec.describe "buildCreateConstraints" do
+createSpec = Hspec.describe "buildInitConstraints" do
   emptyStateProp "writes state with empty choices to marlowe output" $ const Semantics.choices
   emptyStateProp "writes state with empty bound values to marlowe output" $ const Semantics.boundValues
   emptyStateProp "writes state with min time 0 to marlowe output" $ const Semantics.minTime
   Hspec.QuickCheck.prop "writes the contract to the marlowe output" \(SomeCreateArgs args) ->
-    let result = extractMarloweDatum <$> runBuildCreateConstraints args
+    let result = extractMarloweDatum <$> runBuildInitConstraints args
      in case version args of
           MarloweV1 -> (fmap Semantics.marloweContract <$> result) === (Right $ Just $ contract args)
           :: Property
   Hspec.QuickCheck.prop "sends the minAda deposit to the marlowe output" \(SomeCreateArgs args) ->
-    let result = fmap Chain.ada . extractMarloweAssets' <$> runBuildCreateConstraints args
+    let result = fmap Chain.ada . extractMarloweAssets' <$> runBuildInitConstraints args
      in case version args of
           MarloweV1 -> result === (Right $ Just $ max (minAda args) safeLovelace)
           :: Property
   Hspec.QuickCheck.prop "sends minted role tokens to the right destinations" \(SomeCreateArgs args) ->
-    let result = extractSentRoleTokens <$> runBuildCreateConstraints args
+    let result = extractSentRoleTokens <$> runBuildInitConstraints args
         expected = getRolesForAddresses $ roleTokensConfig args
      in case version args of
           MarloweV1 -> result === Right expected
           :: Property
   Hspec.QuickCheck.prop "total balance == marlowe output assets" \(SomeCreateArgs args) ->
-    let result = runBuildCreateConstraints args
+    let result = runBuildInitConstraints args
         mDatum = extractMarloweDatum <$> result
         mAssets = extractMarloweAssets' <$> result
      in case version args of
@@ -152,39 +152,39 @@ createSpec = Hspec.describe "buildCreateConstraints" do
             (fmap (fromPlutusValue . Semantics.totalBalance . Semantics.accounts . Semantics.marloweState) <$> mDatum) === mAssets
           :: Property
   Hspec.QuickCheck.prop "Doesn't send any payments to addresses" \(SomeCreateArgs args) ->
-    let result = payToAddresses <$> runBuildCreateConstraints args
+    let result = payToAddresses <$> runBuildInitConstraints args
      in case version args of
           MarloweV1 -> result === Right mempty
           :: Property
   Hspec.QuickCheck.prop "Doesn't send any payments to roles" \(SomeCreateArgs args) ->
-    let result = payToRoles <$> runBuildCreateConstraints args
+    let result = payToRoles <$> runBuildInitConstraints args
      in case version args of
           MarloweV1 -> result === Right mempty
           :: Property
   Hspec.QuickCheck.prop "Doesn't consume any roles" \(SomeCreateArgs args) ->
-    let result = payoutInputConstraints <$> runBuildCreateConstraints args
+    let result = payoutInputConstraints <$> runBuildInitConstraints args
      in case version args of
           MarloweV1 -> result === Right mempty
           :: Property
   Hspec.QuickCheck.prop "Doesn't consume a marlowe input" \(SomeCreateArgs args) ->
-    let result = marloweInputConstraints <$> runBuildCreateConstraints args
+    let result = marloweInputConstraints <$> runBuildInitConstraints args
      in case version args of
           MarloweV1 -> result === Right MarloweInputConstraintsNone
           :: Property
   Hspec.QuickCheck.prop "Doesn't require extra signatures" \(SomeCreateArgs args) ->
-    let result = signatureConstraints <$> runBuildCreateConstraints args
+    let result = signatureConstraints <$> runBuildInitConstraints args
      in case version args of
           MarloweV1 -> result === Right mempty
           :: Property
   Hspec.QuickCheck.prop "Writes the correct metadata" \(SomeCreateArgs args) ->
-    let result = metadataConstraints <$> runBuildCreateConstraints args
+    let result = metadataConstraints <$> runBuildInitConstraints args
      in case version args of
           MarloweV1 -> result === Right (metadata args)
           :: Property
   Hspec.QuickCheck.prop "Adds thread tokens to the initial state" \(SomeCreateArgs args) ->
     hasOpenRoles args ==>
       let threadTokenAssetId = Chain.AssetId (getPolicyId args) $ threadName args
-          constraints = runBuildCreateConstraints args
+          constraints = runBuildInitConstraints args
           assets = fmap unTxOutAssets . extractMarloweAssets <$> constraints
           result = (Map.lookup threadTokenAssetId . Chain.unTokens . Chain.tokens =<<) <$> assets
        in case version args of
@@ -197,7 +197,7 @@ createSpec = Hspec.describe "buildCreateConstraints" do
   where
     emptyStateProp :: (Eq a, Show a) => String -> (CreateArgs 'V1 -> Semantics.State -> a) -> Spec
     emptyStateProp name f = Hspec.QuickCheck.prop name \(SomeCreateArgs args) ->
-      let result = extractMarloweDatum <$> runBuildCreateConstraints args
+      let result = extractMarloweDatum <$> runBuildInitConstraints args
        in case version args of
             MarloweV1 ->
               on
@@ -276,12 +276,12 @@ extractMarloweAssets TxConstraints{..} = case marloweOutputConstraints of
 extractMarloweAssets' :: TxConstraints TestEra v -> Maybe Chain.Assets
 extractMarloweAssets' = fmap unTxOutAssets . extractMarloweAssets
 
-runBuildCreateConstraints :: CreateArgs v -> Either CreateError (TxConstraints TestEra v)
-runBuildCreateConstraints CreateArgs{..} = do
+runBuildInitConstraints :: CreateArgs v -> Either InitError (TxConstraints TestEra v)
+runBuildInitConstraints CreateArgs{..} = do
   let adjustMinUTxO = AdjustMinUTxO id
   snd
     <$> runIdentity
-      ( buildCreateConstraints
+      ( buildInitConstraints
           -- Since we don't actually run the script, we can just return empty bytes
           (\_ _ -> pure testMintingValidator)
           babbageEraOnwardsTest
