@@ -976,10 +976,12 @@ getScripts :: MarloweVersion v -> Set MarloweScripts
 getScripts = \case
   MarloweV1 -> v1Scripts
 
+type GetCurrentScripts v = MarloweVersion v -> MarloweScripts
+
 -- | Get the current script hash set for the given Marlowe version as of the
 -- current git commit.
 --
 -- NOTE: Enforced in the test suite.
-getCurrentScripts :: MarloweVersion v -> MarloweScripts
+getCurrentScripts :: GetCurrentScripts v
 getCurrentScripts = \case
   MarloweV1 -> caseAsDataV1Scripts

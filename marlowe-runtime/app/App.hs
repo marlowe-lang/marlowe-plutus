@@ -150,7 +150,7 @@ mkServerDependencies pool = do
   --                      ServerM
   -- withdraw :: Language.Marlowe.Runtime.Web.Server.Monad.Withdraw
   --               ServerM
-  --
+
   ServerDependencies
     { applyInputs = undefined
     , burnRoleTokens = undefined
@@ -200,7 +200,8 @@ runApp Options{..} = do
       waiSettings =
         Wai.setOnExceptionResponse handleException $
           Wai.setPort port $
-            Wai.setLogger waiLogger Wai.defaultSettings
+            Wai.setTimeout 600 $
+              Wai.setLogger waiLogger Wai.defaultSettings
 
       api :: Proxy RuntimeAPIWithOpenAPI
       api = Proxy

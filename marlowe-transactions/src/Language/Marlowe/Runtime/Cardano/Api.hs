@@ -97,6 +97,24 @@ toCardanoPaymentKeyHash = hush . C.deserialiseFromRawBytes (C.AsHash C.AsPayment
 toCardanoPolicyId :: PolicyId -> Maybe C.PolicyId
 toCardanoPolicyId = hush . C.deserialiseFromRawBytes C.AsPolicyId . unPolicyId
 
+toCardanoPaymentCredential :: Credential -> Maybe C.PaymentCredential
+toCardanoPaymentCredential = \case
+  PaymentKeyCredential pkh -> C.PaymentCredentialByKey <$> toCardanoPaymentKeyHash pkh
+  ScriptCredential sh -> C.PaymentCredentialByScript <$> toCardanoScriptHash sh
+
+fromCardanoPaymentCredential :: C.PaymentCredential -> Credential
+fromCardanoPaymentCredential = \case
+  C.PaymentCredentialByKey pkh -> PaymentKeyCredential $ fromCardanoPaymentKeyHash pkh
+  C.PaymentCredentialByScript sh -> ScriptCredential $ fromCardanoScriptHash sh
+
+toCardanoStakeKeyHash :: StakeKeyHash -> Maybe (C.Hash C.StakeKey)
+toCardanoStakeKeyHash = hush . C.deserialiseFromRawBytes (C.AsHash C.AsStakeKey) . unStakeKeyHash
+
+toCardanoStakeCredential :: StakeCredential -> Maybe C.StakeCredential
+toCardanoStakeCredential = \case
+  StakeKeyCredential pkh -> C.StakeCredentialByKey <$> toCardanoStakeKeyHash pkh
+  StakeScriptCredential sh -> C.StakeCredentialByScript <$> toCardanoScriptHash sh
+
 fromCardanoPolicyId :: C.PolicyId -> PolicyId
 fromCardanoPolicyId = PolicyId . C.serialiseToRawBytes
 

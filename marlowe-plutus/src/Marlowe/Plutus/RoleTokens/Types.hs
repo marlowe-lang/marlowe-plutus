@@ -1,21 +1,28 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE NoImplicitPrelude #-}
+
+{-- Old flags:
 {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
 {-# OPTIONS_GHC -fno-omit-interface-pragmas #-}
 {-# OPTIONS_GHC -fno-specialise #-}
+{-# OPTIONS_GHC -fno-strictness #-}
+{-# OPTIONS_GHC -fobject-code #-}
+-}
+
+-- Plinth options
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:defer-errors #-}
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:target-version=1.1.0 #-}
+
+-- Recommended extensions and flags
+{-# LANGUAGE Strict #-}
+{-# LANGUAGE NoImplicitPrelude #-}
+{-# OPTIONS -fno-full-laziness #-}
+{-# OPTIONS -fno-ignore-interface-pragmas #-}
+{-# OPTIONS -fno-omit-interface-pragmas #-}
+{-# OPTIONS -fno-spec-constr #-}
+{-# OPTIONS -fno-specialise #-}
+{-# OPTIONS -fno-strictness #-}
+{-# OPTIONS -fno-unbox-small-strict-fields #-}
+{-# OPTIONS -fno-unbox-strict-fields #-}
 
 module Marlowe.Plutus.RoleTokens.Types (
   MintAction (..),

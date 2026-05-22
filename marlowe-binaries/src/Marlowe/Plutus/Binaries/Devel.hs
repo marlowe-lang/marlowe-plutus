@@ -14,8 +14,6 @@
 {-# OPTIONS -fno-unbox-small-strict-fields #-}
 {-# OPTIONS -fno-unbox-strict-fields #-}
 {-# OPTIONS_GHC -fobject-code #-}
-{-# OPTIONS_GHC -Wno-unused-top-binds #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 module Marlowe.Plutus.Binaries.Devel where
 
@@ -27,6 +25,9 @@ import PlutusTx (CompiledCode)
 import PlutusTx.Blueprint.PlutusVersion (PlutusVersion (PlutusV3))
 import PlutusTx.Prelude (BuiltinData, BuiltinUnit, check, ($))
 import PlutusTx qualified
+import qualified PlutusLedgerApi.V3 as PV3
+import Marlowe.Plutus.RoleTokens (RoleTokens, mkRoleTokensHash, mkPolicy, wrapMintingPolicy)
+import qualified Prelude as Haskell
 
 {-# INLINEABLE rolePayoutValidator #-}
 rolePayoutValidator :: CompiledCode (BuiltinData -> BuiltinUnit)
@@ -58,3 +59,21 @@ marloweValidatorHash = hashScript PlutusV3 marloweValidator
 
 marloweValidatorBytes :: SerialisedScript
 marloweValidatorBytes = serialiseCompiledCode marloweValidator
+
+mkRoleTokensPolicy :: RoleTokens -> PV3.TxOutRef -> CompiledCode (BuiltinData -> BuiltinData -> BuiltinUnit)
+mkRoleTokensPolicy roleTokens txOutRef =
+  let roleTokensHash = mkRoleTokensHash roleTokens
+      errorOrApplied =
+        $$(PlutusTx.compile [||\rs seed -> wrapMintingPolicy (mkPolicy rs seed)||])
+          `PlutusTx.applyCode` PlutusTx.liftCodeDef roleTokensHash
+          Haskell.>>= (`PlutusTx.applyCode` PlutusTx.liftCodeDef txOutRef)
+   in case errorOrApplied of
+        Haskell.Left err -> Haskell.error $ "Application of arguments to minting validator failed." Haskell.<> err
+        Haskell.Right applied -> applied
+
+mkRoleTokensPolicyHash :: RoleTokens -> PV3.TxOutRef -> ScriptHash
+mkRoleTokensPolicyHash roleTokens1 txOutRef = hashScript PlutusV3 (mkRoleTokensPolicy roleTokens1 txOutRef)
+
+mkRoleTokensPolicyBytes :: RoleTokens -> PV3.TxOutRef -> SerialisedScript
+mkRoleTokensPolicyBytes roleTokens2 txOutRef = serialiseCompiledCode (mkRoleTokensPolicy roleTokens2 txOutRef)
+
