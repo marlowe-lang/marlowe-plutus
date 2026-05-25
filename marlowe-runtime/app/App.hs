@@ -114,20 +114,20 @@ logLevelParser =
 --     roleTokens = mkRoleTokens $ Map.toList tokens <&> \(TokenName bs, amount) -> do
 --       (PV3.TokenName . PV3.toBuiltin $ bs, amount)
 --   pure . fromPlutusSerialisedScript C.PlutusScriptV3 . mkPolicy roleTokens $ toPlutusTxOutRef txOutRef
--- 
--- mkInitContract
---   :: C.SystemStart
---   -> C.EraHistory
---   -> L.PParams (C.ShelleyLedgerEra C.DijkstraEra)
---   -> C.NetworkId
---   -> UseDevelScripts
---   -> InitContract
--- mkInitContract systemStart eraHistory protocolParams networkId useDevelScripts = do
---   let
---     solveConstraints = Constraints.solveConstraints systemStart (C.toLedgerEpochInfo eraHistory)
---     loadHelpersContext _ _ = pure $ Left LoadHelpersContextErrorNotFound
---     analysisTimeout = 60
--- 
+--
+mkInitContract
+  :: C.SystemStart
+  -> C.EraHistory
+  -> L.PParams (C.ShelleyLedgerEra C.DijkstraEra)
+  -> C.NetworkId
+  -> UseDevelScripts
+  -> InitContract
+mkInitContract systemStart eraHistory protocolParams networkId useDevelScripts = do
+  let
+    solveConstraints = Constraints.solveConstraints systemStart (C.toLedgerEpochInfo eraHistory)
+    loadHelpersContext _ _ = pure $ Left LoadHelpersContextErrorNotFound
+    analysisTimeout = 60
+
 --   -- type InitContract 
 --   --   Maybe StakeCredential
 --   --   -> WalletContext
@@ -138,49 +138,49 @@ logLevelParser =
 --   --   -> Accounts
 --   --   -> Either (Contract V1) DatumHash
 --   --   -> m (Either InitError (ContractInitialized V1))
---   \stakeCredential walletContext threadTokenName roleTokensConfig transactionMetadata optMinAda accounts contract -> do
---     -- execInit
---     --   :: forall era m v
---     --    . (MonadUnliftIO m, C.IsCardanoEra era, MonadLog m)
---     --   => MkRoleTokenMintingPolicy m
---     --   -> C.CardanoEra era
---     --   -- -> Connector (QueryClient ContractRequest) m
---     --   -> GetCurrentScripts v
---     --   -> SolveConstraints era v
---     --   -- -> C.LedgerProtocolParameters era
---     --   -> Ledger.PParams (C.ShelleyLedgerEra era)
---     --   -> WalletContext
---     --   -> LoadHelpersContext m
---     --   -> C.NetworkId
---     --   -> Maybe Chain.StakeCredential
---     --   -> MarloweVersion v
---     --   -> Maybe Chain.TokenName
---     --   -> RoleTokensConfig
---     --   -> MarloweTransactionMetadata
---     --   -> Maybe Chain.Lovelace
---     --   -> Accounts
---     --   -> Either (Contract v) Chain.DatumHash
---     --   -> NominalDiffTime
---     --   -> m (Either InitError (ContractInitialized v))
---     initResult <- execInit
---       (mkRoleTokensPolicy useDevelScripts)
---       C.DijkstraEra
---       ScriptRegistry.getCurrentScripts
---       solveConstraints
---       protocolParams
---       walletContext
---       loadHelpersContext
---       cmd.networkId
---       stakeCredential
---       MarloweV1
---       threadTokenName
---       roleTokensConfig
---       transactionMetadata
---       optMinAda
---       accounts
---       (Left contract)
---       analysisTimeout
--- 
+  \stakeCredential walletContext threadTokenName roleTokensConfig transactionMetadata optMinAda accounts contract -> do
+    -- execInit
+    --   :: forall era m v
+    --    . (MonadUnliftIO m, C.IsCardanoEra era, MonadLog m)
+    --   => MkRoleTokenMintingPolicy m
+    --   -> C.CardanoEra era
+    --   -- -> Connector (QueryClient ContractRequest) m
+    --   -> GetCurrentScripts v
+    --   -> SolveConstraints era v
+    --   -- -> C.LedgerProtocolParameters era
+    --   -> Ledger.PParams (C.ShelleyLedgerEra era)
+    --   -> WalletContext
+    --   -> LoadHelpersContext m
+    --   -> C.NetworkId
+    --   -> Maybe Chain.StakeCredential
+    --   -> MarloweVersion v
+    --   -> Maybe Chain.TokenName
+    --   -> RoleTokensConfig
+    --   -> MarloweTransactionMetadata
+    --   -> Maybe Chain.Lovelace
+    --   -> Accounts
+    --   -> Either (Contract v) Chain.DatumHash
+    --   -> NominalDiffTime
+    --   -> m (Either InitError (ContractInitialized v))
+    initResult <- execInit
+      (mkRoleTokensPolicy useDevelScripts)
+      C.DijkstraEra
+      ScriptRegistry.getCurrentScripts
+      solveConstraints
+      protocolParams
+      walletContext
+      loadHelpersContext
+      networkId
+      stakeCredential
+      MarloweV1
+      threadTokenName
+      roleTokensConfig
+      transactionMetadata
+      optMinAda
+      accounts
+      (Left contract)
+      analysisTimeout
+
 --     -- data InitError
 --     --   = InitEraUnsupported AnyCardanoEra
 --     --   | InitConstraintError ConstraintError
