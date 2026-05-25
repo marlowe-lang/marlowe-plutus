@@ -77,3 +77,12 @@ mkRoleTokensPolicyHash roleTokens1 txOutRef = hashScript PlutusV3 (mkRoleTokensP
 mkRoleTokensPolicyBytes :: RoleTokens -> PV3.TxOutRef -> SerialisedScript
 mkRoleTokensPolicyBytes roleTokens2 txOutRef = serialiseCompiledCode (mkRoleTokensPolicy roleTokens2 txOutRef)
 
+-- This type of helper is missing because it requires a pretty heavy cardano-api dependency.
+--
+-- mkRoleTokensPolicyScript :: RoleTokens -> PV3.TxOutRef -> C.PlutusScript C.PlutusScriptV3
+-- mkRoleTokensPolicyScript roleTokens3 txOutRef = do
+--   let
+--     bytes = mkRoleTokensPolicyBytes roleTokens3 txOutRef
+--   PlutusScript PlutusScriptV3 (PlutusScriptSerialised bytes)
+
+

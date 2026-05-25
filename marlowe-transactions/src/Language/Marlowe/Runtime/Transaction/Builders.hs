@@ -15,7 +15,7 @@ import Language.Marlowe.Runtime.Core.Api (MarloweVersion (MarloweV1), MarloweTra
 import Language.Marlowe.Runtime.Core.ScriptRegistry (MarloweScripts (MarloweScripts, marloweScript, payoutScript, helperScripts, marloweScriptUTxOs, payoutScriptUTxOs, helperScriptUTxOs), HelperScript (OpenRoleScript), ReferenceScriptUtxo, GetCurrentScripts)
 import Language.Marlowe.Runtime.Transaction.Constraints (SolveConstraints, WalletContext (changeAddress), HelpersContext, MarloweContext (MarloweContext, scriptOutput, marloweAddress, payoutAddress, marloweScriptUTxO, payoutScriptUTxO, marloweScriptHash, payoutScriptHash))
 import qualified Language.Marlowe.Runtime.ChainSync.Api as Chain
-import Language.Marlowe.Runtime.Transaction.Api (WalletAddresses(changeAddress), RoleTokensConfig (RoleTokensNone, RoleTokensMint, RoleTokensUsePolicy), Accounts, InitError(InitEraUnsupported, InitContractNotFound, ProtocolParamNoUTxOCostPerByte, InsufficientMinAdaDeposit, InitLoadMarloweContextFailed, InitToCardanoError, InitLoadHelpersContextFailed, InitSafetyAnalysisError, InitSafetyAnalysisFailed, InitConstraintError, InitTxOutputNotFound), ContractInitd(ContractInitd), LoadHelpersContextError, Mint (unMint), Destination (ToScript), MintRole (roleTokenRecipients), LoadMarloweContextError (MarloweScriptNotPublished, PayoutScriptNotPublished), unAccounts, ContractInitdInEra (ContractInitdInEra,
+import Language.Marlowe.Runtime.Transaction.Api (RoleTokensConfig (RoleTokensNone, RoleTokensMint, RoleTokensUsePolicy), Accounts, InitError(InitEraUnsupported, InitContractNotFound, ProtocolParamNoUTxOCostPerByte, InsufficientMinAdaDeposit, InitLoadMarloweContextFailed, InitToCardanoError, InitLoadHelpersContextFailed, InitSafetyAnalysisError, InitSafetyAnalysisFailed, InitConstraintError, InitTxOutputNotFound), ContractInitialized(ContractInitialized), LoadHelpersContextError, Mint (unMint), Destination (ToScript), MintRole (roleTokenRecipients), LoadMarloweContextError (MarloweScriptNotPublished, PayoutScriptNotPublished), unAccounts, ContractInitializedInEra (ContractInitializedInEra,
           contractId , rolesCurrency , metadata , txBody , marloweScriptHash , marloweScriptAddress , payoutScriptHash , payoutScriptAddress , version , datum , assets , safetyErrors))
 
 import Control.Monad.Trans.Except (runExceptT, ExceptT(ExceptT), throwE, except, withExceptT)
@@ -24,7 +24,6 @@ import Language.Marlowe.Runtime.Transaction.Safety (
   mkAdjustMinUTxO, ThreadTokenAssetId (ThreadTokenAssetId), noContinuations, minAdaUpperBound, checkContract, mockLockedRolesContext,
   checkTransactions,
   )
-import Control.Monad.Trans.Class (MonadTrans(lift))
 import Control.Monad (guard, unless)
 import qualified Data.Map.NonEmpty as NEMap
 import qualified Data.Map.Strict as Map
@@ -40,8 +39,7 @@ import Control.Concurrent.Async (race)
 import Control.Concurrent (threadDelay)
 import Language.Marlowe.Runtime.ChainSync.Api (fromCardanoTxMetadata)
 import qualified Data.List as List
-
-type LoadWalletContext m = WalletAddresses -> m WalletContext
+import qualified Cardano.Ledger.Core as Ledger
 
 type LoadHelpersContext m =
   forall v
@@ -57,13 +55,13 @@ execInit
   -- -> Connector (QueryClient ContractRequest) m
   -> GetCurrentScripts v
   -> SolveConstraints era v
-  -> C.LedgerProtocolParameters era
-  -> LoadWalletContext m
+  -- -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
+  -> WalletContext
   -> LoadHelpersContext m
   -> C.NetworkId
   -> Maybe Chain.StakeCredential
   -> MarloweVersion v
-  -> WalletAddresses
   -> Maybe Chain.TokenName
   -> RoleTokensConfig
   -> MarloweTransactionMetadata
@@ -71,13 +69,12 @@ execInit
   -> Accounts
   -> Either (Contract v) Chain.DatumHash
   -> NominalDiffTime
-  -> m (Either InitError (ContractInitd v))
-execInit mkRoleTokenMintingPolicy era getCurrentScripts solveConstraints protocolParameters loadWalletContext loadHelpersContext networkId mStakeCredential version addresses threadRole roleTokens metadata optMinAda accounts contract analysisTimeout = runExceptT do
+  -> m (Either InitError (ContractInitialized v))
+execInit mkRoleTokenMintingPolicy era getCurrentScripts solveConstraints protocolParameters walletContext loadHelpersContext networkId mStakeCredential version threadRole roleTokens metadata optMinAda accounts contract analysisTimeout = runExceptT do
   eon <- toBabbageEraOnwards (InitEraUnsupported $ C.AnyCardanoEra era) era
   let
     threadRole' = fromMaybe "" threadRole
     adjustMinUtxo = mkAdjustMinUTxO eon protocolParameters version
-  walletContext <- lift $ loadWalletContext addresses
   dummyState <- do
     except $
       first invalidAddressesError $
@@ -146,7 +143,7 @@ execInit mkRoleTokenMintingPolicy era getCurrentScripts solveConstraints protoco
             version
             marloweContext
             lockedRolesContext
-            addresses.changeAddress
+            walletContext.changeAddress
             datum
             continuations
   let safetyErrors = contractSafetyErrors <> transactionSafetyErrors
@@ -157,7 +154,7 @@ execInit mkRoleTokenMintingPolicy era getCurrentScripts solveConstraints protoco
       first InitConstraintError $
         solveConstraints
           eon
-          (C.unLedgerProtocolParameters protocolParameters)
+          protocolParameters
           version
           (Left marloweContext)
           walletContext
@@ -166,8 +163,8 @@ execInit mkRoleTokenMintingPolicy era getCurrentScripts solveConstraints protoco
   contractOutput <- except . note InitTxOutputNotFound
     $ findMarloweOutput marloweContext.marloweAddress txBody
   pure $
-    ContractInitd eon $
-      ContractInitdInEra
+    ContractInitialized eon $
+      ContractInitializedInEra
         { contractId = ContractId contractOutput
         , rolesCurrency
         , metadata = decodeMarloweTransactionMetadataLenient case txBody of
