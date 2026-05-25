@@ -55,8 +55,8 @@ data ExtractCreationError
   | ByronAddress
   | NonScriptAddress
   | InvalidScriptHash
-  | NoCreateDatum
-  | InvalidCreateDatum
+  | NoInitDatum
+  | InvalidInitDatum
   | NotCreationTransaction
   deriving stock (Show, Eq, Ord, Generic)
   deriving anyclass (Binary, ToJSON, Variations)
@@ -278,8 +278,8 @@ extractCreation contractId tx@Chain.Transaction{metadata = txMetadata} = do
   let payoutValidatorHash = payoutScript
   -- for_ inputs \Chain.TransactionInput{..} ->
   --   when (isScriptAddress marloweScriptHash address) $ Left NotCreationTransaction
-  txDatum <- note NoCreateDatum mdatum
-  datum <- note InvalidCreateDatum $ fromChainDatum version txDatum
+  txDatum <- note NoInitDatum mdatum
+  datum <- note InvalidInitDatum $ fromChainDatum version txDatum
   let createOutput = TransactionScriptOutput scriptAddress assets (unContractId contractId) datum
   let metadata = decodeMarloweTransactionMetadataLenient txMetadata
   pure $ SomeCreateStep version CreateStep{..}

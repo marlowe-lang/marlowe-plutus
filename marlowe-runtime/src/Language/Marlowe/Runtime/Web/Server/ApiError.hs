@@ -376,7 +376,8 @@ instance ToDTO InitError where
               ["safetyAnalysisProcessFailed" .= safetyAnalysisError]
       ApiError "Safety analysis failed" "SafetyAnalysisFailed" details 400
     InitSafetyAnalysisFailed errors -> ApiError "Contract unsafe, refusing to create" "SafetyAnalysisFailed" (toJSON errors) 400
-    InitContractNotFound -> ApiError "Contract not found" "ContractNotFound" Null 404
+    InitContractNotFound _msg -> ApiError "Contract not found" "ContractNotFound" Null 404
+    InitTxOutputNotFound -> ApiError "Transaction output not found" "TxOutputNotFound" Null 404
     ProtocolParamNoUTxOCostPerByte ->
       ApiError
         "Internal error. Unable to compute min Ada deposit bound because of probably server misconfiguration"

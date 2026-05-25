@@ -431,7 +431,7 @@ interpret ro@RuntimeAwaitClosed{..} = do
           <> show roContractNickname
           <> ". Contract info: "
           <> contractState
-interpret ro@RuntimeCreateContract{..} = do
+interpret ro@RuntimeInitContract{..} = do
   let mkContractNickname = do
         contracts <- use knownContractsL
         case roContractNickname of
@@ -510,7 +510,7 @@ interpret ro@RuntimeCreateContract{..} = do
                   , transactionMetadata = mempty
                   }
         Bifunctor.first Just
-          <$> Marlowe.Class.createContract
+          <$> Marlowe.Class.initContract
             Nothing
             MarloweV1
             walletAddresses

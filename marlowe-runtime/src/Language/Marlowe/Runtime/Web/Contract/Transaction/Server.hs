@@ -13,7 +13,7 @@ import Language.Marlowe.Runtime.Core.Api (
   SomeMarloweVersion (..),
  )
 import qualified Language.Marlowe.Runtime.Core.Api as Core
-import Language.Marlowe.Runtime.Transaction.Api (InputsApplied (..), InputsAppliedInEra (..), WalletAddresses (..))
+import Language.Marlowe.Runtime.Transaction.Api (InputsApplied (..), InputsAppliedInEra (..))
 import Language.Marlowe.Runtime.Web.Adapter.CommaList (
   CommaList (unCommaList),
  )
@@ -52,7 +52,7 @@ import Language.Marlowe.Runtime.Web.Contract.Transaction.API (
   TransactionsAPI,
  )
 import Language.Marlowe.Runtime.Web.Core.Address (Address)
-import Language.Marlowe.Runtime.Web.Core.Tx (TxBodyInAnyEra (..), TxId, TxOutRef)
+import Language.Marlowe.Runtime.Web.Core.Tx (TxBodyInAnyEra (..), TxId, TxOutRef, TransactionUnspentOutput)
 
 import Marlowe.Plutus.Analysis.Safety.Types
 import Language.Marlowe.Runtime.Web.Tx.API (
@@ -81,6 +81,9 @@ import Servant.Pagination (
 import Control.Monad.Writer (MonadTrans(lift))
 import Language.Marlowe.Runtime.Web.Adapter.Servant.UVerbT (runUVerbT, UVerbT)
 import Control.Lens.Combinators (view)
+import qualified Cardano.Api as C
+import Language.Marlowe.Runtime.ChainSync.Api (fromUTxOsList, toUTxOTuple)
+import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext(WalletContext))
 
 server :: TxOutRef -> ServerT TransactionsAPI ServerM
 server contractId =
@@ -123,11 +126,10 @@ buildApplyInputTx
   :: TxOutRef
   -> PostTransactionsRequest
   -> Address
-  -> Maybe (CommaList Address)
-  -> Maybe (CommaList TxOutRef)
+  -> CommaList (TransactionUnspentOutput C.ConwayEra)
   -> ServerM (Union '[PostTransactionsResponse CardanoTx])
-buildApplyInputTx contractId req changeAddressDTO mAddresses mCollateralUtxos = runUVerbT do
-  (TxBodyInAnyEra txBody, safetyErrors) <- buildApplyInputTxBody' contractId req changeAddressDTO mAddresses mCollateralUtxos
+buildApplyInputTx contractId req changeAddressDTO availableUTxOsDTO = runUVerbT do
+  (TxBodyInAnyEra txBody, safetyErrors) <- buildApplyInputTxBody' contractId req changeAddressDTO availableUTxOsDTO
   let
     response :: PostTransactionsResponse CardanoTx
     response =
@@ -145,20 +147,16 @@ buildApplyInputTxBody'
   :: TxOutRef
   -> PostTransactionsRequest
   -> Address
-  -> Maybe (CommaList Address)
-  -> Maybe (CommaList TxOutRef)
+  -> CommaList (TransactionUnspentOutput C.ConwayEra)
   -> UVerbT
       '[PostTransactionsResponse CardanoTx]
       ServerM
       ApplyInputsResult
-buildApplyInputTxBody' contractId PostTransactionsRequest{..} changeAddressDTO mAddresses mCollateralUtxos = do
+buildApplyInputTxBody' contractId PostTransactionsRequest{..} changeAddressDTO availableUTxOsDTO = do
   SomeMarloweVersion _v@MarloweV1 <- fromDTOThrow (badRequest' "Invalid Marlowe version") version
   changeAddress <- fromDTOThrow (badRequest' "Invalid change address") changeAddressDTO
-  extraAddresses <-
-    Set.fromList <$> fromDTOThrow (badRequest' "Invalid addresses header value") (maybe [] unCommaList mAddresses)
-  collateralUtxos <-
-    Set.fromList
-      <$> fromDTOThrow (badRequest' "Invalid collateral header UTxO value") (maybe [] unCommaList mCollateralUtxos)
+  availableUTxOs <-
+    fromDTOThrow (badRequest' "Invalid collateral header UTxO value") (unCommaList availableUTxOsDTO)
   contractId' <- fromDTOThrow (badRequest' "Invalid contract id value") contractId
   transactionMetadata <- fromDTOThrow (badRequest' "Invalid metadata value") metadata
   marloweMetadata <-
@@ -166,7 +164,12 @@ buildApplyInputTxBody' contractId PostTransactionsRequest{..} changeAddressDTO m
       (badRequest' "Invalid tags value")
       if Map.null tags then Nothing else Just tags
   applyInputs <- view applyInputsL
-  lift (applyInputs WalletAddresses{..} contractId' MarloweTransactionMetadata{..} invalidBefore invalidHereafter inputs) >>= \case
+  let
+    walletContext = WalletContext
+      (fromUTxOsList availableUTxOs)
+      (Set.fromList $ map (fst . toUTxOTuple) availableUTxOs)
+      changeAddress
+  lift (applyInputs walletContext contractId' MarloweTransactionMetadata{..} invalidBefore invalidHereafter inputs) >>= \case
     Left err -> throwDTOError err
     Right (InputsApplied BabbageEraOnwardsBabbage InputsAppliedInEra{txBody, safetyErrors}) -> pure (TxBodyInAnyEra txBody, safetyErrors)
     Right (InputsApplied BabbageEraOnwardsConway InputsAppliedInEra{txBody, safetyErrors}) -> pure (TxBodyInAnyEra txBody, safetyErrors)

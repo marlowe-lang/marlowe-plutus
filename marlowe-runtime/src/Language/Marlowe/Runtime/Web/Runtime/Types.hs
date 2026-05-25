@@ -98,8 +98,8 @@ newtype RolesCurrency = RolesCurrency PolicyId
 newtype PolicyId = PolicyId ByteString
   deriving (Show, Eq)
 
--- | Stub for ContractCreated
-data ContractCreated v = ContractCreated
+-- | Stub for ContractInitialized
+data ContractInitialized v = ContractInitialized
   { createdContractId :: TxOutRef
   , createdRolesCurrency :: Maybe RolesCurrency
   , createdVersion :: MarloweVersion v

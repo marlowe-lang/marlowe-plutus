@@ -11,7 +11,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Set as Set
 import qualified Language.Marlowe.Runtime.Query as Query
 import Language.Marlowe.Runtime.Cardano.Api (fromCardanoTxId)
-import Language.Marlowe.Runtime.Transaction.Api (WalletAddresses (..), WithdrawTx (..), WithdrawTxInEra (..))
+import Language.Marlowe.Runtime.Transaction.Api (WithdrawTx (..), WithdrawTxInEra (..))
 import Language.Marlowe.Runtime.Web.Adapter.Links (WithLink (..))
 import Language.Marlowe.Runtime.Web.Adapter.Pagination (
   PaginatedResponse,
@@ -30,8 +30,6 @@ import Language.Marlowe.Runtime.Web.Server.Monad (
   loadWithdrawalsL,
   withdrawL, runEff1, runEff2,
  )
--- import Language.Marlowe.Runtime.Web.Server.TxClient (TempTx (..), TempTxStatus (..))
-
 import Language.Marlowe.Runtime.Web.Adapter.CommaList (CommaList (..))
 import Language.Marlowe.Runtime.Web.Core.Address (Address)
 import Language.Marlowe.Runtime.Web.Core.Asset (PolicyId)
@@ -42,7 +40,7 @@ import Language.Marlowe.Runtime.Web.Server.ApiError (
   rangeNotSatisfiable',
   throwDTOError,
  )
-import Language.Marlowe.Runtime.Web.Core.Tx (TxBodyInAnyEra (..), TxId, TxOutRef)
+import Language.Marlowe.Runtime.Web.Core.Tx (TxBodyInAnyEra (..), TxId, TransactionUnspentOutput)
 import Language.Marlowe.Runtime.Web.Tx.API (CardanoTx, WithdrawTxEnvelope (..))
 import Language.Marlowe.Runtime.Web.Withdrawal.API (
   GetWithdrawalsResponse,
@@ -69,6 +67,9 @@ import Servant.Pagination (
  )
 import Control.Monad.Trans.Class (MonadTrans(lift))
 import Language.Marlowe.Runtime.Web.Adapter.Servant.UVerbT (UVerbT, runUVerbT)
+import qualified Cardano.Api as C
+import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext(WalletContext))
+import Language.Marlowe.Runtime.ChainSync.Api (toUTxOTuple, fromUTxOsList)
 
 server :: ServerT WithdrawalsAPI ServerM
 server =
@@ -79,21 +80,21 @@ server =
 postCreateTxBody
   :: PostWithdrawalsRequest
   -> Address
-  -> Maybe (CommaList Address)
-  -> Maybe (CommaList TxOutRef)
+  -> CommaList (TransactionUnspentOutput C.ConwayEra)
   -> UVerbT
       '[PostWithdrawalsResponse CardanoTx]
       ServerM
       TxBodyInAnyEra
-postCreateTxBody PostWithdrawalsRequest{..} changeAddressDTO mAddresses mCollateralUtxos = do
+postCreateTxBody PostWithdrawalsRequest{..} changeAddressDTO availableUTxOsDTO = do
   changeAddress <- fromDTOThrow (badRequest' "Invalid change address value") changeAddressDTO
-  extraAddresses <-
-    Set.fromList <$> fromDTOThrow (badRequest' "Invalid addresses header value") (maybe [] unCommaList mAddresses)
-  collateralUtxos <-
-    Set.fromList
-      <$> fromDTOThrow (badRequest' "Invalid collateral header UTxO value") (maybe [] unCommaList mCollateralUtxos)
+  availableUTxOs <- fromDTOThrow (badRequest' "Invalid wallet available UTxOs") (unCommaList availableUTxOsDTO)
   payouts' <- fromDTOThrow (badRequest' "Invalid payouts") payouts
-  runEff2 withdrawL WalletAddresses{..} payouts' >>= \case
+  let
+    walletContext = WalletContext
+      (fromUTxOsList availableUTxOs)
+      (Set.fromList $ map (fst . toUTxOTuple) availableUTxOs)
+      changeAddress
+  runEff2 withdrawL walletContext payouts' >>= \case
     Left err -> throwDTOError err
     Right (WithdrawTx BabbageEraOnwardsBabbage WithdrawTxInEra{txBody}) -> pure $ TxBodyInAnyEra txBody
     Right (WithdrawTx BabbageEraOnwardsConway WithdrawTxInEra{txBody}) -> pure $ TxBodyInAnyEra txBody
@@ -102,11 +103,10 @@ postCreateTxBody PostWithdrawalsRequest{..} changeAddressDTO mAddresses mCollate
 postCreateTxResponse
   :: PostWithdrawalsRequest
   -> Address
-  -> Maybe (CommaList Address)
-  -> Maybe (CommaList TxOutRef)
+  -> CommaList (TransactionUnspentOutput C.ConwayEra)
   -> ServerM (Union '[PostWithdrawalsResponse CardanoTx])
-postCreateTxResponse req changeAddressDTO mAddresses mCollateralUtxos = runUVerbT do
-  TxBodyInAnyEra txBody <- postCreateTxBody req changeAddressDTO mAddresses mCollateralUtxos
+postCreateTxResponse req changeAddressDTO availableUtxosDTO = runUVerbT do
+  TxBodyInAnyEra txBody <- postCreateTxBody req changeAddressDTO availableUtxosDTO
   let
     tx = makeSignedTransaction [] txBody
     (withdrawalId, tx') = toDTO (fromCardanoTxId $ getTxId txBody, tx)

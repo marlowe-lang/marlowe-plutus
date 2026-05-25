@@ -154,9 +154,9 @@ type PostContractsAPI =
     :> Description
         "Build an unsigned (Cardano) transaction which opens a new Marlowe contract. \
         \This unsigned transaction must be signed by a wallet (such as a CIP-30 or CIP-45 wallet) before being submitted. \
-        \To submit the signed transaction, use the PUT /contracts/{contractId} endpoint."
-    :> OperationId "createContract"
-    :> RenameResponseSchema "CreateContractResponse"
+        \To submit the signed transaction, use the wallet API - the current Runtime backend does not support submitting."
+    :> OperationId "initContract"
+    :> RenameResponseSchema "InitContractResponse"
     :> Header'
         '[Optional, Strict, Description "Where to send staking rewards for the Marlowe script outputs of this contract."]
         "X-Stake-Address"
@@ -226,7 +226,7 @@ type PostContractSourcesAPI =
     :> Description
         "Upload a bundle of marlowe objects as contract sources. This API supports request body streaming, with newline \
         \framing between request bundles."
-    :> OperationId "createContractSources"
+    :> OperationId "initContractSources"
     :> QueryParam' '[Required, Description "The label of the top-level contract object in the bundle(s)."] "main" Label
     :> StreamBody NewlineFraming JSON (Producer ObjectBundle IO ())
     :> Post '[JSON] PostContractSourceResponse

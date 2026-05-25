@@ -199,7 +199,7 @@ cliConstructors =
 runtimeConstructors :: [String]
 runtimeConstructors =
   [ "RuntimeAwaitClosed"
-  , "RuntimeCreateContract"
+  , "RuntimeInitContract"
   , "RuntimeApplyInputs"
   , "RuntimeWithdraw"
   ]

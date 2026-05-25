@@ -30,7 +30,6 @@ import GHC.Generics (Generic)
 import Network.HTTP.Media ((//))
 import Servant (
   Accept,
-  Header,
   Header',
   JSON,
   NoContent,
@@ -73,12 +72,13 @@ import Language.Marlowe.Runtime.Web.Core.Tx (
   TextEnvelope,
   TxId,
   TxOutRef,
-  TxStatus,
+  TxStatus, TransactionUnspentOutput,
  )
 import Language.Marlowe.Runtime.Web.Payout.API (Payout)
 import Servant.Pagination (
   HasPagination (RangeType, getFieldValue),
  )
+import qualified Cardano.Api as C
 
 data TxHeader = TxHeader
   { contractId :: TxOutRef
@@ -131,8 +131,7 @@ type PutSignedTxAPI = ReqBody '[JSON] TextEnvelope :> PutAccepted '[JSON] NoCont
 
 type PostTxAPI api =
   Header' '[Required, Strict] "X-Change-Address" Address
-    :> Header "X-Address" (CommaList Address)
-    :> Header "X-Collateral-UTxO" (CommaList TxOutRef)
+    :> Header' '[Required, Strict] "X-Wallet-UTxO" (CommaList (TransactionUnspentOutput C.ConwayEra))
     :> api
 
 instance Accept (TxJSON ContractTx) where

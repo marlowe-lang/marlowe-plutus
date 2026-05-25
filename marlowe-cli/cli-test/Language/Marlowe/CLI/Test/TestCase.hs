@@ -89,7 +89,7 @@ testFaucetBudgetUpperBound tub@(TxCostsUpperBounds txCost _) TestCase{operations
         possibleFaucetTx (CLIOperation Publish{coPublisher = publisher}) = maybe True (faucetNickname ==) publisher
         possibleFaucetTx (CLIOperation AutoRun{}) = False
         possibleFaucetTx (CLIOperation Withdraw{coWalletNickname = walletNickname}) = walletNickname == faucetNickname
-        possibleFaucetTx (RuntimeOperation RuntimeCreateContract{roSubmitter = submitter}) = maybe True (faucetNickname ==) submitter
+        possibleFaucetTx (RuntimeOperation RuntimeInitContract{roSubmitter = submitter}) = maybe True (faucetNickname ==) submitter
         possibleFaucetTx (RuntimeOperation RuntimeApplyInputs{roSubmitter = submitter}) = maybe True (faucetNickname ==) submitter
         possibleFaucetTx (RuntimeOperation RuntimeWithdraw{roWallets = wallets}) = case wallets of
           Nothing -> True
@@ -122,7 +122,7 @@ testTxsFeesUpperBound (TxCostsUpperBounds txCost _) TestCase{operations} =
     possibleTx (CLIOperation Publish{}) = True
     possibleTx (CLIOperation AutoRun{}) = False
     possibleTx (CLIOperation Withdraw{}) = True
-    possibleTx (RuntimeOperation RuntimeCreateContract{}) = True
+    possibleTx (RuntimeOperation RuntimeInitContract{}) = True
     possibleTx (RuntimeOperation RuntimeApplyInputs{}) = True
     possibleTx (RuntimeOperation RuntimeWithdraw{}) = True
     possibleTx (RuntimeOperation RuntimeAwaitTxsConfirmed{}) = False

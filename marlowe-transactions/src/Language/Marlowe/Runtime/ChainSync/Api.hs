@@ -408,6 +408,8 @@ toCardanoTxMetadata (TransactionMetadata metadata) = C.TxMetadata $ toCardanoMet
 fromCardanoTxMetadata :: C.TxMetadata -> TransactionMetadata
 fromCardanoTxMetadata (C.TxMetadata metadata) = TransactionMetadata $ fromCardanoMetadata <$> metadata
 
+-- It is a bit enigmatic why;
+
 -- | An input of a transaction.
 data TransactionInput = TransactionInput
   { txId :: TxId
@@ -431,9 +433,9 @@ data TransactionOutput = TransactionOutput
   , assets :: TxOutAssets
   -- ^ The assets this output produces.
   , datumHash :: Maybe DatumHash
-  -- ^ The hash of the script non-inlined datum associated with this output.
+  -- ^ FIXME: I'm guessing - The hash of the script non-inlined datum associated with this output.
   , datum :: Maybe Datum
-  -- ^ The script inlined-datum associated with this output.
+  -- ^ FIXME: I'm guessing - The script inlined-datum associated with this output.
   }
   deriving stock (Show, Eq, Ord, Generic)
   deriving anyclass (Binary, ToJSON, Variations)
@@ -957,6 +959,9 @@ lookupUTxO txOutRef (UTxOs utxos) = Map.lookup txOutRef utxos
 
 toUTxOsList :: UTxOs -> [UTxO]
 toUTxOsList (UTxOs (Map.toList -> utxos)) = fmap (uncurry UTxO) utxos
+
+fromUTxOsList :: [UTxO] -> UTxOs
+fromUTxOsList = UTxOs . Map.fromList . fmap toUTxOTuple
 
 data UTxO = UTxO
   { txOutRef :: TxOutRef

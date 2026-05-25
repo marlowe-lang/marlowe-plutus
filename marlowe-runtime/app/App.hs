@@ -108,16 +108,101 @@ logLevelParser =
     , pure LogInfo
     ]
 
--- type LoadContract m =
---   ContractId
---   -- ^ ID of the contract to load
---   -> m (Maybe (Either (TempTx ContractCreatedInEra) SomeContractState))
---   -- ^ Nothing if the ID is not found
---
--- newtype ServerDependencies m = ServerDependencies
---   {
---     loadContract :: LoadContract m
---   }
+-- mkRoleTokensPolicy (UseDevelScripts useDevelScripts) txOutRef tokens = do
+--   let
+--     mkPolicy = if useDevelScripts then Devel.mkRoleTokensPolicyBytes else Production.mkRoleTokensPolicyBytes
+--     roleTokens = mkRoleTokens $ Map.toList tokens <&> \(TokenName bs, amount) -> do
+--       (PV3.TokenName . PV3.toBuiltin $ bs, amount)
+--   pure . fromPlutusSerialisedScript C.PlutusScriptV3 . mkPolicy roleTokens $ toPlutusTxOutRef txOutRef
+-- 
+-- mkInitContract
+--   :: C.SystemStart
+--   -> C.EraHistory
+--   -> L.PParams (C.ShelleyLedgerEra C.DijkstraEra)
+--   -> C.NetworkId
+--   -> UseDevelScripts
+--   -> InitContract
+-- mkInitContract systemStart eraHistory protocolParams networkId useDevelScripts = do
+--   let
+--     solveConstraints = Constraints.solveConstraints systemStart (C.toLedgerEpochInfo eraHistory)
+--     loadHelpersContext _ _ = pure $ Left LoadHelpersContextErrorNotFound
+--     analysisTimeout = 60
+-- 
+--   -- type InitContract 
+--   --   Maybe StakeCredential
+--   --   -> WalletContext
+--   --   -> Maybe TokenName
+--   --   -> RoleTokensConfig
+--   --   -> MarloweTransactionMetadata
+--   --   -> Maybe Lovelace
+--   --   -> Accounts
+--   --   -> Either (Contract V1) DatumHash
+--   --   -> m (Either InitError (ContractInitialized V1))
+--   \stakeCredential walletContext threadTokenName roleTokensConfig transactionMetadata optMinAda accounts contract -> do
+--     -- execInit
+--     --   :: forall era m v
+--     --    . (MonadUnliftIO m, C.IsCardanoEra era, MonadLog m)
+--     --   => MkRoleTokenMintingPolicy m
+--     --   -> C.CardanoEra era
+--     --   -- -> Connector (QueryClient ContractRequest) m
+--     --   -> GetCurrentScripts v
+--     --   -> SolveConstraints era v
+--     --   -- -> C.LedgerProtocolParameters era
+--     --   -> Ledger.PParams (C.ShelleyLedgerEra era)
+--     --   -> WalletContext
+--     --   -> LoadHelpersContext m
+--     --   -> C.NetworkId
+--     --   -> Maybe Chain.StakeCredential
+--     --   -> MarloweVersion v
+--     --   -> Maybe Chain.TokenName
+--     --   -> RoleTokensConfig
+--     --   -> MarloweTransactionMetadata
+--     --   -> Maybe Chain.Lovelace
+--     --   -> Accounts
+--     --   -> Either (Contract v) Chain.DatumHash
+--     --   -> NominalDiffTime
+--     --   -> m (Either InitError (ContractInitialized v))
+--     initResult <- execInit
+--       (mkRoleTokensPolicy useDevelScripts)
+--       C.DijkstraEra
+--       ScriptRegistry.getCurrentScripts
+--       solveConstraints
+--       protocolParams
+--       walletContext
+--       loadHelpersContext
+--       cmd.networkId
+--       stakeCredential
+--       MarloweV1
+--       threadTokenName
+--       roleTokensConfig
+--       transactionMetadata
+--       optMinAda
+--       accounts
+--       (Left contract)
+--       analysisTimeout
+-- 
+--     -- data InitError
+--     --   = InitEraUnsupported AnyCardanoEra
+--     --   | InitConstraintError ConstraintError
+--     --   | InitLoadMarloweContextFailed LoadMarloweContextError
+--     --   | InitLoadHelpersContextFailed LoadHelpersContextError
+--     --   | InitBuildupFailed InitBuildupError
+--     --   | InitTxOutputNotFound
+--     --   | InitToCardanoError
+--     --   | InitSafetyAnalysisFailed [SafetyError]
+--     --   | -- | This error is thrown when the safety analysis process fails itself
+--     --     -- due to a timeout or other reasons, such as missing merkleization data.
+--     --     InitSafetyAnalysisError String
+--     --   | InitContractNotFound String
+--     --   | ProtocolParamNoUTxOCostPerByte
+--     --   | InsufficientMinAdaDeposit Lovelace
+--     --   deriving (Generic)
+--     --
+--     --  data ContractInitialized v = ContractInitialized
+--     --    { createdContractId :: TxOutRef
+--     --    , createdRolesCurrency :: Maybe RolesCurrency
+--     --    , createdVersion :: MarloweVersion v
+--     --    } deriving (Show, Eq)
 
 
 mkServerDependencies :: Pool.Pool -> ServerDependencies ServerM
@@ -130,31 +215,10 @@ mkServerDependencies pool = do
           (either (liftIO . throwIO) pure <=< liftIO . Pool.use pool)
           databaseQueries
 
-  -- applyInputs :: Language.Marlowe.Runtime.Web.Server.Monad.ApplyInputs
-  --                  ServerM
-  -- burnRoleTokens :: Language.Marlowe.Runtime.Web.Server.Monad.BurnRoleTokens
-  --                     ServerM
-  -- createContract :: Language.Marlowe.Runtime.Web.Server.Monad.CreateContract
-  --                             ServerM
-  -- loadPayout :: Language.Marlowe.Runtime.Web.Server.Monad.LoadPayout
-  --                 ServerM
-  -- loadPayouts :: Language.Marlowe.Runtime.Web.Server.Monad.LoadPayouts
-  --                  ServerM
-  -- loadTransaction :: Language.Marlowe.Runtime.Web.Server.Monad.LoadTransaction
-  --                      ServerM
-  -- loadTransactions :: Language.Marlowe.Runtime.Web.Server.Monad.LoadTransactions
-  --                       ServerM
-  -- loadWithdrawal :: Language.Marlowe.Runtime.Web.Server.Monad.LoadWithdrawal
-  --                     ServerM
-  -- loadWithdrawals :: Language.Marlowe.Runtime.Web.Server.Monad.LoadWithdrawals
-  --                      ServerM
-  -- withdraw :: Language.Marlowe.Runtime.Web.Server.Monad.Withdraw
-  --               ServerM
-
   ServerDependencies
     { applyInputs = undefined
     , burnRoleTokens = undefined
-    , createContract = undefined
+    , initContract = undefined
     , loadContract = fmap (fmap Right) . getContractState dbQueries
     , loadPayout = undefined
     , loadPayouts = undefined
