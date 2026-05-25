@@ -126,6 +126,8 @@ import qualified Servant.Pagination as Pagination
 import Unsafe.Coerce (unsafeCoerce)
 import qualified Language.Marlowe.Runtime.Query as Query
 import qualified Cardano.Api as C
+import Language.Marlowe.Runtime.Cardano.Api (toCardanoTxIn, fromCardanoTxIn, fromCardanoTxOutCtxUTxO)
+import Language.Marlowe.Runtime.Cardano.Api (toCardanoTxOut)
 
 -- | A class that states a type has a DTO representation.
 class HasDTO a where
@@ -884,8 +886,8 @@ instance FromDTO Query.TempTxStatus where
   fromDTO Web.Submitted = Just Query.Submitted
   fromDTO _ = Nothing
 
-instance ToDTOWithTxStatus (Tx.ContractCreated v) where
-  toDTOWithTxStatus status (Tx.ContractCreated era Tx.ContractCreatedInEra{..}) =
+instance ToDTOWithTxStatus (Tx.ContractInitialized v) where
+  toDTOWithTxStatus status (Tx.ContractInitialized era Tx.ContractInitializedInEra{..}) =
     Web.ContractState
       { contractId = toDTO contractId
       , roleTokenMintingPolicyId = toDTO rolesCurrency
@@ -915,17 +917,37 @@ instance ToDTOWithTxStatus (Tx.ContractCreated v) where
       }
 
 
-instance HasDTO (Query.TempTx Tx.ContractCreatedInEra) where
-  type DTO (Query.TempTx Tx.ContractCreatedInEra) = Web.ContractState
+instance HasDTO (Query.TempTx Tx.ContractInitializedInEra) where
+  type DTO (Query.TempTx Tx.ContractInitializedInEra) = Web.ContractState
 
-instance HasDTO (Tx.ContractCreated v) where
-  type DTO (Tx.ContractCreated v) = Web.ContractState
+instance HasDTO (Tx.ContractInitialized v) where
+  type DTO (Tx.ContractInitialized v) = Web.ContractState
 
-instance ToDTO (Query.TempTx Tx.ContractCreatedInEra) where
-  toDTO (Query.TempTx era _ status tx) = toDTOWithTxStatus status $ Tx.ContractCreated era tx
+instance ToDTO (Query.TempTx Tx.ContractInitializedInEra) where
+  toDTO (Query.TempTx era _ status tx) = toDTOWithTxStatus status $ Tx.ContractInitialized era tx
 
+instance HasDTO Chain.UTxO where
+  type DTO Chain.UTxO = Web.TransactionUnspentOutput C.ConwayEra
 
--- instance ToDTO (Query.TempTx Tx.ContractCreatedInEra) where
+instance ToDTO Chain.UTxO where
+  toDTO Chain.UTxO{..} = do
+    let
+      -- FIXME: Shouldn't the domain level value and conversion function impose that invariant?
+      cardanoTxIn =
+        fromMaybe (error "Failed to convert TxOutRef to TxIn") $ toCardanoTxIn txOutRef
+      cardanoTxOut =
+        C.toCtxUTxOTxOut . fromMaybe (error "Failed to convert TransactionOutput to TxOut") $
+          toCardanoTxOut C.MaryEraOnwardsConway transactionOutput
+    Web.TransactionUnspentOutput cardanoTxIn cardanoTxOut
+
+instance FromDTO Chain.UTxO where
+  fromDTO Web.TransactionUnspentOutput{..} = do
+    let
+      txOutRef = fromCardanoTxIn txIn
+    transactionOutput <- fromCardanoTxOutCtxUTxO C.ConwayEra txOut
+    pure $ Chain.UTxO txOutRef transactionOutput
+
+-- instance ToDTO (Query.TempTx Tx.ContractInitializedInEra) where
 --   toDTO Query.TempTx{..} =
 --     Web.ContractState
 --       { contractId = toDTO contractId
@@ -946,3 +968,64 @@ instance ToDTO (Query.TempTx Tx.ContractCreatedInEra) where
 --       , unclaimedPayouts = mempty
 --       }
 -- 
+--
+--
+
+-- -- Trivial helper which combines the full info about unspent output
+-- data TransactionUnspentOutput era = TransactionUnspentOutput
+--   { txIn :: C.TxIn
+--   , txOut :: C.TxOut C.CtxUTxO era
+--   }
+--   deriving (Show)
+-- 
+-- instance C.HasTypeProxy era => C.HasTypeProxy (TransactionUnspentOutput era) where
+--   data AsType (TransactionUnspentOutput era) = AsTransactionUnspentOutput (C.AsType era)
+--   proxyToAsType _ = AsTransactionUnspentOutput (C.proxyToAsType (Proxy :: Proxy era))
+-- 
+-- instance (Typeable era, C.IsShelleyBasedEra era) => FromCBOR (TransactionUnspentOutput era) where
+--   fromCBOR = do
+--     enforceSize "TransactionUnspentOutput" 2
+--     TransactionUnspentOutput <$> fromCBOR <*> fromCBOR
+-- 
+-- instance
+--   ( ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+--   , C.IsShelleyBasedEra era
+--   ) => ToCBOR (TransactionUnspentOutput era) where
+--     toCBOR (TransactionUnspentOutput txin txout) =
+--       toCBOR txin
+--         <> toCBOR txout
+-- 
+-- deriving instance
+--   ( C.IsShelleyBasedEra era
+--   , ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+--   ) => C.SerialiseAsCBOR (TransactionUnspentOutput era)
+-- 
+-- instance
+--   ( ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+--   , C.IsShelleyBasedEra era
+--   ) => ToJSON (TransactionUnspentOutput era) where
+--     toJSON tuo = do
+--       let
+--         bytes = C.serialiseToCBOR tuo
+--       toJSON . Base16 $ bytes
+-- 
+-- instance
+--   ( ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+--   , C.IsShelleyBasedEra era
+--   ) => FromJSON (TransactionUnspentOutput era) where
+--     parseJSON v = do
+--       bytes <- unBase16 <$> parseJSON v
+--       case C.deserialiseFromCBOR (AsTransactionUnspentOutput (C.proxyToAsType (Proxy :: Proxy era))) bytes of
+--         Right tuo -> pure tuo
+--         Left err -> fail $ "Failed to parse TransactionUnspentOutput: " ++ show err
+-- 
+-- data TransactionUnspentOutputInAnyEra where
+--   TransactionUnspentOutputInAnyEra :: (IsShelleyBasedEra era) => TransactionUnspentOutput era -> TransactionUnspentOutputInAnyEra
+-- 
+-- instance ToJSON TransactionUnspentOutputInAnyEra where
+--   toJSON (TransactionUnspentOutputInAnyEra tuo) = toJSON tuo
+-- 
+-- instance FromJSON TransactionUnspentOutputInAnyEra where
+--   parseJSON v = do
+--     tuo <- parseJSON v
+--     pure $ TransactionUnspentOutputInAnyEra tuo

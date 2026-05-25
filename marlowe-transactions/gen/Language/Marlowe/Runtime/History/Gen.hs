@@ -33,8 +33,8 @@ instance Arbitrary ExtractCreationError where
       , ByronAddress
       , NonScriptAddress
       , InvalidScriptHash
-      , NoCreateDatum
-      , InvalidCreateDatum
+      , NoInitDatum
+      , InvalidInitDatum
       , NotCreationTransaction
       ]
   shrink = genericShrink

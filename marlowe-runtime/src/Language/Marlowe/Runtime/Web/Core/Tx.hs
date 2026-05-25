@@ -1,19 +1,11 @@
-{-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Language.Marlowe.Runtime.Web.Core.Tx (
+  TransactionUnspentOutput (..),
   TxBodyInAnyEra (..),
   TxOutRef (..),
   TxId (..),
@@ -45,7 +37,8 @@ import Servant (
   ToHttpApiData (toUrlPiece),
  )
 
-import Cardano.Api (IsShelleyBasedEra, TxBody)
+import Cardano.Api (IsShelleyBasedEra, TxBody, ToCBOR (toCBOR))
+import qualified Cardano.Api as C
 import Control.DeepSeq (NFData)
 import Data.OpenApi (
   HasEnum (enum_),
@@ -68,6 +61,9 @@ import qualified Data.Text as T
 import Data.Word (Word16)
 import Language.Marlowe.Runtime.Web.Core.Semantics.Schema ()
 import qualified Data.ByteString as BS
+import Cardano.Binary (FromCBOR (fromCBOR), enforceSize)
+import Data.Data (Typeable)
+import qualified Cardano.Ledger.Core as Ledger
 
 data TxBodyInAnyEra where
   TxBodyInAnyEra :: (IsShelleyBasedEra era) => TxBody era -> TxBodyInAnyEra
@@ -227,3 +223,101 @@ instance ToSchema TxStatus where
           & type_ ?~ OpenApiString
           & enum_ ?~ ["unsigned", "submitted", "confirmed"]
           & OpenApi.description ?~ "The status of a transaction on the local node."
+
+instance
+  ( ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+  , C.IsShelleyBasedEra era
+  ) => ToCBOR (C.TxOut C.CtxUTxO era) where
+    toCBOR txOut = do
+      let
+        ledgerTxOut :: Ledger.TxOut (C.ShelleyLedgerEra era)
+        ledgerTxOut = C.toShelleyTxOut C.shelleyBasedEra txOut
+      toCBOR ledgerTxOut
+
+instance FromCBOR C.TxIn where
+  fromCBOR = do
+    enforceSize "TxIn" 2
+    txId <- fromCBOR
+    txIx <- fromCBOR
+    case C.deserialiseFromRawBytes C.AsTxId txId of
+      Right txId' -> pure $ C.TxIn txId' (C.TxIx txIx)
+      Left _ -> fail "Couldn't parse txin"
+
+instance ToCBOR C.TxIn where
+  toCBOR (C.TxIn txId (C.TxIx txIx)) = do
+    let txIdBytes = C.serialiseToRawBytes txId
+    toCBOR (txIdBytes, txIx)
+
+-- Trivial helper which combines the full info about unspent output
+data TransactionUnspentOutput era = TransactionUnspentOutput
+  { txIn :: C.TxIn
+  , txOut :: C.TxOut C.CtxUTxO era
+  }
+  deriving (Show)
+
+instance C.HasTypeProxy era => C.HasTypeProxy (TransactionUnspentOutput era) where
+  data AsType (TransactionUnspentOutput era) = AsTransactionUnspentOutput (C.AsType era)
+  proxyToAsType _ = AsTransactionUnspentOutput (C.proxyToAsType (Proxy :: Proxy era))
+
+instance (Typeable era, C.IsShelleyBasedEra era) => FromCBOR (TransactionUnspentOutput era) where
+  fromCBOR = do
+    enforceSize "TransactionUnspentOutput" 2
+    TransactionUnspentOutput <$> fromCBOR <*> fromCBOR
+
+instance
+  ( ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+  , C.IsShelleyBasedEra era
+  ) => ToCBOR (TransactionUnspentOutput era) where
+    toCBOR (TransactionUnspentOutput txin txout) =
+      toCBOR txin
+        <> toCBOR txout
+
+deriving instance
+  ( C.IsShelleyBasedEra era
+  , ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+  ) => C.SerialiseAsCBOR (TransactionUnspentOutput era)
+
+instance
+  ( ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+  , C.IsShelleyBasedEra era
+  ) => ToJSON (TransactionUnspentOutput era) where
+    toJSON tuo = do
+      let
+        bytes = C.serialiseToCBOR tuo
+      toJSON . Base16 $ bytes
+
+instance
+  ( ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+  , C.IsShelleyBasedEra era
+  ) => FromJSON (TransactionUnspentOutput era) where
+    parseJSON v = do
+      bytes <- unBase16 <$> parseJSON v
+      case C.deserialiseFromCBOR (AsTransactionUnspentOutput (C.proxyToAsType (Proxy :: Proxy era))) bytes of
+        Right tuo -> pure tuo
+        Left err -> fail $ "Failed to parse TransactionUnspentOutput: " ++ show err
+
+
+instance
+  ( C.IsShelleyBasedEra era
+  ) => ToSchema (TransactionUnspentOutput era) where
+  declareNamedSchema _ = do
+    pure $ NamedSchema (Just "TransactionUnspentOutput") $
+      mempty
+        & type_ ?~ OpenApiString
+        & OpenApi.description ?~ "CIP-30 `TransactionUnspentOutput` value."
+
+instance
+  ( ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+  , C.IsShelleyBasedEra era
+  ) => FromHttpApiData (TransactionUnspentOutput era) where
+    parseUrlPiece t = do
+      bytes <- unBase16 <$> parseUrlPiece t
+      case C.deserialiseFromCBOR (AsTransactionUnspentOutput (C.proxyToAsType (Proxy :: Proxy era))) bytes of
+        Right tuo -> pure tuo
+        Left err -> Left $ "Failed to parse TransactionUnspentOutput: " <> T.pack (show err)
+
+instance
+  ( ToCBOR (Ledger.TxOut (C.ShelleyLedgerEra era))
+  , C.IsShelleyBasedEra era
+  ) => ToHttpApiData (TransactionUnspentOutput era) where
+    toUrlPiece tuo = toUrlPiece (Base16 (C.serialiseToCBOR tuo))

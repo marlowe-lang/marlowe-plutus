@@ -9,7 +9,7 @@ module Language.Marlowe.Runtime.Web.Server.Monad (
   ServerM (..),
   applyInputsL,
   burnRoleTokensL,
-  createContractL,
+  initContractL,
   loadContractL,
   loadPayoutL,
   loadPayoutsL,
@@ -27,7 +27,19 @@ module Language.Marlowe.Runtime.Web.Server.Monad (
 ) where
 
 import Language.Marlowe.Runtime.ChainSync.Api (DatumHash, Lovelace, StakeCredential, TokenName, TxId, TxOutRef)
-import Language.Marlowe.Runtime.Transaction.Api (Accounts, ContractCreatedInEra, WalletAddresses, RoleTokenFilter, RoleTokensConfig, BurnRoleTokensError, BurnRoleTokensTx, WithdrawTx, InitError)
+import Language.Marlowe.Runtime.Transaction.Api
+    ( Accounts,
+      ContractInitializedInEra,
+      RoleTokenFilter,
+      RoleTokensConfig,
+      BurnRoleTokensError,
+      BurnRoleTokensTx,
+      WithdrawTx,
+      InitError,
+      ApplyInputsError,
+      InputsApplied,
+      WithdrawError,
+      ContractInitialized )
 import Language.Marlowe.Runtime.Web.Adapter.Control.Lens (makeSuffixedLenses)
 
 import Control.Monad.Base (MonadBase)
@@ -37,7 +49,13 @@ import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader (..), ReaderT (..))
 import Control.Monad.Trans.Control (MonadBaseControl)
-import Language.Marlowe.Runtime.Core.Api (Contract, ContractId, MarloweTransactionMetadata, Transaction, Inputs)
+import Language.Marlowe.Runtime.Core.Api
+    ( Contract,
+      ContractId,
+      MarloweTransactionMetadata,
+      Transaction,
+      Inputs,
+      MarloweVersionTag(V1) )
 import Servant (Handler, ServerError)
 import Language.Marlowe.Runtime.Query (SomeContractState, TempTx)
 import qualified Language.Marlowe.Runtime.Query as Query
@@ -45,13 +63,9 @@ import Log (LogT, MonadLog, logInfo_, Logger, LogLevel)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Lens (Getter, view)
 import Log.Monad (runLogT)
-import Language.Marlowe.Runtime.Core.Api (MarloweVersionTag(V1))
 import Data.Time (UTCTime)
-import Language.Marlowe.Runtime.Transaction.Api (ApplyInputsError)
-import Language.Marlowe.Runtime.Transaction.Api (InputsApplied)
-import Language.Marlowe.Runtime.Transaction.Api (WithdrawError)
 import Data.Set (Set)
-import Language.Marlowe.Runtime.Transaction.Api (ContractCreated)
+import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext)
 
 newtype ServerM a = ServerM {runServerM :: LogT (ReaderT (ServerDependencies ServerM) Handler) a}
   deriving newtype
@@ -135,7 +149,7 @@ runEff4 l a b c d = do
 -- We should probably migrate the Api so it is working in most cases
 -- mostly with existential wrappers.
 type ApplyInputs m =
-  WalletAddresses
+  WalletContext
   -> ContractId
   -> MarloweTransactionMetadata
   -> Maybe UTCTime
@@ -144,25 +158,25 @@ type ApplyInputs m =
   -> m (Either ApplyInputsError (InputsApplied V1))
 
 type BurnRoleTokens m =
-  WalletAddresses
+  WalletContext
   -> RoleTokenFilter
   -> m (Either BurnRoleTokensError (BurnRoleTokensTx V1))
 
-type CreateContract m =
+type InitContract m =
   Maybe StakeCredential
-  -> WalletAddresses
+  -> WalletContext
   -> Maybe TokenName
   -> RoleTokensConfig
   -> MarloweTransactionMetadata
   -> Maybe Lovelace
   -> Accounts
   -> Either (Contract V1) DatumHash
-  -> m (Either InitError (ContractCreated V1))
+  -> m (Either InitError (ContractInitialized V1))
 
 type LoadContract m =
   ContractId
   -- ^ ID of the contract to load
-  -> m (Maybe (Either (TempTx ContractCreatedInEra) SomeContractState))
+  -> m (Maybe (Either (TempTx ContractInitializedInEra) SomeContractState))
   -- ^ Nothing if the ID is not found
 
 -- | Signature for a delegate that loads a list of payouts.
@@ -211,14 +225,14 @@ type LoadWithdrawal m =
   -- ^ Nothing if the ID is not found
 
 type Withdraw m =
-  WalletAddresses
+  WalletContext
   -> Set TxOutRef
   -> m (Either WithdrawError (WithdrawTx V1))
 
 data ServerDependencies m = ServerDependencies
   { applyInputs :: ApplyInputs m
   , burnRoleTokens :: BurnRoleTokens m
-  , createContract :: CreateContract m
+  , initContract :: InitContract m
   , loadContract :: LoadContract m
   , loadPayout :: LoadPayout m
   , loadPayouts :: LoadPayouts m

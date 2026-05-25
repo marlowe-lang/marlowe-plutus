@@ -19,9 +19,7 @@ import Language.Marlowe.Runtime.Web.Server.DTO (
  )
 import Language.Marlowe.Runtime.Web.Core.Address (Address)
 
-import Language.Marlowe.Runtime.Web.Core.Tx (
-  TxOutRef,
- )
+import Language.Marlowe.Runtime.Web.Core.Tx (TransactionUnspentOutput)
 import Language.Marlowe.Runtime.Web.Role.API (BurnRoleTokensTxEnvelope (..), RoleAPI)
 import Language.Marlowe.Runtime.Web.Tx.API (
   CardanoTx,
@@ -35,7 +33,6 @@ import Language.Marlowe.Runtime.Transaction.Api (
   BurnRoleTokensError (..),
   BurnRoleTokensTx (BurnRoleTokensTx),
   BurnRoleTokensTxInEra (..),
-  WalletAddresses (..),
  )
 import Language.Marlowe.Runtime.Web.Server.Monad (
   ServerM,
@@ -45,6 +42,9 @@ import Language.Marlowe.Runtime.Web.Role.TokenFilter (RoleTokenFilter)
 import Servant.Server (HasServer (ServerT))
 import Language.Marlowe.Runtime.Web.Adapter.Servant.UVerbT (runUVerbT)
 import Control.Monad.Trans.Class (MonadTrans(lift))
+import qualified Cardano.Api as C
+import Language.Marlowe.Runtime.ChainSync.Api (toUTxOTuple, fromUTxOsList)
+import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext(WalletContext))
 
 server :: ServerT RoleAPI ServerM
 server = buildTx
@@ -52,13 +52,18 @@ server = buildTx
 buildTx
   :: RoleTokenFilter
   -> Address
-  -> Maybe (CommaList Address)
-  -> Maybe (CommaList TxOutRef)
+  -> CommaList (TransactionUnspentOutput C.ConwayEra)
   -> ServerM (Union '[BurnRoleTokensTxEnvelope CardanoTx])
-buildTx roleTokenFilterDTO changeAddressDTO usedAddressesDTO collateralsDTO = runUVerbT do
-  walletAddresses <- lift $ toWalletAddress (changeAddressDTO, usedAddressesDTO, collateralsDTO)
+buildTx roleTokenFilterDTO changeAddressDTO availableUTxOsDTO = runUVerbT $ do
+  changeAddress <- lift $ fromDTOThrow (badRequest' "Invalid change address") changeAddressDTO
+  availableUTxOs <- lift $ fromDTOThrow (badRequest' "Invalid available UTxOs") (unCommaList availableUTxOsDTO)
   roleTokenFilter <- lift $ fromDTOThrow (badRequest' "Invalid Role Token Filter") roleTokenFilterDTO
-  (txId, txEnvelope) <- runEff2 burnRoleTokensL walletAddresses roleTokenFilter >>= \case
+  let
+    walletContext = WalletContext
+      (fromUTxOsList availableUTxOs)
+      (Set.fromList $ map (fst . toUTxOTuple) availableUTxOs)
+      changeAddress
+  (txId, txEnvelope) <- runEff2 burnRoleTokensL walletContext roleTokenFilter >>= \case
     Left err -> lift $ throwDTOError err
     Right (BurnRoleTokensTx BabbageEraOnwardsBabbage BurnRoleTokensTxInEra{txBody}) -> do
       pure $ toDTO (fromCardanoTxId $ getTxId txBody, makeSignedTransaction [] txBody)
@@ -67,17 +72,6 @@ buildTx roleTokenFilterDTO changeAddressDTO usedAddressesDTO collateralsDTO = ru
     Right (BurnRoleTokensTx BabbageEraOnwardsDijkstra BurnRoleTokensTxInEra{txBody}) -> do
       pure $ toDTO (fromCardanoTxId $ getTxId txBody, makeSignedTransaction [] txBody)
   pure (BurnRoleTokensTxEnvelope txId txEnvelope :: BurnRoleTokensTxEnvelope CardanoTx)
-
-type WalletAddressesDTO = (Address, Maybe (CommaList Address), Maybe (CommaList TxOutRef))
-
-toWalletAddress :: WalletAddressesDTO -> ServerM WalletAddresses
-toWalletAddress (changeAddressDTO, usedAddressesDTO, collateralsDTO) = do
-  changeAddress <- fromDTOThrow (badRequest' "Invalid change address") changeAddressDTO
-  extraAddresses <-
-    Set.fromList <$> fromDTOThrow (badRequest' "Invalid addresses header value") (maybe [] unCommaList usedAddressesDTO)
-  collateralUtxos <-
-    Set.fromList <$> fromDTOThrow (badRequest' "Invalid collateral header UTxO value") (maybe [] unCommaList collateralsDTO)
-  pure WalletAddresses{..}
 
 instance HasDTO BurnRoleTokensError where
   type DTO BurnRoleTokensError = ApiError

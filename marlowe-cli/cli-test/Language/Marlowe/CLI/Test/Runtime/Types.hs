@@ -204,7 +204,7 @@ data RuntimeOperation
       { roContractNickname :: Maybe ContractNickname
       , roTimeout :: Maybe A.Second
       }
-  | RuntimeCreateContract
+  | RuntimeInitContract
       { roContractNickname :: Maybe ContractNickname
       , roSubmitter :: Maybe WalletNickname
       -- ^ A wallet which gonna submit the initial transaction.
@@ -274,7 +274,7 @@ instance FromJSON RuntimeOperation where
   parseJSON = do
     let preprocess = do
           let rewriteCreate = do
-                let constructorName = ConstructorName "RuntimeCreateContract"
+                let constructorName = ConstructorName "RuntimeInitContract"
                     rewriteTemplate =
                       rewritePropWith
                         constructorName
