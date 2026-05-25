@@ -2,13 +2,12 @@ module Commands.Compile where
 
 import Cardano.Api (File (File), PlutusScriptVersion (PlutusScriptV3), Script (PlutusScript), writeFileTextEnvelope)
 import Cardano.Api.Plutus (PlutusScript (PlutusScriptSerialised))
-import Data.Char (isDigit)
 import Data.Aeson qualified as A
 import Data.Aeson.Encode.Pretty qualified as A
 import Data.ByteString (ByteString, pack)
 import Data.ByteString.Char8 qualified as BS8
 import Data.ByteString.Lazy.Char8 qualified as LBS8
-import Data.Char (ord)
+import Data.Char (isDigit, ord)
 import Data.Text (Text)
 import Data.Text.Encoding (encodeUtf8)
 import Data.Word (Word8)

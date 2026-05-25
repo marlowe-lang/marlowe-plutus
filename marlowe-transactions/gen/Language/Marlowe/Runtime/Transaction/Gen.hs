@@ -20,7 +20,7 @@ import Language.Marlowe.Runtime.Core.ScriptRegistry (HelperScript)
 import Language.Marlowe.Runtime.ChainSync.Gen ()
 import Language.Marlowe.Runtime.History.Gen ()
 import Language.Marlowe.Runtime.Transaction.Api
-import qualified Language.Marlowe.Runtime.Transaction.Api as ContractInitdInEra (ContractInitdInEra (..))
+import qualified Language.Marlowe.Runtime.Transaction.Api as ContractInitializedInEra (ContractInitializedInEra (..))
 import qualified Language.Marlowe.Runtime.Transaction.Api as InputsAppliedInEra (InputsAppliedInEra (..))
 import qualified Language.Marlowe.Runtime.Transaction.Api as WithdrawTxInEra (WithdrawTxInEra (..))
 import Network.HTTP.Media (MediaType, (//))
@@ -256,22 +256,22 @@ instance Arbitrary SubmitError where
       ]
   shrink = genericShrink
 
-instance (ArbitraryMarloweVersion v) => Arbitrary (ContractInitd v) where
+instance (ArbitraryMarloweVersion v) => Arbitrary (ContractInitialized v) where
   arbitrary =
     oneof
-      [ ContractInitd BabbageEraOnwardsBabbage <$> arbitrary
-      , ContractInitd BabbageEraOnwardsConway <$> arbitrary
+      [ ContractInitialized BabbageEraOnwardsBabbage <$> arbitrary
+      , ContractInitialized BabbageEraOnwardsConway <$> arbitrary
       ]
-  shrink (ContractInitd BabbageEraOnwardsBabbage created) =
-    ContractInitd BabbageEraOnwardsBabbage <$> shrink created
-  shrink (ContractInitd BabbageEraOnwardsConway created) =
-    ContractInitd BabbageEraOnwardsConway <$> shrink created
-  shrink (ContractInitd BabbageEraOnwardsDijkstra created) =
-    ContractInitd BabbageEraOnwardsDijkstra <$> shrink created
+  shrink (ContractInitialized BabbageEraOnwardsBabbage created) =
+    ContractInitialized BabbageEraOnwardsBabbage <$> shrink created
+  shrink (ContractInitialized BabbageEraOnwardsConway created) =
+    ContractInitialized BabbageEraOnwardsConway <$> shrink created
+  shrink (ContractInitialized BabbageEraOnwardsDijkstra created) =
+    ContractInitialized BabbageEraOnwardsDijkstra <$> shrink created
 
-instance (ArbitraryMarloweVersion v, IsShelleyBasedEra era) => Arbitrary (ContractInitdInEra era v) where
+instance (ArbitraryMarloweVersion v, IsShelleyBasedEra era) => Arbitrary (ContractInitializedInEra era v) where
   arbitrary =
-    ContractInitdInEra
+    ContractInitializedInEra
       <$> arbitrary
       <*> arbitrary
       <*> arbitrary
@@ -284,12 +284,12 @@ instance (ArbitraryMarloweVersion v, IsShelleyBasedEra era) => Arbitrary (Contra
       <*> arbitrary
       <*> hedgehog (fst <$> genValidTxBody shelleyBasedEra)
       <*> arbitrary
-  shrink ContractInitdInEra{..} =
+  shrink ContractInitializedInEra{..} =
     fold
-      [ [ContractInitdInEra{..}{ContractInitdInEra.metadata = metadata'} | metadata' <- shrink metadata]
-      , [ContractInitdInEra{..}{ContractInitdInEra.datum = datum'} | datum' <- shrink datum]
-      , [ContractInitdInEra{..}{ContractInitdInEra.assets = assets'} | assets' <- shrink assets]
-      , [ContractInitdInEra{..}{ContractInitdInEra.safetyErrors = safetyErrors'} | safetyErrors' <- shrink safetyErrors]
+      [ [ContractInitializedInEra{..}{ContractInitializedInEra.metadata = metadata'} | metadata' <- shrink metadata]
+      , [ContractInitializedInEra{..}{ContractInitializedInEra.datum = datum'} | datum' <- shrink datum]
+      , [ContractInitializedInEra{..}{ContractInitializedInEra.assets = assets'} | assets' <- shrink assets]
+      , [ContractInitializedInEra{..}{ContractInitializedInEra.safetyErrors = safetyErrors'} | safetyErrors' <- shrink safetyErrors]
       ]
 
 instance (ArbitraryMarloweVersion v) => Arbitrary (InputsApplied v) where

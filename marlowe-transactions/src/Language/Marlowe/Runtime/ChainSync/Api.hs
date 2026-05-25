@@ -431,9 +431,9 @@ data TransactionOutput = TransactionOutput
   , assets :: TxOutAssets
   -- ^ The assets this output produces.
   , datumHash :: Maybe DatumHash
-  -- ^ The hash of the script datum associated with this output.
+  -- ^ The hash of the script non-inlined datum associated with this output.
   , datum :: Maybe Datum
-  -- ^ The script datum associated with this output.
+  -- ^ The script inlined-datum associated with this output.
   }
   deriving stock (Show, Eq, Ord, Generic)
   deriving anyclass (Binary, ToJSON, Variations)
@@ -947,7 +947,7 @@ data GetUTxOsQuery
   deriving anyclass (Variations)
 
 -- Semigroup and Monoid seem to be safe - we cover here a subset of a partial function.
-newtype UTxOs = UTxOs {unUTxOs :: Map TxOutRef TransactionOutput}
+newtype UTxOs = UTxOs { utxosMap :: Map TxOutRef TransactionOutput }
   deriving stock (Show, Eq, Ord, Generic)
   deriving newtype (Semigroup, Monoid, Variations)
   deriving anyclass (Binary, ToJSON)

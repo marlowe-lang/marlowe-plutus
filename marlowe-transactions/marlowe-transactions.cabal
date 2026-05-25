@@ -141,6 +141,7 @@ library
     Language.Marlowe.Runtime.Core.ScriptRegistry
     Language.Marlowe.Runtime.History.Api
     Language.Marlowe.Runtime.Plutus.V2.Api
+    Language.Marlowe.Runtime.Plutus.V3.Api
     Language.Marlowe.Runtime.Transaction.Api
     Language.Marlowe.Runtime.Transaction.Builders
     Language.Marlowe.Runtime.Transaction.BuildConstraints
@@ -167,6 +168,7 @@ library gen
     , errors
     , hedgehog-quickcheck ^>=0.1
     , http-media ^>=0.8
+    , marlowe-binaries
     , marlowe-plutus
     , marlowe-plutus:marlowe-testing
     , marlowe-transactions
@@ -280,6 +282,7 @@ executable marlowe-transactions-cli
     , lifted-base
     , log-base
     , log-base-inlined
+    , marlowe-binaries
     , marlowe-object
     , marlowe-plutus ^>=0.2
     , marlowe-transactions

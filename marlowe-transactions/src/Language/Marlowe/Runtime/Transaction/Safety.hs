@@ -147,6 +147,7 @@ import qualified PlutusLedgerApi.V2 as Plutus (
   POSIXTime (..),
   toBuiltin,
  )
+import qualified Cardano.Ledger.Core as Ledger
 
 -- FIXME: Relocate this definition when full support for Merkleization is added to Runtime.
 type Continuations v = M.Map Chain.DatumHash (Contract v)
@@ -216,7 +217,7 @@ remapContinuations = M.mapKeys $ Plutus.DatumHash . Plutus.toBuiltin . Chain.unD
 minAdaUpperBound
   :: forall era v
    . C.BabbageEraOnwards era
-  -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> MarloweVersion v
   -> V1.State
   -> Contract v
@@ -235,7 +236,7 @@ minAdaUpperBound era pps MarloweV1 state contract continuations = do
 mkAdjustMinUTxO
   :: forall era v
    . C.BabbageEraOnwards era
-  -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> MarloweVersion v
   -> AdjustMinUTxO
 mkAdjustMinUTxO era pps MarloweV1 =
@@ -254,7 +255,8 @@ mkAdjustMinUTxO era pps MarloweV1 =
 minAdaBound
   :: forall era v
    . C.BabbageEraOnwards era
-  -> C.LedgerProtocolParameters era
+  -- -> C.LedgerProtocolParameters era
+  -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> MarloweVersion v
   -> Chain.TxOutAssets
   -> Maybe Chain.Lovelace
@@ -281,7 +283,7 @@ minAdaBound eraOnwards pps MarloweV1 assets = C.babbageEraOnwardsConstraints era
             fromCardanoLovelace $
               C.calculateMinimumUTxO
                 (C.convert eraOnwards)
-                (C.unLedgerProtocolParameters pps)
+                pps
                 txOut
         if minUTxOLovelace > totalLovelace
           then minAdaLoop (counter - 1) minUTxOLovelace
@@ -341,7 +343,7 @@ checkMinting config MarloweV1 contract state continuations = do
 
 -- | Mock-execute all possible transactions for a contract.
 checkTransactions
-  :: C.LedgerProtocolParameters era
+  :: Ledger.PParams (C.ShelleyLedgerEra era)
   -> C.BabbageEraOnwards era
   -> MarloweVersion v
   -> MarloweContext v
@@ -402,7 +404,7 @@ plainInterval minTime marloweInterval = do
 
 -- | Check a transaction for safety issues.
 checkTransaction
-  :: C.LedgerProtocolParameters era
+  :: Ledger.PParams (C.ShelleyLedgerEra era)
   -> C.BabbageEraOnwards era
   -> MarloweVersion v
   -> MarloweContext v
@@ -448,12 +450,11 @@ checkTransaction protocolParameters era version@MarloweV1 marloweContext@Marlowe
     let
       walletContext = walletForConstraints version marloweContext changeAddress constraints
       LockedRolesContext helpersContext = lockedRolesContext
-      ledgerProtocolParameters = C.unLedgerProtocolParameters protocolParameters
     pure
       . either
         (pure . TransactionValidationError (stripAnnotation transaction) . show)
         (const $ TransactionWarning (stripAnnotation transaction) <$> V1.txOutWarnings txOutput)
-      $ solveConstraints' era ledgerProtocolParameters version (Left marloweContext') walletContext helpersContext constraints
+      $ solveConstraints' era protocolParameters version (Left marloweContext') walletContext helpersContext constraints
 
 -- | Create a wallet context that will satisfy the given constraints.
 walletForConstraints

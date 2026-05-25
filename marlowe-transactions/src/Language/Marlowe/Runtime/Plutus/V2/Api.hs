@@ -2,7 +2,7 @@
 module Language.Marlowe.Runtime.Plutus.V2.Api where
 
 import Cardano.Chain.Common (addrToBase58)
-import Language.Marlowe.Runtime.ChainSync.Api (Address(..), ScriptHash(..), Assets (..), AssetId (..), PolicyId (..), TokenName (..), Lovelace(..), Tokens (..), Quantity (..), toCardanoAddressAny)
+import Language.Marlowe.Runtime.ChainSync.Api (Address(..), ScriptHash(..), Assets (..), AssetId (..), PolicyId (..), TokenName (..), Lovelace(..), Tokens (..), Quantity (..), toCardanoAddressAny, TxOutRef (TxOutRef), TxId (TxId), TxIx (TxIx))
 import qualified PlutusLedgerApi.V2 as PV2
 import qualified PlutusTx.Monoid as PTx
 import qualified Cardano.Api as C
@@ -11,6 +11,10 @@ import qualified PlutusTx.AssocMap as AM
 import Data.Bifunctor (bimap)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
+
+toPlutusTxOutRef :: TxOutRef -> PV2.TxOutRef
+toPlutusTxOutRef (TxOutRef (TxId txId) (TxIx txIx)) =
+  PV2.TxOutRef (PV2.TxId . PV2.toBuiltin $ txId) (PV2.toBuiltin . toInteger $ txIx)
 
 toPlutusAddress :: Address -> Maybe PV2.Address
 toPlutusAddress =

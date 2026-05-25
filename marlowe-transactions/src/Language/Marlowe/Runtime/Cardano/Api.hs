@@ -12,7 +12,7 @@ import Data.Bifunctor (Bifunctor (bimap))
 import Data.Foldable (fold)
 import Data.Proxy (Proxy (Proxy))
 import qualified Data.Map as Map
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, fromMaybe)
 import Debug.Trace (traceShow)
 import Language.Marlowe.Runtime.Cardano.Feature
 import Language.Marlowe.Runtime.ChainSync.Api
@@ -33,6 +33,7 @@ import Data.Traversable (for)
 import Data.Aeson (ToJSON, (.=))
 import qualified Data.Aeson as A
 import qualified Data.Set as Set
+import qualified PlutusLedgerApi.Common as P
 
 babbageEraOnwardsToMaryEraOnwards :: C.BabbageEraOnwards era -> C.MaryEraOnwards era
 babbageEraOnwardsToMaryEraOnwards = \case
@@ -58,11 +59,24 @@ toCardanoScriptHash = hush . C.deserialiseFromRawBytes C.AsScriptHash . unScript
 toCardanoPlutusScript :: forall lang. (C.HasTypeProxy lang) => PlutusScript -> Maybe (C.PlutusScript lang)
 toCardanoPlutusScript = hush . C.deserialiseFromRawBytes (C.proxyToAsType (Proxy :: Proxy (C.PlutusScript lang))) . unPlutusScript
 
-fromCardanoPlutusScript :: forall lang. (C.HasTypeProxy lang) => C.PlutusScript lang -> PlutusScript
+-- TODO: Check if this serialisation would detect version mismatch
+fromCardanoPlutusScript
+  :: forall lang
+   . C.HasTypeProxy lang
+  => C.PlutusScript lang
+  -> PlutusScript
 fromCardanoPlutusScript = PlutusScript . C.serialiseToRawBytes
 
+fromPlutusSerialisedScript
+  :: forall lang
+   . C.HasTypeProxy lang
+  => C.PlutusScriptVersion lang
+  -> P.SerialisedScript
+  -> PlutusScript
+fromPlutusSerialisedScript _v bytes = fromCardanoPlutusScript (C.PlutusScriptSerialised bytes :: C.PlutusScript lang)
+
 plutusScriptHash :: PlutusScript -> Maybe ScriptHash
-plutusScriptHash ps = hashPlutusScript C.PlutusScriptV2 <|> hashPlutusScript C.PlutusScriptV1
+plutusScriptHash ps = hashPlutusScript C.PlutusScriptV2 <|> hashPlutusScript C.PlutusScriptV1 <|> hashPlutusScript C.PlutusScriptV3
   where
     hashPlutusScript :: C.IsPlutusScriptLanguage lang => C.PlutusScriptVersion lang -> Maybe ScriptHash
     hashPlutusScript pv = do
@@ -258,12 +272,22 @@ toCardanoTxOutDatum' = C.inEonForEra (const $ Just C.TxOutDatumNone) \scriptData
   Nothing -> Just C.TxOutDatumNone
   Just hash -> C.TxOutDatumHash scriptDataSupported <$> toCardanoDatumHash hash
 
-fromCardanoTxOutDatum :: C.TxOutDatum C.CtxTx era -> (Maybe DatumHash, Maybe Datum)
+fromCardanoTxOutDatum :: C.TxOutDatum C.CtxTx era -> Maybe (Either DatumHash Datum)
 fromCardanoTxOutDatum = \case
-  C.TxOutDatumNone -> (Nothing, Nothing)
-  C.TxOutDatumHash _ hash -> (Just $ fromCardanoDatumHash hash, Nothing)
-  C.TxOutDatumInline _ datum -> (Nothing, Just $ fromCardanoScriptData $ getScriptData datum)
-  C.TxOutSupplementalDatum _ datum -> (Nothing, Just $ fromCardanoScriptData $ getScriptData datum)
+  C.TxOutDatumNone -> Nothing
+  C.TxOutDatumHash _ hash -> Just . Left . fromCardanoDatumHash $ hash
+  C.TxOutDatumInline _ datum -> Just . Right . fromCardanoScriptData $ getScriptData datum
+  C.TxOutSupplementalDatum _ datum -> Just . Right . fromCardanoScriptData $ getScriptData datum
+
+-- When we have only a hash of the datum and no access to the value
+-- we distinguish this case from the case where there is no datum at all.
+data DatumNotAccessible = DatumNotAccessible
+
+fromCardanoTxOutCtxUTxODatum :: C.TxOutDatum C.CtxUTxO era -> Maybe (Either DatumNotAccessible Datum)
+fromCardanoTxOutCtxUTxODatum = \case
+  C.TxOutDatumNone -> Nothing
+  C.TxOutDatumHash _ _ -> Just $ Left DatumNotAccessible
+  C.TxOutDatumInline _ datum -> Just $ Right $ fromCardanoScriptData $ getScriptData datum
 
 toCardanoTxOut :: C.MaryEraOnwards era -> TransactionOutput -> Maybe (C.TxOut C.CtxTx era)
 toCardanoTxOut era TransactionOutput{..} = do
@@ -303,14 +327,33 @@ fromCardanoTxOut
   -> Maybe TransactionOutput
 fromCardanoTxOut era (C.TxOut address value txOutDatum _) = do
   txOutAssets <- mkTxOutAssets (fromCardanoTxOutValue value)
+  let
+    (hash, datum) = fromMaybe (Nothing, Nothing) $ fromCardanoTxOutDatum txOutDatum >>= \case
+      Left h -> pure (Just h, Nothing)
+      Right d -> pure (Nothing, Just d)
   pure $
     TransactionOutput
       (fromCardanoAddressInEra era address)
       txOutAssets
       hash
       datum
-  where
-    (hash, datum) = fromCardanoTxOutDatum txOutDatum
+
+fromCardanoTxOutCtxUTxO
+  :: C.CardanoEra era
+  -> C.TxOut C.CtxUTxO era
+  -> Maybe TransactionOutput
+fromCardanoTxOutCtxUTxO era (C.TxOut address value txOutDatum _) = do
+  txOutAssets <- mkTxOutAssets (fromCardanoTxOutValue value)
+  (hash, datum) <- case fromCardanoTxOutCtxUTxODatum txOutDatum of
+    Nothing -> Just (Nothing, Nothing)
+    Just (Left DatumNotAccessible) -> Nothing
+    Just (Right d) -> Just (Nothing, Just d)
+  pure $
+    TransactionOutput
+      (fromCardanoAddressInEra era address)
+      txOutAssets
+      hash
+      datum
 
 cardanoEraToAsType :: C.CardanoEra era -> C.AsType era
 cardanoEraToAsType = \case
@@ -405,4 +448,16 @@ fromCardanoTransaction tx = do
       (FailedToExtractTxInfo (TxOutRef txId (TxIx $ fromIntegral i)) "Failed to extract transaction output")
       $ fromCardanoTxOut era txOut
   pure $ Transaction{..}
+
+fromCardanoUTxO
+  :: C.IsCardanoEra era
+  => C.UTxO era
+  -> Maybe UTxOs
+fromCardanoUTxO (C.UTxO utxosMap) = do
+  let
+    era = C.cardanoEra
+  items <- for (Map.toList utxosMap) \(txIn, txOut) -> do
+    output <- fromCardanoTxOutCtxUTxO era txOut
+    pure (fromCardanoTxIn txIn, output)
+  pure . UTxOs . Map.fromList $ items
 

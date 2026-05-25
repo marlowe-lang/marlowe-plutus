@@ -1069,7 +1069,7 @@ allUtxos era marloweVersion scriptCtx WalletContext{..} HelpersContext{..} inclu
             <$> toCardanoTxIn helperTxOutRef
             <*> toCardanoTxOut' maryEraOnwards helperTransactionOutput Nothing
       helperUTxO _ = mempty
-   in mapMaybe convertUtxo (SMap.toList . Chain.unUTxOs $ availableUtxos)
+   in mapMaybe convertUtxo (SMap.toList availableUtxos.utxosMap)
         <> either
           (maybe mempty pure . (mkMarloweUtxo <=< scriptOutput))
           (mapMaybe convertUtxo . Map.toList . payoutOutputs)

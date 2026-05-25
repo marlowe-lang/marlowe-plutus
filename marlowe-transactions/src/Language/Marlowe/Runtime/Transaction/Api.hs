@@ -8,8 +8,8 @@ module Language.Marlowe.Runtime.Transaction.Api (
   Accounts (..),
   CoinSelectionError (..),
   ConstraintError (..),
-  ContractInitd (..),
-  ContractInitdInEra (..),
+  ContractInitialized (..),
+  ContractInitializedInEra (..),
   InitBuildupError (..),
   InitError (..),
   Mint (..),
@@ -123,7 +123,6 @@ import Language.Marlowe.Runtime.ChainSync.Api (
   SlotNo,
   TokenName (..),
   Tokens,
-  TxId,
   TxOutAssets,
   TxOutRef,
   parseMetadataList,
@@ -467,84 +466,84 @@ pattern RoleTokensMint mint <- UnsafeRoleTokensMint mint
           )
         $ mint
 
-data ContractInitd v where
-  ContractInitd
-    :: BabbageEraOnwards era -> ContractInitdInEra era v -> ContractInitd v
+data ContractInitialized v where
+  ContractInitialized
+    :: BabbageEraOnwards era -> ContractInitializedInEra era v -> ContractInitialized v
 
-instance Variations (ContractInitd 'V1) where
+instance Variations (ContractInitialized 'V1) where
   variations =
     sconcat
-      [ ContractInitd BabbageEraOnwardsBabbage <$> variations
-      , ContractInitd BabbageEraOnwardsConway <$> variations
+      [ ContractInitialized BabbageEraOnwardsBabbage <$> variations
+      , ContractInitialized BabbageEraOnwardsConway <$> variations
       ]
 
-instance Show (ContractInitd 'V1) where
-  showsPrec p (ContractInitd BabbageEraOnwardsBabbage created) =
+instance Show (ContractInitialized 'V1) where
+  showsPrec p (ContractInitialized BabbageEraOnwardsBabbage created) =
     showParen (p > 10) $
-      showString "ContractInitd"
+      showString "ContractInitialized"
         . showSpace
         . showString "BabbageEraOnwardsBabbage"
         . showsPrec 11 created
-  showsPrec p (ContractInitd BabbageEraOnwardsConway created) =
+  showsPrec p (ContractInitialized BabbageEraOnwardsConway created) =
     showParen (p > 10) $
-      showString "ContractInitd"
+      showString "ContractInitialized"
         . showSpace
         . showString "BabbageEraOnwardsConway"
         . showsPrec 11 created
-  showsPrec p (ContractInitd BabbageEraOnwardsDijkstra created) =
+  showsPrec p (ContractInitialized BabbageEraOnwardsDijkstra created) =
     showParen (p > 10) $
-      showString "ContractInitd"
+      showString "ContractInitialized"
         . showSpace
         . showString "BabbageEraOnwardsDijkstra"
         . showsPrec 11 created
 
-instance Eq (ContractInitd 'V1) where
-  ContractInitd BabbageEraOnwardsBabbage a == ContractInitd BabbageEraOnwardsBabbage b =
+instance Eq (ContractInitialized 'V1) where
+  ContractInitialized BabbageEraOnwardsBabbage a == ContractInitialized BabbageEraOnwardsBabbage b =
     a == b
-  ContractInitd BabbageEraOnwardsBabbage _ == _ = False
-  ContractInitd BabbageEraOnwardsConway a == ContractInitd BabbageEraOnwardsConway b =
+  ContractInitialized BabbageEraOnwardsBabbage _ == _ = False
+  ContractInitialized BabbageEraOnwardsConway a == ContractInitialized BabbageEraOnwardsConway b =
     a == b
-  ContractInitd BabbageEraOnwardsConway _ == _ = False
-  ContractInitd BabbageEraOnwardsDijkstra a == ContractInitd BabbageEraOnwardsDijkstra b =
+  ContractInitialized BabbageEraOnwardsConway _ == _ = False
+  ContractInitialized BabbageEraOnwardsDijkstra a == ContractInitialized BabbageEraOnwardsDijkstra b =
     a == b
-  ContractInitd BabbageEraOnwardsDijkstra _ == _ = False
+  ContractInitialized BabbageEraOnwardsDijkstra _ == _ = False
 
-instance ToJSON (ContractInitd 'V1) where
-  toJSON (ContractInitd BabbageEraOnwardsBabbage created) =
+instance ToJSON (ContractInitialized 'V1) where
+  toJSON (ContractInitialized BabbageEraOnwardsBabbage created) =
     object
       [ "era" .= String "babbage"
-      , "contractInitd" .= created
+      , "contractInitialized" .= created
       ]
-  toJSON (ContractInitd BabbageEraOnwardsConway created) =
+  toJSON (ContractInitialized BabbageEraOnwardsConway created) =
     object
       [ "era" .= String "conway"
-      , "contractInitd" .= created
+      , "contractInitialized" .= created
       ]
-  toJSON (ContractInitd BabbageEraOnwardsDijkstra created) =
+  toJSON (ContractInitialized BabbageEraOnwardsDijkstra created) =
     object
       [ "era" .= String "dijkstra"
-      , "contractInitd" .= created
+      , "contractInitialized" .= created
       ]
 
-instance Binary (ContractInitd 'V1) where
-  put (ContractInitd BabbageEraOnwardsBabbage created) = do
+instance Binary (ContractInitialized 'V1) where
+  put (ContractInitialized BabbageEraOnwardsBabbage created) = do
     putWord8 0
     put created
-  put (ContractInitd BabbageEraOnwardsConway created) = do
+  put (ContractInitialized BabbageEraOnwardsConway created) = do
     putWord8 1
     put created
-  put (ContractInitd BabbageEraOnwardsDijkstra created) = do
+  put (ContractInitialized BabbageEraOnwardsDijkstra created) = do
     putWord8 2
     put created
   get = do
     eraTag <- getWord8
     case eraTag of
-      0 -> ContractInitd BabbageEraOnwardsBabbage <$> get
-      1 -> ContractInitd BabbageEraOnwardsConway <$> get
-      2 -> ContractInitd BabbageEraOnwardsDijkstra <$> get
+      0 -> ContractInitialized BabbageEraOnwardsBabbage <$> get
+      1 -> ContractInitialized BabbageEraOnwardsConway <$> get
+      2 -> ContractInitialized BabbageEraOnwardsDijkstra <$> get
       _ -> fail $ "Invalid era tag value: " <> show eraTag
 
-data ContractInitdInEra era v = ContractInitdInEra
+data ContractInitializedInEra era v = ContractInitializedInEra
   { contractId :: ContractId
   , rolesCurrency :: PolicyId
   , metadata :: MarloweTransactionMetadata
@@ -559,16 +558,16 @@ data ContractInitdInEra era v = ContractInitdInEra
   , safetyErrors :: ![SafetyError]
   }
 
-deriving instance Show (ContractInitdInEra BabbageEra 'V1)
-deriving instance Show (ContractInitdInEra ConwayEra 'V1)
-deriving instance Show (ContractInitdInEra DijkstraEra 'V1)
-deriving instance Eq (ContractInitdInEra BabbageEra 'V1)
-deriving instance Eq (ContractInitdInEra ConwayEra 'V1)
-deriving instance Eq (ContractInitdInEra DijkstraEra 'V1)
+deriving instance Show (ContractInitializedInEra BabbageEra 'V1)
+deriving instance Show (ContractInitializedInEra ConwayEra 'V1)
+deriving instance Show (ContractInitializedInEra DijkstraEra 'V1)
+deriving instance Eq (ContractInitializedInEra BabbageEra 'V1)
+deriving instance Eq (ContractInitializedInEra ConwayEra 'V1)
+deriving instance Eq (ContractInitializedInEra DijkstraEra 'V1)
 
-instance (IsShelleyBasedEra era) => Variations (ContractInitdInEra era 'V1) where
+instance (IsShelleyBasedEra era) => Variations (ContractInitializedInEra era 'V1) where
   variations =
-    ContractInitdInEra
+    ContractInitializedInEra
       <$> variations
         `varyAp` variations
         `varyAp` variations
@@ -582,8 +581,8 @@ instance (IsShelleyBasedEra era) => Variations (ContractInitdInEra era 'V1) wher
         `varyAp` variations
         `varyAp` variations
 
-instance (IsShelleyBasedEra era) => ToJSON (ContractInitdInEra era 'V1) where
-  toJSON ContractInitdInEra{..} =
+instance (IsShelleyBasedEra era) => ToJSON (ContractInitializedInEra era 'V1) where
+  toJSON ContractInitializedInEra{..} =
     object
       [ "contract-id" .= contractId
       , "roles-currency" .= rolesCurrency
@@ -598,8 +597,8 @@ instance (IsShelleyBasedEra era) => ToJSON (ContractInitdInEra era 'V1) where
       , "safety-errors" .= safetyErrors
       ]
 
-instance (IsShelleyBasedEra era) => Binary (ContractInitdInEra era 'V1) where
-  put ContractInitdInEra{..} = do
+instance (IsShelleyBasedEra era) => Binary (ContractInitializedInEra era 'V1) where
+  put ContractInitializedInEra{..} = do
     put contractId
     put rolesCurrency
     put metadata
@@ -624,7 +623,7 @@ instance (IsShelleyBasedEra era) => Binary (ContractInitdInEra era 'V1) where
     txBody <- getTxBody
     safetyErrors <- get
     let version = MarloweV1
-    pure ContractInitdInEra{..}
+    pure ContractInitializedInEra{..}
 
 data InputsApplied v where
   InputsApplied
@@ -669,17 +668,17 @@ instance ToJSON (InputsApplied 'V1) where
   toJSON (InputsApplied BabbageEraOnwardsBabbage created) =
     object
       [ "era" .= String "babbage"
-      , "contractInitd" .= created
+      , "contractInitialized" .= created
       ]
   toJSON (InputsApplied BabbageEraOnwardsConway created) =
     object
       [ "era" .= String "conway"
-      , "contractInitd" .= created
+      , "contractInitialized" .= created
       ]
   toJSON (InputsApplied BabbageEraOnwardsDijkstra created) =
     object
       [ "era" .= String "dijkstra"
-      , "contractInitd" .= created
+      , "contractInitialized" .= created
       ]
 
 instance Binary (InputsApplied 'V1) where
@@ -1227,7 +1226,7 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 --     -- ^ Initial account balances. The min ADA deposit will be added to this.
 --     -> Either (Contract v) DatumHash
 --     -- ^ The contract to run, or the hash of the contract to load from the store.
---     -> MarloweTxCommand Void InitError (ContractInitd v)
+--     -> MarloweTxCommand Void InitError (ContractInitialized v)
 --   -- | Construct a transaction that advances an active Marlowe contract by
 --   -- applying a sequence of inputs. The resulting, unsigned transaction can be
 --   -- signed via the cardano API or a wallet provider. When signed, the 'Submit'
@@ -1300,7 +1299,7 @@ mkAccounts accounts = Accounts <$> Map.traverseWithKey checkPositive accounts
 -- 
 -- instance Command MarloweTxCommand where
 --   data Tag MarloweTxCommand status err result where
---     TagInit :: MarloweVersion v -> Tag MarloweTxCommand Void InitError (ContractInitd v)
+--     TagInit :: MarloweVersion v -> Tag MarloweTxCommand Void InitError (ContractInitialized v)
 --     TagApplyInputs :: MarloweVersion v -> Tag MarloweTxCommand Void ApplyInputsError (InputsApplied v)
 --     TagWithdraw :: MarloweVersion v -> Tag MarloweTxCommand Void WithdrawError (WithdrawTx v)
 --     TagBurnRoleTokens :: MarloweVersion v -> Tag MarloweTxCommand Void BurnRoleTokensError (BurnRoleTokensTx v)
@@ -1623,7 +1622,7 @@ data LoadMarloweContextError
 
 data LoadHelpersContextError
   = HelperScriptNotFoundInRegistry HelperScript
-  | LoadHelpersContextErrorNotFound TxId
+  | LoadHelpersContextErrorNotFound
   | LoadHelpersContextErrorVersionMismatch SomeMarloweVersion
   | ContractNotExtractedError ExtractCreationError
   | RollForwardToGenesisError
