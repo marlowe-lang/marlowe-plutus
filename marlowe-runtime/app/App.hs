@@ -1,5 +1,7 @@
 module Main where
 
+import Cardano.Api qualified as C
+import Language.Marlowe.Runtime.Core.ScriptRegistry qualified as ScriptRegistry
 import App.Contrib.Servant.Err500 (err500, err500JSON)
 import App.Contrib.Servant.ResponseRewriterMiddleware as ResponseRewriterMiddleware
 import qualified Data.Aeson as Aeson
@@ -7,9 +9,9 @@ import qualified Data.Aeson.Key as Aeson
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base16 as Base16
 import Control.Monad.IO.Class (liftIO)
-import Control.Exception (throwIO, Exception, SomeException)
+import Control.Exception (throwIO, Exception, SomeException, try)
 import Control.Exception.Lifted qualified as Exception.Lifted
-import Log (LogLevel (..), runLogT, Logger, logAttention, LogT)
+import Log (LogLevel (..), runLogT, Logger, logAttention, LogT, MonadLog)
 import Log.Backend.StandardOutput (withStdOutLogger)
 import Log.Backend.StandardOutputInlined (withStdOutInlinedLogger)
 import Network.HTTP.Types qualified as H
@@ -26,7 +28,7 @@ import Servant (
   Application,
   ServerError (..),
   hoistServer,
-  serve,
+  serve, Handler (Handler),
  )
 import Servant.Server.Internal.ServerError (responseServerError)
 import qualified Network.Wai as Wai
@@ -52,7 +54,7 @@ import Options.Applicative (
   metavar,
   option,
   progDesc,
-  short, ReadM, asum, flag', eitherReader,
+  short, ReadM, asum, flag', eitherReader, strOption, auto, showDefault, value,
  )
 import Data.Foldable (Foldable(..))
 import qualified Hasql.Connection.Settings as Hasql
@@ -65,17 +67,74 @@ import Language.Marlowe.Runtime.Web.Server
 import qualified Data.ByteString.Lazy as BSL
 import Data.Proxy (Proxy(Proxy))
 import Data.Functor ((<&>))
-import Language.Marlowe.Runtime.Web.Server.Monad (ServerM)
+import Language.Marlowe.Runtime.Web.Server.Monad (ServerM, InitContract)
 import Data.Text (Text)
+import qualified Cardano.Ledger.Core as L
+import qualified Language.Marlowe.Runtime.Transaction.Constraints as Constraints
+import Language.Marlowe.Runtime.Transaction.Api (LoadHelpersContextError(LoadHelpersContextErrorNotFound))
+import qualified PlutusLedgerApi.V3 as PV3
+import Marlowe.Plutus.RoleTokens (mkRoleTokens)
+import Marlowe.Plutus.Binaries.Production qualified as Production
+import Marlowe.Plutus.Binaries.Devel qualified as Devel
+import qualified Data.Map as Map
+import Language.Marlowe.Runtime.Cardano.Api (fromPlutusSerialisedScript)
+import Language.Marlowe.Runtime.Plutus.V3.Api (toPlutusTxOutRef)
+import qualified Language.Marlowe.Runtime.ChainSync.Api as Core
+import Language.Marlowe.Runtime.Transaction.BuildConstraints (MkRoleTokenMintingPolicy)
+import Language.Marlowe.Runtime.Transaction.Builders (execInit)
+import Language.Marlowe.Runtime.Core.Api (MarloweVersion(MarloweV1))
+import Control.Monad.IO.Unlift (MonadUnliftIO)
+import System.Exit (die)
+import Control.Monad.Except (ExceptT(ExceptT))
+import System.Environment.Blank (getEnv)
+import qualified Text.Read as T
+import Control.Applicative (Alternative((<|>)))
 
 data Options = Options
   { databaseUri :: Hasql.Settings
   , logLevel :: LogLevel
+  , nodeSocketPath :: FilePath
+  , networkId :: C.NetworkId
   }
 
 longOption :: ReadM a -> String -> String -> String -> Parser a
 longOption reader longText helpText metavarText =
   option reader (long longText <> help helpText <> metavar metavarText)
+
+getEnvNetworkId :: IO (Maybe C.NetworkId)
+getEnvNetworkId =
+  fmap (C.Testnet . C.NetworkMagic)
+    . (T.readMaybe =<<)
+    <$> getEnv "CARDANO_NODE_NETWORK_ID"
+
+mkNetworkIdParser :: IO (Parser C.NetworkId)
+mkNetworkIdParser = do
+  possibleNodeNetworkId <- getEnvNetworkId
+  pure do
+    let
+      networkMod = maybe mempty value possibleNodeNetworkId
+      mainnetParser = flag' C.Mainnet (long "mainnet" <> help "Execute on mainnet.")
+      testnetParser = option
+          (C.Testnet . C.NetworkMagic . toEnum <$> auto)
+          ( long "testnet-magic"
+              <> metavar "INTEGER"
+              <> networkMod
+              <> help "Network magic. Defaults to the CARDANO_TESTNET_MAGIC environment variable's value."
+          )
+    mainnetParser <|> testnetParser
+
+mkNodeSocketParser :: IO (Parser FilePath)
+mkNodeSocketParser = do
+  possibleNodeSocketPath <- getEnv "CARDANO_NODE_SOCKET_PATH"
+  pure $ strOption do
+    let
+      opt = long "socket-path"
+        <> short 's'
+        <> showDefault
+        <> help "Location of the cardano-node socket file. Defaults to the CARDANO_NODE_SOCKET_PATH environment variable's value."
+    case possibleNodeSocketPath of
+      Just path -> opt <> value path
+      Nothing -> opt
 
 databaseUriParser :: Parser Hasql.Settings
 databaseUriParser = do
@@ -108,61 +167,29 @@ logLevelParser =
     , pure LogInfo
     ]
 
--- mkRoleTokensPolicy (UseDevelScripts useDevelScripts) txOutRef tokens = do
---   let
---     mkPolicy = if useDevelScripts then Devel.mkRoleTokensPolicyBytes else Production.mkRoleTokensPolicyBytes
---     roleTokens = mkRoleTokens $ Map.toList tokens <&> \(TokenName bs, amount) -> do
---       (PV3.TokenName . PV3.toBuiltin $ bs, amount)
---   pure . fromPlutusSerialisedScript C.PlutusScriptV3 . mkPolicy roleTokens $ toPlutusTxOutRef txOutRef
---
+newtype UseDevelScripts = UseDevelScripts Bool
+
+mkRoleTokensPolicy :: Applicative m => UseDevelScripts -> MkRoleTokenMintingPolicy m
+mkRoleTokensPolicy (UseDevelScripts useDevelScripts) txOutRef tokens = do
+  let
+    mkPolicy = if useDevelScripts then Devel.mkRoleTokensPolicyBytes else Production.mkRoleTokensPolicyBytes
+    roleTokens = mkRoleTokens $ Map.toList tokens <&> \(Core.TokenName bs, amount) -> do
+      (PV3.TokenName . PV3.toBuiltin $ bs, amount)
+  pure . fromPlutusSerialisedScript C.PlutusScriptV3 . mkPolicy roleTokens $ toPlutusTxOutRef txOutRef
+
 mkInitContract
-  :: C.SystemStart
-  -> C.EraHistory
-  -> L.PParams (C.ShelleyLedgerEra C.DijkstraEra)
-  -> C.NetworkId
+  :: MonadUnliftIO m
+  => MonadLog m
+  => LedgerInfo
   -> UseDevelScripts
-  -> InitContract
-mkInitContract systemStart eraHistory protocolParams networkId useDevelScripts = do
+  -> InitContract m
+mkInitContract (networkId, systemStart, eraHistory, protocolParams) useDevelScripts = do
   let
     solveConstraints = Constraints.solveConstraints systemStart (C.toLedgerEpochInfo eraHistory)
     loadHelpersContext _ _ = pure $ Left LoadHelpersContextErrorNotFound
     analysisTimeout = 60
-
---   -- type InitContract 
---   --   Maybe StakeCredential
---   --   -> WalletContext
---   --   -> Maybe TokenName
---   --   -> RoleTokensConfig
---   --   -> MarloweTransactionMetadata
---   --   -> Maybe Lovelace
---   --   -> Accounts
---   --   -> Either (Contract V1) DatumHash
---   --   -> m (Either InitError (ContractInitialized V1))
   \stakeCredential walletContext threadTokenName roleTokensConfig transactionMetadata optMinAda accounts contract -> do
-    -- execInit
-    --   :: forall era m v
-    --    . (MonadUnliftIO m, C.IsCardanoEra era, MonadLog m)
-    --   => MkRoleTokenMintingPolicy m
-    --   -> C.CardanoEra era
-    --   -- -> Connector (QueryClient ContractRequest) m
-    --   -> GetCurrentScripts v
-    --   -> SolveConstraints era v
-    --   -- -> C.LedgerProtocolParameters era
-    --   -> Ledger.PParams (C.ShelleyLedgerEra era)
-    --   -> WalletContext
-    --   -> LoadHelpersContext m
-    --   -> C.NetworkId
-    --   -> Maybe Chain.StakeCredential
-    --   -> MarloweVersion v
-    --   -> Maybe Chain.TokenName
-    --   -> RoleTokensConfig
-    --   -> MarloweTransactionMetadata
-    --   -> Maybe Chain.Lovelace
-    --   -> Accounts
-    --   -> Either (Contract v) Chain.DatumHash
-    --   -> NominalDiffTime
-    --   -> m (Either InitError (ContractInitialized v))
-    initResult <- execInit
+    execInit
       (mkRoleTokensPolicy useDevelScripts)
       C.DijkstraEra
       ScriptRegistry.getCurrentScripts
@@ -178,35 +205,28 @@ mkInitContract systemStart eraHistory protocolParams networkId useDevelScripts =
       transactionMetadata
       optMinAda
       accounts
-      (Left contract)
+      contract
       analysisTimeout
 
---     -- data InitError
---     --   = InitEraUnsupported AnyCardanoEra
---     --   | InitConstraintError ConstraintError
---     --   | InitLoadMarloweContextFailed LoadMarloweContextError
---     --   | InitLoadHelpersContextFailed LoadHelpersContextError
---     --   | InitBuildupFailed InitBuildupError
---     --   | InitTxOutputNotFound
---     --   | InitToCardanoError
---     --   | InitSafetyAnalysisFailed [SafetyError]
---     --   | -- | This error is thrown when the safety analysis process fails itself
---     --     -- due to a timeout or other reasons, such as missing merkleization data.
---     --     InitSafetyAnalysisError String
---     --   | InitContractNotFound String
---     --   | ProtocolParamNoUTxOCostPerByte
---     --   | InsufficientMinAdaDeposit Lovelace
---     --   deriving (Generic)
---     --
---     --  data ContractInitialized v = ContractInitialized
---     --    { createdContractId :: TxOutRef
---     --    , createdRolesCurrency :: Maybe RolesCurrency
---     --    , createdVersion :: MarloweVersion v
---     --    } deriving (Show, Eq)
+type LedgerInfo = (C.NetworkId, C.SystemStart, C.EraHistory, L.PParams (C.ShelleyLedgerEra C.DijkstraEra))
 
+queryLedgerInfo :: C.NetworkId -> C.LocalNodeConnectInfo -> IO LedgerInfo
+queryLedgerInfo networkId connectInfo = do
+  rawQueryResult <- C.executeLocalStateQueryExpr connectInfo C.VolatileTip $
+    (,,)
+      <$> C.querySystemStart
+      <*> C.queryEraHistory
+      <*> C.queryProtocolParameters C.ShelleyBasedEraDijkstra
+  case rawQueryResult of
+    Right (Right systemStart, Right eraHistory, Right (Right protocolParams)) -> do
+      pure (networkId, systemStart, eraHistory, protocolParams)
+    _ -> liftIO . die $ "Failed to query the cardano-node for necessary information."
 
-mkServerDependencies :: Pool.Pool -> ServerDependencies ServerM
-mkServerDependencies pool = do
+mkServerDependencies
+  :: Pool.Pool
+  -> LedgerInfo
+  -> ServerDependencies ServerM
+mkServerDependencies pool ledgerInfo = do
   let
     dbQueries :: DatabaseQueries ServerM
     dbQueries =
@@ -214,11 +234,12 @@ mkServerDependencies pool = do
         hoistDatabaseQueries
           (either (liftIO . throwIO) pure <=< liftIO . Pool.use pool)
           databaseQueries
-
+  let
+    initContract = mkInitContract ledgerInfo (UseDevelScripts True)
   ServerDependencies
     { applyInputs = undefined
     , burnRoleTokens = undefined
-    , initContract = undefined
+    , initContract
     , loadContract = fmap (fmap Right) . getContractState dbQueries
     , loadPayout = undefined
     , loadPayouts = undefined
@@ -245,8 +266,15 @@ runApp Options{..} = do
   Wai.withStdoutLogger \waiLogger -> do
     putStrLn $ "Server running on port " ++ show port
     let
+      localNodeConnectInfo = C.LocalNodeConnectInfo
+        { C.localConsensusModeParams = C.CardanoModeParams $ C.EpochSlots 21_600
+        , C.localNodeNetworkId = networkId
+        , C.localNodeSocketPath = C.File nodeSocketPath
+        }
+    ledgerInfo <- liftIO $ queryLedgerInfo networkId localNodeConnectInfo
+    let
       prettyLog = True
-      dependencies = mkServerDependencies pool
+      dependencies = mkServerDependencies pool ledgerInfo
       withLogger = if prettyLog then withStdOutLogger else withStdOutInlinedLogger
       errorRewriter = ResponseRewriterMiddleware.defaultErrorRewriter
       handleException :: SomeException -> Wai.Response
@@ -277,24 +305,29 @@ runApp Options{..} = do
             serve api $
               hoistServer
                 api
-                (runServer appLogger logLevel dependencies)
+                (Handler . ExceptT . try . runServer appLogger logLevel dependencies)
                 serverWithOpenApi
 
-parser :: Parser (IO ())
-parser = do
+mkParser :: IO (Parser (IO ()))
+mkParser = do
+  nodeSocketParser <- mkNodeSocketParser
+  networkIdParser <- mkNetworkIdParser
   let
     parserOptions = Options
       <$> databaseUriParser
       <*> logLevelParser
+      <*> nodeSocketParser
+      <*> networkIdParser
 
     versionOption =
       infoOption ("marlowe-runtime-server " <> showVersion version) $
         long "version" <> short 'v' <> help "Show version."
 
-  helper <*> versionOption <*> (runApp <$> parserOptions)
+  pure $ helper <*> versionOption <*> (runApp <$> parserOptions)
 
 main :: IO ()
 main = do
+  parser <- mkParser
   let
     parserInfo :: ParserInfo (IO ())
     parserInfo = do

@@ -32,7 +32,6 @@ import Language.Marlowe.Runtime.Web.Server.ApiError (
 import Servant (
   HasServer (ServerT),
   Proxy (Proxy),
-  throwError,
   type (:<|>) ((:<|>)),
   Union,
  )
@@ -51,6 +50,7 @@ import Language.Marlowe.Runtime.Transaction.Api (ContractInitializedInEra(Contra
 import Language.Marlowe.Runtime.Web.Tx.API (CardanoTx, CreateTxEnvelope (CreateTxEnvelope))
 import Control.Lens (view)
 import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext(WalletContext))
+import Control.Monad.Catch (MonadThrow(throwM))
 
 server :: ServerT ContractsAPI ServerM
 server =
@@ -69,7 +69,7 @@ getOne
 getOne contractId = runUVerbT do
   contractId' <- lift $ fromDTOThrow (badRequest' "Invalid contract id value") contractId
   runEff1 loadContractL contractId' >>= \case
-    Nothing -> throwError $ notFound' "Contract not found"
+    Nothing -> lift $ throwM $ notFound' "Contract not found"
     Just result -> do
       let contractState = either toDTO toDTO result
       pure $ IncludeLink (Proxy @"transactions") contractState

@@ -123,7 +123,6 @@ runIndexer Options{..} = do
       , C.localNodeNetworkId = networkId
       , C.localNodeSocketPath = C.File nodeSocketPath
       }
-  let
     dbQueries = PostgreSQL.databaseQueries pool
     marloweScriptHashes = Set.fromList
       [ fromPlutusValidatorHash marloweValidatorHash

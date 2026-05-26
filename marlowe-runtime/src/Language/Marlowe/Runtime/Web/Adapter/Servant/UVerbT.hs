@@ -46,9 +46,9 @@ throwUVerb
 throwUVerb = UVerbT . ExceptT . fmap Left . respond
 
 exceptUVerb
-  :: (Monad m)
-  => (HasStatus x)
-  => (IsMember x xs)
+  :: Monad m
+  => HasStatus x
+  => IsMember x xs
   => Either x a
   -> UVerbT xs m a
 exceptUVerb = \case

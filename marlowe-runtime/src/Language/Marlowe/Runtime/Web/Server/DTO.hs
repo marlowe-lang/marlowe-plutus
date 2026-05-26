@@ -37,7 +37,6 @@ import qualified Cardano.Ledger.Core as Ledger.Core
 import Control.Arrow (Arrow (..))
 import Control.Error.Util (hush)
 import Control.Monad ((<=<))
-import Control.Monad.Except (MonadError, throwError)
 import Data.Aeson (Value (..))
 import qualified Data.ByteString.Lazy as BSL
 import Data.Coerce (coerce)
@@ -128,6 +127,7 @@ import qualified Language.Marlowe.Runtime.Query as Query
 import qualified Cardano.Api as C
 import Language.Marlowe.Runtime.Cardano.Api (toCardanoTxIn, fromCardanoTxIn, fromCardanoTxOutCtxUTxO)
 import Language.Marlowe.Runtime.Cardano.Api (toCardanoTxOut)
+import Control.Monad.Catch (MonadThrow (throwM), Exception)
 
 -- | A class that states a type has a DTO representation.
 class HasDTO a where
@@ -142,8 +142,8 @@ class (HasDTO a) => ToDTO a where
 class (HasDTO a) => FromDTO a where
   fromDTO :: DTO a -> Maybe a
 
-fromDTOThrow :: (MonadError e m, FromDTO a) => e -> DTO a -> m a
-fromDTOThrow e = maybe (throwError e) pure . fromDTO
+fromDTOThrow :: (MonadThrow m, FromDTO a, Exception e) => e -> DTO a -> m a
+fromDTOThrow e = maybe (throwM e) pure . fromDTO
 
 instance HasDTO (Map k a) where
   type DTO (Map k a) = Map (DTO k) (DTO a)

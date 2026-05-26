@@ -3,7 +3,6 @@
 
 module Language.Marlowe.Runtime.Web.Server.ApiError where
 
-import Control.Monad.Except (MonadError (throwError))
 import Data.Aeson (FromJSON, ToJSON (toJSON), Value (Null), encode, object, withObject, (.:), (.=))
 import qualified Data.Aeson.Decoding as A
 import qualified Data.Aeson.Types as A
@@ -30,6 +29,7 @@ import Data.Traversable (for)
 import Language.Marlowe.Runtime.Web.Core.Asset (Tokens)
 import Language.Marlowe.Runtime.Web.Core.Script (ScriptHash)
 import Language.Marlowe.Runtime.Web.Core.Tx (TxOutRef)
+import Control.Monad.Catch (MonadThrow(throwM))
 
 -- | Basic error type for the API. Should be turned into a proper sum type and used with servant's `UVerb` in the future.
 data ApiError = ApiError
@@ -504,8 +504,8 @@ fromServerError err = do
 serverErrorFromDTO :: (ToDTO e, DTO e ~ ApiError) => e -> ServerError
 serverErrorFromDTO = toServerError . toDTO
 
-throwDTOError :: (ToDTO e, DTO e ~ ApiError, MonadError ServerError m) => e -> m a
-throwDTOError = throwError . serverErrorFromDTO
+throwDTOError :: (ToDTO e, DTO e ~ ApiError, MonadThrow m) => e -> m a
+throwDTOError = throwM . serverErrorFromDTO
 
 badRequest :: String -> Maybe String -> ServerError
 badRequest msg errorCode = toServerError . ApiError msg (fromMaybe "BadRequest" errorCode) Null $ 400
