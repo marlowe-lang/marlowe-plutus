@@ -55,7 +55,6 @@ import Servant (
   HasServer (ServerT),
   Proxy (Proxy),
   addHeader,
-  throwError,
   type (:<|>) ((:<|>)), Union,
  )
 import Servant.Pagination (
@@ -70,6 +69,7 @@ import Language.Marlowe.Runtime.Web.Adapter.Servant.UVerbT (UVerbT, runUVerbT)
 import qualified Cardano.Api as C
 import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext(WalletContext))
 import Language.Marlowe.Runtime.ChainSync.Api (toUTxOTuple, fromUTxOsList)
+import Control.Monad.Catch (MonadThrow(throwM))
 
 server :: ServerT WithdrawalsAPI ServerM
 server =
@@ -86,16 +86,16 @@ postCreateTxBody
       ServerM
       TxBodyInAnyEra
 postCreateTxBody PostWithdrawalsRequest{..} changeAddressDTO availableUTxOsDTO = do
-  changeAddress <- fromDTOThrow (badRequest' "Invalid change address value") changeAddressDTO
-  availableUTxOs <- fromDTOThrow (badRequest' "Invalid wallet available UTxOs") (unCommaList availableUTxOsDTO)
-  payouts' <- fromDTOThrow (badRequest' "Invalid payouts") payouts
+  changeAddress <- lift $ fromDTOThrow (badRequest' "Invalid change address value") changeAddressDTO
+  availableUTxOs <- lift $ fromDTOThrow (badRequest' "Invalid wallet available UTxOs") (unCommaList availableUTxOsDTO)
+  payouts' <- lift $ fromDTOThrow (badRequest' "Invalid payouts") payouts
   let
     walletContext = WalletContext
       (fromUTxOsList availableUTxOs)
       (Set.fromList $ map (fst . toUTxOTuple) availableUTxOs)
       changeAddress
   runEff2 withdrawL walletContext payouts' >>= \case
-    Left err -> throwDTOError err
+    Left err -> lift $ throwDTOError err
     Right (WithdrawTx BabbageEraOnwardsBabbage WithdrawTxInEra{txBody}) -> pure $ TxBodyInAnyEra txBody
     Right (WithdrawTx BabbageEraOnwardsConway WithdrawTxInEra{txBody}) -> pure $ TxBodyInAnyEra txBody
     Right (WithdrawTx BabbageEraOnwardsDijkstra WithdrawTxInEra{txBody}) -> pure $ TxBodyInAnyEra txBody
@@ -123,14 +123,14 @@ get
 get roleCurrencies ranges = runUVerbT do
   let range :: Range "withdrawalId" TxId
       range = fromMaybe (getDefaultRange (Proxy @WithdrawalHeader)) $ extractRange =<< ranges
-  range' <- maybe (throwError $ rangeNotSatisfiable' "Invalid range value") pure $ fromPaginationRange range
+  range' <- maybe (lift $ throwM $ rangeNotSatisfiable' "Invalid range value") pure $ fromPaginationRange range
   roleCurrencies' <-
     traverse
-      (\role -> maybe (throwError $ badRequest' $ "Invalid role value " <> show role) pure $ fromDTO role)
+      (\role -> maybe (lift $ throwM $ badRequest' $ "Invalid role value " <> show role) pure $ fromDTO role)
       roleCurrencies
   let wFilter = Query.WithdrawalFilter $ Set.fromList roleCurrencies'
   runEff2 loadWithdrawalsL wFilter range' >>= \case
-    Nothing -> throwError $ rangeNotSatisfiable' "Initial withdrawal ID not found"
+    Nothing -> lift $ throwM $ rangeNotSatisfiable' "Initial withdrawal ID not found"
     Just Query.Page{..} -> do
       let
         withdrawalHeaders = IncludeLink (Proxy @"withdrawal") . toWithdrawalHeader <$> toDTO items
@@ -153,7 +153,7 @@ getOne
 getOne withdrawalId = runUVerbT do
   withdrawalId' <- lift $ fromDTOThrow (badRequest' "Invalid withdrawal id value") withdrawalId
   runEff1 loadWithdrawalL withdrawalId' >>= \case
-    Nothing -> throwError $ notFound' "Withdrawal not found"
+    Nothing -> lift $ throwM $ notFound' "Withdrawal not found"
     Just result -> do
       pure $ toDTO result
 --
@@ -161,10 +161,10 @@ getOne withdrawalId = runUVerbT do
 -- submitWithdrawalTx withdrawalId body = do
 --   withdrawalId' <- fromDTOThrow (badRequest' "Invalid withdrawal id value") withdrawalId
 --   loadWithdrawal withdrawalId' >>= \case
---     Nothing -> throwError $ notFound' "Withdrawal not found"
+--     Nothing -> throwM $ notFound' "Withdrawal not found"
 --     Just (Left (TempTx era _ Unsigned WithdrawTxInEra{txBody})) -> handleLoaded withdrawalId' era txBody
 --     Just _ ->
---       throwError $
+--       throwM $
 --         ApiError.toServerError $
 --           ApiError "Withdrawal already submitted" "WithdrawalAlreadySubmitted" Null 409
 --   where
@@ -174,26 +174,26 @@ getOne withdrawalId = runUVerbT do
 --         "Tx BabbageEra" -> pure $ Left <$> fromDTO body
 --         "ShelleyTxWitness BabbageEra" -> pure $ Right <$> fromDTO body
 --         _ ->
---           throwError $ badRequest' "Unknown envelope type - allowed types are: \"Tx BabbageEra\", \"ShelleyTxWitness BabbageEra\""
+--           throwM $ badRequest' "Unknown envelope type - allowed types are: \"Tx BabbageEra\", \"ShelleyTxWitness BabbageEra\""
 -- 
 --       tx <- case req of
---         Nothing -> throwError $ badRequest' "Invalid text envelope cbor value"
+--         Nothing -> throwM $ badRequest' "Invalid text envelope cbor value"
 --         Just (Left tx) -> pure tx
 --         Just (Right (ShelleyTxWitness (AlonzoTxWits wtKeys _ _ _ _))) -> pure $ makeSignedTxWithWitnessKeys txBody wtKeys
 --       submitWithdrawal withdrawalId' BabbageEraOnwardsBabbage tx >>= \case
 --         Nothing -> pure NoContent
---         Just err -> throwError $ ApiError.toServerError $ ApiError (show err) "SubmissionError" Null 403
+--         Just err -> throwM $ ApiError.toServerError $ ApiError (show err) "SubmissionError" Null 403
 --     handleLoaded withdrawalId' BabbageEraOnwardsConway txBody = do
 --       (req :: Maybe (Either (Cardano.Tx ConwayEra) (ShelleyTxWitness ConwayEra))) <- case teType body of
 --         "Tx ConwayEra" -> pure $ Left <$> fromDTO body
 --         "ShelleyTxWitness ConwayEra" -> pure $ Right <$> fromDTO body
 --         _ ->
---           throwError $ badRequest' "Unknown envelope type - allowed types are: \"Tx ConwayEra\", \"ShelleyTxWitness ConwayEra\""
+--           throwM $ badRequest' "Unknown envelope type - allowed types are: \"Tx ConwayEra\", \"ShelleyTxWitness ConwayEra\""
 -- 
 --       tx <- case req of
---         Nothing -> throwError $ badRequest' "Invalid text envelope cbor value"
+--         Nothing -> throwM $ badRequest' "Invalid text envelope cbor value"
 --         Just (Left tx) -> pure tx
 --         Just (Right (ShelleyTxWitness (AlonzoTxWits wtKeys _ _ _ _))) -> pure $ makeSignedTxWithWitnessKeys txBody wtKeys
 --       submitWithdrawal withdrawalId' BabbageEraOnwardsConway tx >>= \case
 --         Nothing -> pure NoContent
---         Just err -> throwError $ ApiError.toServerError $ ApiError (show err) "SubmissionError" Null 403
+--         Just err -> throwM $ ApiError.toServerError $ ApiError (show err) "SubmissionError" Null 403

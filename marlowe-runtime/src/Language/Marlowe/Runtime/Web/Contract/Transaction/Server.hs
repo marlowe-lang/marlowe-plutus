@@ -68,7 +68,6 @@ import Servant (
   Proxy (Proxy),
   Union,
   addHeader,
-  throwError,
   type (:<|>) ((:<|>)),
  )
 import Servant.Pagination (
@@ -84,6 +83,7 @@ import Control.Lens.Combinators (view)
 import qualified Cardano.Api as C
 import Language.Marlowe.Runtime.ChainSync.Api (fromUTxOsList, toUTxOTuple)
 import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext(WalletContext))
+import Control.Monad.Catch (MonadThrow(throwM))
 
 server :: TxOutRef -> ServerT TransactionsAPI ServerM
 server contractId =
@@ -108,10 +108,10 @@ getTransactionsByContractId contractId ranges = runUVerbT do
   let range :: Range "transactionId" TxId
       range = fromMaybe (getDefaultRange (Proxy @TxHeader)) $ extractRange =<< ranges
   contractId' <- lift $ fromDTOThrow (badRequest' "Invalid contract id value") contractId
-  range' <- lift $ maybe (throwError $ rangeNotSatisfiable' "Invalid range value") pure $ fromPaginationRange range
+  range' <- lift $ maybe (throwM $ rangeNotSatisfiable' "Invalid range value") pure $ fromPaginationRange range
   runEff2 loadTransactionsL contractId' range' >>= \case
-    Left ContractNotFound -> lift $ throwError $ notFound' "Contract not found"
-    Left TxNotFound -> lift $ throwError $ rangeNotSatisfiable' "Starting transaction not found"
+    Left ContractNotFound -> lift $ throwM $ notFound' "Contract not found"
+    Left TxNotFound -> lift $ throwM $ rangeNotSatisfiable' "Starting transaction not found"
     Right Query.Page{..} -> do
       let
         txHeaders :: [GetTransactionsResponse]
@@ -153,14 +153,12 @@ buildApplyInputTxBody'
       ServerM
       ApplyInputsResult
 buildApplyInputTxBody' contractId PostTransactionsRequest{..} changeAddressDTO availableUTxOsDTO = do
-  SomeMarloweVersion _v@MarloweV1 <- fromDTOThrow (badRequest' "Invalid Marlowe version") version
-  changeAddress <- fromDTOThrow (badRequest' "Invalid change address") changeAddressDTO
-  availableUTxOs <-
-    fromDTOThrow (badRequest' "Invalid collateral header UTxO value") (unCommaList availableUTxOsDTO)
-  contractId' <- fromDTOThrow (badRequest' "Invalid contract id value") contractId
-  transactionMetadata <- fromDTOThrow (badRequest' "Invalid metadata value") metadata
-  marloweMetadata <-
-    fromDTOThrow
+  SomeMarloweVersion _v@MarloweV1 <- lift $ fromDTOThrow (badRequest' "Invalid Marlowe version") version
+  changeAddress <- lift $ fromDTOThrow (badRequest' "Invalid change address") changeAddressDTO
+  availableUTxOs <- lift $ fromDTOThrow (badRequest' "Invalid collateral header UTxO value") (unCommaList availableUTxOsDTO)
+  contractId' <- lift $ fromDTOThrow (badRequest' "Invalid contract id value") contractId
+  transactionMetadata <- lift $ fromDTOThrow (badRequest' "Invalid metadata value") metadata
+  marloweMetadata <- lift $ fromDTOThrow
       (badRequest' "Invalid tags value")
       if Map.null tags then Nothing else Just tags
   applyInputs <- view applyInputsL
@@ -170,7 +168,7 @@ buildApplyInputTxBody' contractId PostTransactionsRequest{..} changeAddressDTO a
       (Set.fromList $ map (fst . toUTxOTuple) availableUTxOs)
       changeAddress
   lift (applyInputs walletContext contractId' MarloweTransactionMetadata{..} invalidBefore invalidHereafter inputs) >>= \case
-    Left err -> throwDTOError err
+    Left err -> lift $ throwDTOError err
     Right (InputsApplied BabbageEraOnwardsBabbage InputsAppliedInEra{txBody, safetyErrors}) -> pure (TxBodyInAnyEra txBody, safetyErrors)
     Right (InputsApplied BabbageEraOnwardsConway InputsAppliedInEra{txBody, safetyErrors}) -> pure (TxBodyInAnyEra txBody, safetyErrors)
     Right (InputsApplied BabbageEraOnwardsDijkstra InputsAppliedInEra{txBody, safetyErrors}) -> pure (TxBodyInAnyEra txBody, safetyErrors)
@@ -180,7 +178,7 @@ getTransaction contractId txId = runUVerbT do
   contractId' <- lift $ fromDTOThrow (badRequest' "Invalid contract id value") contractId
   txId' <- lift $ fromDTOThrow (badRequest' "Invalid transaction id value") txId
   runEff2 loadTransactionL contractId' txId' >>= \case
-    Nothing -> throwError $ notFound' "Transaction not found"
+    Nothing -> lift $ throwM $ notFound' "Transaction not found"
     Just contractState -> do
       let
         result :: GetTransactionResponse
@@ -194,10 +192,10 @@ getTransaction contractId txId = runUVerbT do
 --   contractId' <- fromDTOThrow (badRequest' "Invalid contract id value") contractId
 --   txId' <- fromDTOThrow (badRequest' "Invalid transaction id value") txId
 --   loadTransaction contractId' txId' >>= \case
---     Nothing -> throwError $ notFound' "Transaction not found"
+--     Nothing -> throwM $ notFound' "Transaction not found"
 --     Just (Left (TempTx era _ Unsigned InputsAppliedInEra{txBody})) -> handleLoaded contractId' txId' era txBody
 --     Just _ ->
---       throwError $
+--       throwM $
 --         ApiError.toServerError $
 --           ApiError "Transaction already submitted" "ContractAlreadySubmitted" Null 409
 --   where
@@ -208,26 +206,26 @@ getTransaction contractId txId = runUVerbT do
 --         "Tx BabbageEra" -> pure $ Left <$> fromDTO body
 --         "ShelleyTxWitness BabbageEra" -> pure $ Right <$> fromDTO body
 --         _ ->
---           throwError $ badRequest' "Unknown envelope type - allowed types are: \"Tx BabbageEra\", \"ShelleyTxWitness BabbageEra\""
+--           throwM $ badRequest' "Unknown envelope type - allowed types are: \"Tx BabbageEra\", \"ShelleyTxWitness BabbageEra\""
 -- 
 --       tx <- case req of
---         Nothing -> throwError $ badRequest' "Invalid text envelope cbor value"
+--         Nothing -> throwM $ badRequest' "Invalid text envelope cbor value"
 --         Just (Left tx) -> pure tx
 --         Just (Right (ShelleyTxWitness (AlonzoTxWits wtKeys _ _ _ _))) -> pure $ makeSignedTxWithWitnessKeys txBody wtKeys
 --       submitTransaction contractId' txId' BabbageEraOnwardsBabbage tx >>= \case
 --         Nothing -> pure NoContent
---         Just err -> throwError $ ApiError.toServerError $ ApiError (show err) "SubmissionError" Null 403
+--         Just err -> throwM $ ApiError.toServerError $ ApiError (show err) "SubmissionError" Null 403
 --     handleLoaded contractId' txId' BabbageEraOnwardsConway txBody = do
 --       (req :: Maybe (Either (Cardano.Tx ConwayEra) (ShelleyTxWitness ConwayEra))) <- case teType body of
 --         "Tx ConwayEra" -> pure $ Left <$> fromDTO body
 --         "ShelleyTxWitness ConwayEra" -> pure $ Right <$> fromDTO body
 --         _ ->
---           throwError $ badRequest' "Unknown envelope type - allowed types are: \"Tx ConwayEra\", \"ShelleyTxWitness ConwayEra\""
+--           throwM $ badRequest' "Unknown envelope type - allowed types are: \"Tx ConwayEra\", \"ShelleyTxWitness ConwayEra\""
 -- 
 --       tx <- case req of
---         Nothing -> throwError $ badRequest' "Invalid text envelope cbor value"
+--         Nothing -> throwM $ badRequest' "Invalid text envelope cbor value"
 --         Just (Left tx) -> pure tx
 --         Just (Right (ShelleyTxWitness (AlonzoTxWits wtKeys _ _ _ _))) -> pure $ makeSignedTxWithWitnessKeys txBody wtKeys
 --       submitTransaction contractId' txId' BabbageEraOnwardsConway tx >>= \case
 --         Nothing -> pure NoContent
---         Just err -> throwError $ ApiError.toServerError $ ApiError (show err) "SubmissionError" Null 403
+--         Just err -> throwM $ ApiError.toServerError $ ApiError (show err) "SubmissionError" Null 403

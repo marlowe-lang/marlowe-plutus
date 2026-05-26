@@ -4,6 +4,7 @@
 
 -- | Defines a custom Monad for the web server's handler functions to run in.
 module Language.Marlowe.Runtime.Web.Server.Monad (
+  InitContract,
   LoadTxError (..),
   ServerDependencies (..),
   ServerM (..),
@@ -45,7 +46,7 @@ import Language.Marlowe.Runtime.Web.Adapter.Control.Lens (makeSuffixedLenses)
 import Control.Monad.Base (MonadBase)
 import Control.Monad.Catch (MonadCatch, MonadThrow)
 import Control.Monad.Catch.Pure (MonadMask)
-import Control.Monad.Except (MonadError)
+-- import Control.Monad.Except (MonadError)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad.Reader (MonadReader (..), ReaderT (..))
 import Control.Monad.Trans.Control (MonadBaseControl)
@@ -56,7 +57,7 @@ import Language.Marlowe.Runtime.Core.Api
       Transaction,
       Inputs,
       MarloweVersionTag(V1) )
-import Servant (Handler, ServerError)
+--import Servant (Handler, ServerError)
 import Language.Marlowe.Runtime.Query (SomeContractState, TempTx)
 import qualified Language.Marlowe.Runtime.Query as Query
 import Log (LogT, MonadLog, logInfo_, Logger, LogLevel)
@@ -66,8 +67,15 @@ import Log.Monad (runLogT)
 import Data.Time (UTCTime)
 import Data.Set (Set)
 import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext)
+import Control.Monad.IO.Unlift (MonadUnliftIO)
 
-newtype ServerM a = ServerM {runServerM :: LogT (ReaderT (ServerDependencies ServerM) Handler) a}
+-- | Our monad stack is not fully compatible with Servant's `Handler` as we want to avoid
+-- `ExceptT` (which is part of the `Handler`). We avoid `ExceptT` because it doesn't
+-- play nicely with `MonadUnliftIO`. See https://harporoeder.com/posts/servant-13-reader-io/
+-- plus some comments here: https://github.com/haskell-servant/servant/issues/950
+-- In other words we use IO exceptions all the way down and catch them during the final
+-- server hoisting.
+newtype ServerM a = ServerM {runServerM :: LogT (ReaderT (ServerDependencies ServerM) IO) a}
   deriving newtype
     ( Functor
     , Applicative
@@ -80,11 +88,12 @@ newtype ServerM a = ServerM {runServerM :: LogT (ReaderT (ServerDependencies Ser
     , MonadMask
     , MonadThrow
     , MonadBaseControl IO
-    , MonadError ServerError
+    -- , MonadError ServerError
     , MonadBase IO
+    , MonadUnliftIO
     )
 
-runServer :: Logger -> LogLevel -> ServerDependencies ServerM -> ServerM a -> Handler a
+runServer :: Logger -> LogLevel -> ServerDependencies ServerM -> ServerM a -> IO a
 runServer logger logLevel deps server =
   flip runReaderT deps $ runLogT "marlowe-runtime-server" logger logLevel $ runServerM do
     logInfo_ "Starting Marlowe Runtime Server"
