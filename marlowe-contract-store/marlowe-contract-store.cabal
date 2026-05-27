@@ -74,7 +74,7 @@ library api
     , marlowe-transactions
     , singletons
     , text
-    , typed-protocols ^>=1.0.0.0
+    , typed-protocols ^>=1.2.0.0
     , variations
 
   exposed-modules:

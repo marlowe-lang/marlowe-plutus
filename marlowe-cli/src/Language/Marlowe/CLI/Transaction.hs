@@ -2013,9 +2013,9 @@ maximumFee (LedgerProtocolParameters pp) = do
       -- TODO (create a ticket): References scripts can probably have larger cost after Chang - this should be incorporated here
       -- https://docs.cardano.org/about-cardano/explore-more/parameter-guide/#a-list-of-updatable-protocol-parameters
       -- txFeePerByte aka minFeeA
-      txFeePerByte = pp ^. Ledger.ppMinFeeAL
+      txFeePerByte = pp ^. Ledger.ppTxFeePerByteL
       -- txFeeFixed aka minFeeB
-      txFeeFixed = pp ^. Ledger.ppMinFeeBL
+      txFeeFixed = pp ^. Ledger.ppTxFeeFixedL
       txFee = txFeeFixed + Ledger.Coin (Ledger.unCoin txFeePerByte * maxTxSize)
 
       maxTxExecutionUnits = pp ^. Ledger.ppMaxTxExUnitsL

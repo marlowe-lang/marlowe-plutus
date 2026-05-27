@@ -61,8 +61,8 @@ import Cardano.Ledger.Core (
   ppMaxBBSizeL,
   ppMaxBHSizeL,
   ppMaxTxSizeL,
-  ppMinFeeAL,
-  ppMinFeeBL,
+  ppTxFeePerByteL,
+  ppTxFeeFixedL,
   ppMinPoolCostL,
   ppNOptL,
   ppPoolDepositL,
@@ -398,8 +398,8 @@ getTestnetProtocolParameters era = C.babbageEraOnwardsConstraints era $ do
     & ppMaxBHSizeL .~ 1_100
     & ppMaxBBSizeL .~ 90_112
     & ppMaxTxSizeL .~ 16_384
-    & ppMinFeeBL .~ 155_381
-    & ppMinFeeAL .~ 44
+    & ppTxFeeFixedL .~ 155_381
+    & ppTxFeePerByteL .~ 44
     & ppKeyDepositL .~ Ledger.Coin 2_000_000
     & ppPoolDepositL .~ Ledger.Coin 500_000_000
     & ppMinPoolCostL .~ Ledger.Coin 340_000_000

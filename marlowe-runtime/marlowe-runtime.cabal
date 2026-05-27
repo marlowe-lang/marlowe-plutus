@@ -114,12 +114,12 @@ library
     , nonempty-containers
     , openapi3 >=3.2 && <4
     , ouroboros-consensus
-    , ouroboros-network-api
+    , ouroboros-network:{api}
     , parsec
     , pipes
-    , plutus-core ^>=1.57
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
     , postgresql-syntax
     , profunctors
     , scientific
@@ -274,12 +274,12 @@ executable marlowe-runtime
     , optparse-applicative
     , openapi3 >=3.2 && <4
     , ouroboros-consensus
-    , ouroboros-network-api
+    , ouroboros-network:{api}
     , parsec
     , pipes
-    , plutus-core ^>=1.57
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
     , postgresql-syntax
     , profunctors
     , scientific

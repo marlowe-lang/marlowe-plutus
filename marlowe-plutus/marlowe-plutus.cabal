@@ -115,7 +115,7 @@ library
     -- * Providing our own implementation of plutus data serialization (even if it is a copy)
     -- * Moving this dependency to the test suite only
     -- * Testing that our implementation is compatible with cardano-api's one
-    , cardano-api ^>=10.23
+    , cardano-api
     , cardano-crypto-class
     , containers
     , deepseq
@@ -126,9 +126,9 @@ library
     , mtl ^>=2.3.1
     , multiplate ==0.0.3
     , newtype-generics
-    , plutus-core ^>=1.57
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
     , profunctors >=5.6.3
     , range ==0.3.0.2
     , scientific
@@ -226,7 +226,7 @@ library marlowe-testing
     , base16-aeson ==0.1.0.0
     , base16-bytestring
     , bytestring
-    , cardano-api ^>=10.23
+    , cardano-api
     , cardano-crypto-class
     , containers ^>=0.6.5
     , data-default
@@ -238,8 +238,8 @@ library marlowe-testing
     , marlowe-plutus:{marlowe-plutus}
     , mtl >=2.2 && <3
     , QuickCheck >=2.14 && <3
-    , plutus-core ^>=1.57
-    , plutus-ledger-api ^>=1.57
+    , plutus-core
+    , plutus-ledger-api
     , plutus-tx
     , serialise
     , tasty-quickcheck ^>=0.11
@@ -313,10 +313,10 @@ test-suite marlowe-plutus-test
     , ilist ==0.4.0.1
     , lens >=5.2 && <6
     , marlowe-plutus:{marlowe-plutus, marlowe-testing}
-    , marlowe-spec-test ==0.1.0.2
+    , marlowe-spec-test ==0.1.0.3
     , mtl >=2.2 && <3
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
+    , plutus-ledger-api
+    , plutus-tx
     , QuickCheck >=2.14 && <3
     , quickcheck-instances ^>=0.3.29
     , sbv

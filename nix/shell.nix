@@ -94,8 +94,9 @@ let
     pkgs.z3
     pkgs.zlib
   ];
-  cryptoShell = project.shellFor {
-    packages = p: [p.cardano-crypto-class];
+
+  systemLevelLibDeps = project.shellFor {
+    packages = p: [p.cardano-crypto-class p.ouroboros-consensus];
     withHoogle = false;
   };
 
@@ -132,7 +133,7 @@ let
     # (builtins.trace (lib.concatStringsSep ", " (lib.attrNames project.hsPkgs.cardano-crypto-class.components.library)) project)
     # (builtins.trace (lib.concatStringsSep ", " cryptoShell.nativeBuildInputs) cryptoShell)
     # pkgs.haskell-nix.compiler.${ghc}
-    extraPkgs = cryptoShell.nativeBuildInputs ++ cryptoShell.buildInputs ++ commonPackages ++ [
+    extraPkgs = systemLevelLibDeps.nativeBuildInputs ++ systemLevelLibDeps.buildInputs ++ commonPackages ++ [
       pkgs.stdenv.cc.cc.lib
     ];
   };
@@ -240,7 +241,7 @@ let
     # To make shell lightweight compile only the packages
     # which pull in external dependencies like
     # cardano-crypto-class which brings in libsodium, secp256k1, etc.
-    packages = p: [p.cardano-crypto-class];
+    packages = p: [p.cardano-crypto-class p.ouroboros-consensus];
 
     withHoogle = false;
 

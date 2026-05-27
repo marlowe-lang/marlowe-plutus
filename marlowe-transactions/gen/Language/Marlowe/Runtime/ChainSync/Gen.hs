@@ -36,6 +36,7 @@ import Ouroboros.Consensus.HardFork.History (
   EraParams (..),
   EraSummary (..),
   SafeZone (..),
+  pattern NoPerasEnabled,
  )
 import Test.Gen.Cardano.Api.Typed (
   genAddressShelley,
@@ -488,7 +489,7 @@ genEraSummary :: Gen EraSummary
 genEraSummary = EraSummary <$> genBound <*> genEraEnd <*> genEraParams
 
 genBound :: Gen Bound
-genBound = Bound <$> genRelativeTime <*> genSlot <*> genEpoch
+genBound = Bound <$> genRelativeTime <*> genSlot <*> genEpoch <*> pure NoPerasEnabled
 
 genRelativeTime :: Gen RelativeTime
 genRelativeTime = RelativeTime . fromIntegral <$> arbitrary @Word64
@@ -507,7 +508,7 @@ genEraEnd =
     ]
 
 genEraParams :: Gen EraParams
-genEraParams = EraParams <$> genEpochSize <*> genSlotLength <*> genSafeZone <*> genGenesisWindow
+genEraParams = EraParams <$> genEpochSize <*> genSlotLength <*> genSafeZone <*> genGenesisWindow <*> pure NoPerasEnabled
 
 genGenesisWindow :: Gen GenesisWindow
 genGenesisWindow =

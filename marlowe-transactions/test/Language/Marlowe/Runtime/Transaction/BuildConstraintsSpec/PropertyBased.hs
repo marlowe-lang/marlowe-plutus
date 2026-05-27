@@ -83,6 +83,7 @@ import Ouroboros.Consensus.HardFork.History (
   EraParams (..),
   EraSummary (..),
   SafeZone (..),
+  pattern NoPerasEnabled,
   mkInterpreter,
   summaryWithExactly,
  )
@@ -415,12 +416,14 @@ buildApplyInputsConstraintsSpec =
             , eraSlotLength = mkSlotLength 1
             , eraSafeZone = UnsafeIndefiniteSafeZone
             , eraGenesisWin = GenesisWindow 0
+            , eraPerasRoundLength = NoPerasEnabled
             }
         oneSecondBound i =
           Bound
             { boundTime = RelativeTime $ fromInteger i
             , boundSlot = SlotNo $ fromInteger i
             , boundEpoch = EpochNo $ fromInteger i
+            , boundPerasRound = NoPerasEnabled
             }
         oneSecondEraSummary i =
           EraSummary

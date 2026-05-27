@@ -129,7 +129,7 @@ import qualified Language.Marlowe.Runtime.Plutus.V2.Api as Chain (
 import Ouroboros.Consensus.Block (GenesisWindow (GenesisWindow))
 import qualified Ouroboros.Consensus.Block as Ouroboros
 import qualified Ouroboros.Consensus.BlockchainTime as Ouroboros (RelativeTime (..), mkSlotLength, toRelativeTime)
-import Ouroboros.Consensus.HardFork.History (EraParams (eraGenesisWin))
+import Ouroboros.Consensus.HardFork.History (EraParams (eraGenesisWin), pattern NoPerasEnabled)
 import qualified Ouroboros.Consensus.HardFork.History as Ouroboros (
   Bound (..),
   EraEnd (..),
@@ -547,12 +547,14 @@ makeSystemHistory time =
           , eraSlotLength = Ouroboros.mkSlotLength 1
           , eraSafeZone = Ouroboros.UnsafeIndefiniteSafeZone
           , eraGenesisWin = GenesisWindow 1
+          , eraPerasRoundLength = NoPerasEnabled
           }
       oneSecondBound i =
         Ouroboros.Bound
           { boundTime = Ouroboros.RelativeTime $ fromInteger i
           , boundSlot = Ouroboros.SlotNo $ fromInteger i
           , boundEpoch = Ouroboros.EpochNo $ fromInteger i
+          , boundPerasRound = NoPerasEnabled
           }
       oneSecondEraSummary i =
         Ouroboros.EraSummary

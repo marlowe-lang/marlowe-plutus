@@ -71,6 +71,9 @@ module Marlowe.Plutus.Semantics.Types (
   getAction,
   getInputContent,
   inBounds,
+#if ASDATA_CASE
+  matchCase,
+#endif
   mkChoiceIdUtf8,
   mkCurrencySymbolHex,
   mkPartyAddressBech32,

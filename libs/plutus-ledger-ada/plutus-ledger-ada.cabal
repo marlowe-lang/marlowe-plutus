@@ -47,8 +47,8 @@ library
   --------------------------
   build-depends:
     -- A bump from: 1.31.0
-    , plutus-ledger-api ^>=1.57.0
-    , plutus-tx ^>=1.57.0
+    , plutus-ledger-api
+    , plutus-tx
 
   ------------------------
   -- Non-IOG dependencies

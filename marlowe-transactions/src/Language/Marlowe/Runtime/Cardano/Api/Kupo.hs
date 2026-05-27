@@ -51,19 +51,19 @@ data KupoTransaction
         !Ledger.Byron.Tx
         !Ledger.Byron.TxId
     | TransactionShelley
-        !(Ledger.Shelley.Tx ShelleyEra)
+        !(Ledger.Shelley.Tx Ledger.TopTx ShelleyEra)
     | TransactionAllegra
-        !(Ledger.Shelley.Tx AllegraEra)
+        !(Ledger.Shelley.Tx Ledger.TopTx AllegraEra)
     | TransactionMary
-        !(Ledger.Shelley.Tx MaryEra)
+        !(Ledger.Shelley.Tx Ledger.TopTx MaryEra)
     | TransactionAlonzo
-        !(Ledger.Shelley.Tx AlonzoEra)
+        !(Ledger.Shelley.Tx Ledger.TopTx AlonzoEra)
     | TransactionBabbage
-        !(Ledger.Shelley.Tx BabbageEra)
+        !(Ledger.Shelley.Tx Ledger.TopTx BabbageEra)
     | TransactionConway
-        !(Ledger.Shelley.Tx ConwayEra)
+        !(Ledger.Shelley.Tx Ledger.TopTx ConwayEra)
     | TransactionDijkstra
-        !(Ledger.Shelley.Tx DijkstraEra)
+        !(Ledger.Shelley.Tx Ledger.TopTx DijkstraEra)
 
 spentInputs
     :: KupoTransaction

@@ -99,7 +99,7 @@ library
     , bytestring
     -- This is our main external dependency bump
     -- from: ^>=9.2
-    , cardano-api ^>=10.23
+    , cardano-api
     , cardano-crypto-class
     , cardano-ledger-alonzo
     , cardano-ledger-babbage
@@ -122,13 +122,13 @@ library
     , microlens
     , mtl
     , ouroboros-consensus
-    , ouroboros-network-protocols
+    -- , ouroboros-network-protocols
     , parser-combinators
     , plutus-core
     , plutus-ledger-ada
     -- And this as well is huge external bump
     -- from: ^>=1.31
-    , plutus-ledger-api ^>=1.57.0
+    , plutus-ledger-api
     , plutus-ledger-slot
     , plutus-tx
     , prettyprinter

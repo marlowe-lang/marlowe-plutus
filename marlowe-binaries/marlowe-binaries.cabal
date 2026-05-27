@@ -133,10 +133,10 @@ library
     , bytestring
     , cardano-crypto-class
     , marlowe-plutus:{marlowe-plutus} ^>=0.2
-    , plutus-core ^>=1.57
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
-    , plutus-tx-plugin ^>=1.57
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
+    , plutus-tx-plugin
 
   exposed-modules:
     Marlowe.Plutus.Binaries
@@ -173,9 +173,9 @@ library marlowe-binaries-api
     , marlowe-binaries
     , marlowe-plutus:{marlowe-plutus, marlowe-testing}
     , QuickCheck
-    , plutus-core ^>=1.57
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
     , scientific
     , text
     , transformers
@@ -198,9 +198,9 @@ test-suite marlowe-binaries-test
     , QuickCheck
     , cardano-api
     , marlowe-binaries:marlowe-binaries-api
-    , plutus-core ^>=1.57
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
     , marlowe-binaries
     , marlowe-plutus:{marlowe-plutus, marlowe-testing}
     , these
@@ -231,8 +231,8 @@ executable marlowe-binaries
     , marlowe-binaries:marlowe-binaries-api
     , marlowe-plutus:{marlowe-plutus, marlowe-testing}
     , optparse-applicative
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
+    , plutus-ledger-api
+    , plutus-tx
     , text
     , transformers
     , yaml

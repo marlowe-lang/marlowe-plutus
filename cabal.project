@@ -12,8 +12,8 @@ repository cardano-haskell-packages
 -- run `nix flake lock --update-input hackage` after updating the hackage index-state.
 -- run `nix flake lock --update-input CHaP` after updating the cardano-haskell-packages index-state.
 index-state:
-  , hackage.haskell.org 2026-02-09T00:00:00Z
-  , cardano-haskell-packages 2026-04-03T08:05:29Z
+  , hackage.haskell.org 2026-05-26T07:00:45Z
+  , cardano-haskell-packages 2026-05-25T13:25:40Z
 
 packages:
   marlowe-binaries
@@ -51,18 +51,20 @@ package postgresql-libpq
   flags: +use-pkg-config
 
 constraints:
-    cardano-api ^>=10.23
-  , plutus-core ^>=1.57
-  , plutus-ledger-api ^>=1.57
+    cardano-api ^>=11.0
+  , cardano-crypto-class ^>=2.3
+  , plutus-core ^>=1.63
+  , plutus-ledger-api ^>=1.63
+  , validation <1.2
 
 source-repository-package
    type: git
-   location: https://github.com/marlowe-lang/marlowe
-   tag: 2a5a03fbff15fd0469b89a65a56cc17e89be2acc
+   location: https://github.com/marlowe-lang/marlowe.git
+   tag: 7b5b1e900ec53a8eb18747992bec73470704dfcb
+   --sha256: sha256-ndrqu+9lwYBxqPq8QrIV63VVUANR9pSMbufkIut1Kik=
    subdir: marlowe-spec-test
            haskell
            isabelle
-   --sha256: sha256-DmjFaROtuxyoVOOdTIYh28evqaa7ZbQyzkaJUTZMcxI=
 
 -- Currently this is the simplest way to get compilation working
 source-repository-package
@@ -79,18 +81,19 @@ source-repository-package
   --sha256: 00lv3k45p83ivkk4n1ps6cw1g53qjfrv1qirx1c4n04xnmgggsxj
 
 -- sc-tools (includes convex-mockchain with EraHistory)
-source-repository-package
-  type: git
-  location: https://github.com/input-output-hk/sc-tools
-  tag: c50e9edf2606d149820d41c2d4f82fae54eb21dd
-  subdir:
-    src/base
-    src/blockfrost
-    src/coin-selection
-    src/devnet
-    src/mockchain
-    src/node-client
-    src/optics
-    src/tx-mod
-    src/wallet
-  --sha256: 1k85saw1ga17cki71pi38vn15waq8dch398zz7lmrb76hryl6cv9
+-- source-repository-package
+--   type: git
+--   location: https://github.com/input-output-hk/sc-tools
+--   tag: 4546122230491db4839a4a42fc2bc601f7900909
+--   subdir:
+--     src/base
+--     src/blockfrost
+--     src/coin-selection
+--     src/devnet
+--     src/mockchain
+--     src/node-client
+--     src/optics
+--     src/tx-mod
+--     src/wallet
+--   --sha256: sha256-LzJwZCOyMXlCvYByZ5ZrnbN+vA0fw6BRRCUaJcWX9fs=
+-- 

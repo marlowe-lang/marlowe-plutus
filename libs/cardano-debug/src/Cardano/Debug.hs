@@ -42,6 +42,7 @@ import Cardano.Api.Ledger (ExUnits (..), extractHash, strictMaybeToMaybe)
 import Cardano.Api.Ledger qualified as Alonzo
 import Cardano.Api.Ledger qualified as L
 import Cardano.Api.Ledger qualified as Ledger
+import Cardano.Ledger.Core qualified as Ledger
 
 import Cardano.Debug.Json (FormatJson (..), FormatYaml (..), encodeJson, encodeYaml, formatToByteString, formatToLazyByteString, formatToString, formatToText)
 import Cardano.Debug.MonadWarning (MonadWarning , runWarningIO)
@@ -285,7 +286,7 @@ getScriptWitnessDetails era tb =
  where
   aeo = convert era
   friendlyRedeemers
-    :: Ledger.Tx (ShelleyLedgerEra era)
+    :: Ledger.Tx Ledger.TopTx (ShelleyLedgerEra era)
     -> Aeson.Value
   friendlyRedeemers tx =
     alonzoEraOnwardsConstraints aeo $ do
@@ -294,7 +295,7 @@ getScriptWitnessDetails era tb =
       Aeson.Array $ Vector.fromList redeemerList
 
   friendlyRedeemerInfo
-    :: Ledger.Tx (ShelleyLedgerEra era)
+    :: Ledger.Tx Ledger.TopTx (ShelleyLedgerEra era)
     -> Ledger.PlutusPurpose Ledger.AsIx (ShelleyLedgerEra era)
     -> (Ledger.Data (ShelleyLedgerEra era), ExUnits)
     -> Aeson.Value
@@ -374,7 +375,7 @@ getScriptWitnessDetails era tb =
   addLabelToPurpose Proposing pp = Aeson.object ["submitting a proposal following proposal policy" .= pp]
   addLabelToPurpose Guarding _ = error "TODO Dijkstra"
 
-  friendlyScriptData :: Ledger.Tx (ShelleyLedgerEra era) -> Aeson.Value
+  friendlyScriptData :: Ledger.Tx Ledger.TopTx (ShelleyLedgerEra era) -> Aeson.Value
   friendlyScriptData tx =
     alonzoEraOnwardsConstraints aeo $ do
       Aeson.Array $
@@ -387,7 +388,7 @@ getScriptWitnessDetails era tb =
           | (scriptHash, scriptData) <- Map.toList $ tx ^. Ledger.witsTxL . Ledger.scriptTxWitsL
           ]
 
-  friendlyDats :: Ledger.Tx (ShelleyLedgerEra era) -> Aeson.Value
+  friendlyDats :: Ledger.Tx Ledger.TopTx (ShelleyLedgerEra era) -> Aeson.Value
   friendlyDats tx =
     alonzoEraOnwardsConstraints aeo $
       let Ledger.TxDats dats = tx ^. Ledger.witsTxL . Ledger.datsTxWitsL

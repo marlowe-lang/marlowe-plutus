@@ -110,11 +110,11 @@ library
     , network-uri
     , nonempty-containers
     , ouroboros-consensus
-    , ouroboros-network-api
-    , plutus-core ^>=1.57
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
-    , plutus-tx-plugin ^>=1.57
+    , ouroboros-network:{api}
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
+    , plutus-tx-plugin
     , reflection
     , scientific
     , semialign
@@ -161,8 +161,8 @@ library gen
   build-depends:
     , base >=4.9 && <5
     , bytestring >=0.10.12 && <0.12
-    , cardano-api ^>=10.23
-    , cardano-api-gen ^>=10.2
+    , cardano-api
+    , cardano-api-gen
     , cardano-protocol-tpraos
     , containers
     , errors
@@ -208,13 +208,18 @@ test-suite test
     , cardano-api
     , cardano-crypto-class
     , cardano-debug
+    , cardano-ledger-alonzo
+    , cardano-ledger-babbage
+    , cardano-ledger-conway
     , cardano-ledger-core
+    , cardano-ledger-shelley
     , cardano-slotting
-    , convex-mockchain
+    -- , convex-mockchain
     , containers
     , deepseq
     , hspec
     , hspec-core
+    , lens
     , marlowe-binaries
     , marlowe-plutus
     , marlowe-plutus:marlowe-testing
@@ -222,7 +227,8 @@ test-suite test
     , marlowe-transactions:gen
     , nonempty-containers
     , ouroboros-consensus
-    , ouroboros-network-api
+    , ouroboros-consensus:{cardano}
+    , ouroboros-network:{api}
     , plutus-ledger-api
     , plutus-tx
     , QuickCheck
@@ -293,12 +299,12 @@ executable marlowe-transactions-cli
     , optparse-applicative
     , openapi3 >=3.2 && <4
     , ouroboros-consensus
-    , ouroboros-network-api
+    , ouroboros-network:{api}
     , parsec
     , pipes
-    , plutus-core ^>=1.57
-    , plutus-ledger-api ^>=1.57
-    , plutus-tx ^>=1.57
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
     , postgresql-syntax
     , profunctors
     , scientific

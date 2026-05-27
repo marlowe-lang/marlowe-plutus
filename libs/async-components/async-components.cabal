@@ -81,4 +81,4 @@ library
     , servant-server ^>=0.20
     , text
     , unliftio ^>=0.2.1
-    , warp >=3.3 && <4
+    , warp

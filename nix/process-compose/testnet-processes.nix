@@ -39,6 +39,9 @@
     runtimeInputs = [cardonnay cardano-node cardano-cli];
     text = ''
       set -x
+      # I'm experimenting a bit here with Dijkstra:
+      # https://github.com/IntersectMBO/cardonnay/blob/4c9f5396b41d9f959e3da4708690f0789547ddcc/src/cardonnay_scripts/scripts/common/common-start-fast#L236
+      export PROTOCOL_VERSION=12
       cardonnay create -t conway_fast -w "$TESTNET_DIR" -i "$CARDONNAY_TESTNET_ID"
     '';
   };

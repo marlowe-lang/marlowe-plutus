@@ -5,7 +5,7 @@
     cardano-node.url = "github:IntersectMBO/cardano-node/10.6.3";
 
     cardonnay-src = {
-      url = "github:IntersectMBO/cardonnay";
+      url = "github:IntersectMBO/cardonnay?ref=v0.3.6";
       flake = false;
     };
 

@@ -45,8 +45,8 @@ library
     , wl-pprint
     , scientific
     , text
-    , plutus-tx ^>=1.57
-    , plutus-ledger-api ^>=1.57
+    , plutus-tx
+    , plutus-ledger-api
     , marlowe-plutus
 
   exposed-modules:

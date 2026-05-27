@@ -46,7 +46,9 @@ import Cardano.Api.ProtocolParameters (fromAlonzoPrices)
 import Cardano.Ledger.Alonzo.PParams (
   ppMaxTxExUnitsL,
  )
-import Cardano.Ledger.Core (ppMaxTxSizeL, ppMinFeeAL, ppMinFeeBL)
+import Cardano.Ledger.Core (ppMaxTxSizeL, ppTxFeePerByteL, ppTxFeeFixedL)
+import Cardano.Ledger.Coin (CoinPerByte(unCoinPerByte), Coin(Coin))
+import Cardano.Ledger.Compactible (fromCompact)
 import Control.Applicative ((<|>))
 import Control.Error (hoistMaybe, note, noteT, runExceptT)
 import Control.Monad (forM, unless, when, (<=<))
@@ -618,12 +620,12 @@ adjustTxForMinUtxo era protocol mMarloweAddress txBodyContent = do
 -- | Compute the maximum fee for any transaction.
 maximumFee :: C.BabbageEraOnwards era -> Ledger.PParams (C.ShelleyLedgerEra era) -> Ledger.Coin
 maximumFee era protocolParameters = C.babbageEraOnwardsConstraints era $ do
-  let txFeeFixed = protocolParameters ^. ppMinFeeBL
-      txFeePerByte = protocolParameters ^. ppMinFeeAL
-      maxTxSize = fromIntegral $ protocolParameters ^. ppMaxTxSizeL
+  let txFeeFixed = protocolParameters ^. ppTxFeeFixedL
+      txFeePerByte = protocolParameters ^. ppTxFeePerByteL
+      maxTxSize = protocolParameters ^. ppMaxTxSizeL
       C.ExecutionUnitPrices{..} = fromAlonzoPrices $ protocolParameters ^. ppPricesL
       C.ExecutionUnits{..} = fromAlonzoExUnits $ protocolParameters ^. ppMaxTxExUnitsL
-      txFee = txFeeFixed + txFeePerByte * maxTxSize
+      txFee = txFeeFixed + fromCompact txFeePerByte.unCoinPerByte * Coin (fromIntegral maxTxSize)
       executionFee = priceExecutionSteps * fromIntegral executionSteps + priceExecutionMemory * fromIntegral executionMemory
    in txFee + ceiling executionFee
 

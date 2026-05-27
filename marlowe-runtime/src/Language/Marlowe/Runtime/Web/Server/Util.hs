@@ -27,7 +27,7 @@ applyRangeToAscList getField startFrom limit offset order =
       RangeAsc -> id
     . List.nubBy (on (==) getField)
 
-type WitVKeys = Set (WitVKey 'Witness)
+type WitVKeys = Set (WitVKey Witness)
 
 makeSignedTxWithWitnessKeys :: forall era. C.ConwayEraOnwards era -> C.TxBody era -> WitVKeys -> C.Tx era
 makeSignedTxWithWitnessKeys eraWitness txBody wtKeys = case (eraWitness, makeSignedTransaction [] txBody) of

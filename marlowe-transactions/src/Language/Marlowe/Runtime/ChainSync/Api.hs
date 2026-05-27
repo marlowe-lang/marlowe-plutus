@@ -118,6 +118,8 @@ import Language.Marlowe.Runtime.Cardano.Feature (hush)
 -- import OpenTelemetry.Trace.Core (toAttribute)
 import Ouroboros.Consensus.Block (GenesisWindow)
 import qualified Ouroboros.Consensus.Block as O
+import Ouroboros.Consensus.Peras.Params (PerasRoundLength(PerasRoundLength))
+import Ouroboros.Consensus.Block.SupportsPeras (PerasRoundNo(PerasRoundNo))
 import Ouroboros.Consensus.BlockchainTime (RelativeTime, SlotLength (..))
 import Ouroboros.Consensus.HardFork.History (
   Bound (..),
@@ -125,6 +127,7 @@ import Ouroboros.Consensus.HardFork.History (
   EraParams (..),
   -- EraParamsFormat (EraParamsWithGenesisWindow),
   EraSummary (..),
+  PerasEnabled,
   Interpreter,
   SafeZone (..),
   Summary (Summary),
@@ -1576,6 +1579,26 @@ instance {-# OVERLAPPING #-} (Variations a, Variations (NonEmpty xs a)) => Varia
 instance Variations EraSummary
 
 instance Variations EraParams
+
+instance Variations a => Variations (PerasEnabled a)
+
+instance Variations PerasRoundLength where
+  variations =
+    NE.fromList
+      [ PerasRoundLength 1
+      , PerasRoundLength 10
+      , PerasRoundLength 100
+      , PerasRoundLength 1000
+      ]
+
+instance Variations PerasRoundNo where
+  variations =
+    NE.fromList
+      [ PerasRoundNo 1
+      , PerasRoundNo 10
+      , PerasRoundNo 100
+      , PerasRoundNo 1000
+      ]
 
 instance Variations GenesisWindow
 
