@@ -112,7 +112,7 @@ library
     , mtl
     , network-uri
     , nonempty-containers
-    , openapi3 >=3.2 && <4
+    , openapi3 ^>=3.2.5
     , ouroboros-consensus
     , ouroboros-network:{api}
     , parsec
@@ -128,7 +128,7 @@ library
     , servant ^>=0.20
     , servant-client ^>=0.20
     , servant-client-core ^>=0.20
-    , servant-openapi3 ^>=2.0
+    , servant-openapi3
     , servant-pagination >=2.5 && <3
     , servant-pipes ^>=0.16
     , servant-server ^>=0.20
@@ -217,16 +217,16 @@ library
     Language.Marlowe.Runtime.Web.Withdrawal.API
     Language.Marlowe.Runtime.Web.Withdrawal.Server
 
-executable marlowe-runtime
+executable marlowe-runtime-server
   import:          lang
-  hs-source-dirs:  app
-  main-is:         App.hs
+  hs-source-dirs:  server
+  main-is:         Main.hs
   ghc-options:
     -threaded -j8
   other-modules:
     Paths_marlowe_runtime
-    App.Contrib.Servant.Err500
-    App.Contrib.Servant.ResponseRewriterMiddleware
+    Marlowe.Runtime.Server.Contrib.Servant.Err500
+    Marlowe.Runtime.Server.Contrib.Servant.ResponseRewriterMiddleware
   build-depends:
     , aeson
     , async-components
@@ -272,7 +272,7 @@ executable marlowe-runtime
     , network-uri
     , nonempty-containers
     , optparse-applicative
-    , openapi3 >=3.2 && <4
+    , openapi3 >=3.2.5
     , ouroboros-consensus
     , ouroboros-network:{api}
     , parsec

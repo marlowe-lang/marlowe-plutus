@@ -15,10 +15,11 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Paths_marlowe_runtime
 import Data.OpenApi.Internal as OpenApi
-import Language.Marlowe.Runtime.Web.API (runtimeApi, RuntimeAPI)
+import Language.Marlowe.Runtime.Web.API (RuntimeAPI)
 import Language.Marlowe.Runtime.Web.Server.Monad (ServerM, runServer, ServerDependencies(..))
 import Language.Marlowe.Runtime.Web.Adapter.Servant ()
 import Language.Marlowe.Runtime.Web.Adapter.Servant.Html (Html(..), HTML)
+
 import qualified Language.Marlowe.Runtime.Web.Contract.Server as Contract
 import qualified Language.Marlowe.Runtime.Web.Payout.Server as Payout
 import qualified Language.Marlowe.Runtime.Web.Role.Server as Role
@@ -31,6 +32,7 @@ import Servant (
 import qualified Data.OpenApi as OpenApi
 import qualified Language.Marlowe.Runtime.Web.Server.OpenAPI as OpenApi
 import qualified Servant.OpenApi as OpenApi
+import Data.Proxy (Proxy(Proxy))
 
 -- type RuntimeAPI =
 --   WithRuntimeStatus
@@ -86,7 +88,7 @@ openApiServer = pure openApi :<|> pure rapiDoc
     openApi :: OpenApi.OpenApiWithEmptySecurity
     openApi =
       OpenApi.OpenApiWithEmptySecurity $
-        OpenApi.toOpenApi runtimeApi
+        OpenApi.toOpenApi (Proxy :: Proxy RuntimeAPI)
           & OpenApi.info
             %~ (OpenApi.title .~ "Marlowe Runtime REST API")
               . (OpenApi.version .~ T.pack (showVersion Paths_marlowe_runtime.version))

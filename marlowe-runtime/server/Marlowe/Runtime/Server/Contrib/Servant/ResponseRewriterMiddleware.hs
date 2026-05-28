@@ -1,4 +1,4 @@
-module App.Contrib.Servant.ResponseRewriterMiddleware where
+module Marlowe.Runtime.Server.Contrib.Servant.ResponseRewriterMiddleware where
 
 import Data.List qualified as L
 import Data.Maybe (isNothing)

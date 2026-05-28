@@ -23,7 +23,7 @@ import Data.ByteString.Short (fromShort)
 import qualified Cardano.Ledger.Core as Ledger
 import qualified Cardano.Ledger.Plutus as Ledger
 import Cardano.Ledger.Api (binaryDataToData)
-import qualified Cardano.Ledger.Dijkstra as L
+import qualified Cardano.Ledger.Conway as L
 import Cardano.Ledger.Plutus (unData)
 import qualified Language.Marlowe.Runtime.Cardano.Api.Kupo as Kupo
 import Data.Functor ((<&>))
@@ -408,7 +408,7 @@ fromLedgerTxId = TxId . (\(Ledger.UnsafeHash h) -> fromShort h) . Ledger.extract
 fromLedgerTxIn :: Ledger.TxIn -> TxOutRef
 fromLedgerTxIn (Ledger.TxIn txId txIx) = TxOutRef (fromLedgerTxId txId) (TxIx $ Ledger.unTxIx txIx)
 
-fromLedgerBinaryData :: Ledger.BinaryData L.DijkstraEra -> Datum
+fromLedgerBinaryData :: Ledger.BinaryData L.ConwayEra -> Datum
 fromLedgerBinaryData = fromPlutusData . unData . binaryDataToData
 
 inputsFromCardanoTx :: C.IsCardanoEra era => C.Tx era -> Map.Map TxOutRef (Maybe Redeemer)

@@ -1,4 +1,4 @@
-module App.Contrib.Servant.Err500 where
+module Marlowe.Runtime.Server.Contrib.Servant.Err500 where
 
 import Data.Aeson qualified as Aeson
 import Data.ByteString.Lazy qualified as BSL

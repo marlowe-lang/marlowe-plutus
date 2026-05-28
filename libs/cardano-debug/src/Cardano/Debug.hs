@@ -373,7 +373,7 @@ getScriptWitnessDetails era tb =
   addLabelToPurpose Rewarding rp = Aeson.object ["withdrawing reward from script address" .= rp]
   addLabelToPurpose Voting vp = Aeson.object ["voting using script protected voter credentials" .= vp]
   addLabelToPurpose Proposing pp = Aeson.object ["submitting a proposal following proposal policy" .= pp]
-  addLabelToPurpose Guarding _ = error "TODO Dijkstra"
+  addLabelToPurpose Guarding _ = Aeson.object ["TODO: guarding"]
 
   friendlyScriptData :: Ledger.Tx Ledger.TopTx (ShelleyLedgerEra era) -> Aeson.Value
   friendlyScriptData tx =
@@ -631,7 +631,7 @@ renderCertificate sbe (Exp.Certificate c) =
     ShelleyBasedEraAlonzo -> renderShelleyCertificate sbe c
     ShelleyBasedEraBabbage -> renderShelleyCertificate sbe c
     ShelleyBasedEraConway -> renderConwayCertificate c
-    ShelleyBasedEraDijkstra -> error "renderCertificate: TODO Dijkstra era not supported"
+    ShelleyBasedEraDijkstra -> renderConwayCertificate c
 
 renderDrepCredential
   :: ()

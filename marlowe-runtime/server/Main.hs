@@ -2,8 +2,8 @@ module Main where
 
 import Cardano.Api qualified as C
 import Language.Marlowe.Runtime.Core.ScriptRegistry qualified as ScriptRegistry
-import App.Contrib.Servant.Err500 (err500, err500JSON)
-import App.Contrib.Servant.ResponseRewriterMiddleware as ResponseRewriterMiddleware
+import Marlowe.Runtime.Server.Contrib.Servant.Err500 (err500, err500JSON)
+import Marlowe.Runtime.Server.Contrib.Servant.ResponseRewriterMiddleware as ResponseRewriterMiddleware
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Key as Aeson
 import qualified Data.ByteString as BS
@@ -90,11 +90,14 @@ import System.Environment.Blank (getEnv)
 import qualified Text.Read as T
 import Control.Applicative (Alternative((<|>)))
 
+newtype Port = Port Int
+
 data Options = Options
   { databaseUri :: Hasql.Settings
   , logLevel :: LogLevel
   , nodeSocketPath :: FilePath
   , networkId :: C.NetworkId
+  , port :: Port
   }
 
 longOption :: ReadM a -> String -> String -> String -> Parser a
@@ -135,6 +138,16 @@ mkNodeSocketParser = do
     case possibleNodeSocketPath of
       Just path -> opt <> value path
       Nothing -> opt
+
+portParser :: Parser Port
+portParser = option
+  (Port <$> auto)
+  ( long "port"
+    <> short 'p'
+    <> help "The port to serve the server on"
+    <> metavar "PORT"
+    <> value (Port 8090)
+  )
 
 databaseUriParser :: Parser Hasql.Settings
 databaseUriParser = do
@@ -191,7 +204,7 @@ mkInitContract (networkId, systemStart, eraHistory, protocolParams) useDevelScri
   \stakeCredential walletContext threadTokenName roleTokensConfig transactionMetadata optMinAda accounts contract -> do
     execInit
       (mkRoleTokensPolicy useDevelScripts)
-      C.DijkstraEra
+      C.ConwayEra
       ScriptRegistry.getCurrentScripts
       solveConstraints
       protocolParams
@@ -208,7 +221,7 @@ mkInitContract (networkId, systemStart, eraHistory, protocolParams) useDevelScri
       contract
       analysisTimeout
 
-type LedgerInfo = (C.NetworkId, C.SystemStart, C.EraHistory, L.PParams (C.ShelleyLedgerEra C.DijkstraEra))
+type LedgerInfo = (C.NetworkId, C.SystemStart, C.EraHistory, L.PParams (C.ShelleyLedgerEra C.ConwayEra))
 
 queryLedgerInfo :: C.NetworkId -> C.LocalNodeConnectInfo -> IO LedgerInfo
 queryLedgerInfo networkId connectInfo = do
@@ -216,7 +229,7 @@ queryLedgerInfo networkId connectInfo = do
     (,,)
       <$> C.querySystemStart
       <*> C.queryEraHistory
-      <*> C.queryProtocolParameters C.ShelleyBasedEraDijkstra
+      <*> C.queryProtocolParameters C.ShelleyBasedEraConway
   case rawQueryResult of
     Right (Right systemStart, Right eraHistory, Right (Right protocolParams)) -> do
       pure (networkId, systemStart, eraHistory, protocolParams)
@@ -251,27 +264,27 @@ mkServerDependencies pool ledgerInfo = do
     }
 
 runApp :: Options -> IO ()
-runApp Options{..} = do
+runApp opts = do
   pool <- do
     let
-      cfg = Hasql.settings [ Hasql.staticConnectionSettings databaseUri ]
+      cfg = Hasql.settings [ Hasql.staticConnectionSettings opts.databaseUri ]
     Pool.acquire cfg
   putStrLn "Database connection pool created"
 
   let
     -- FIXME: Move these to Options
-    port = 8090
     debugInfoHttpResponse = True
 
   Wai.withStdoutLogger \waiLogger -> do
-    putStrLn $ "Server running on port " ++ show port
     let
+      Port port = opts.port
       localNodeConnectInfo = C.LocalNodeConnectInfo
         { C.localConsensusModeParams = C.CardanoModeParams $ C.EpochSlots 21_600
-        , C.localNodeNetworkId = networkId
-        , C.localNodeSocketPath = C.File nodeSocketPath
+        , C.localNodeNetworkId = opts.networkId
+        , C.localNodeSocketPath = C.File opts.nodeSocketPath
         }
-    ledgerInfo <- liftIO $ queryLedgerInfo networkId localNodeConnectInfo
+    putStrLn $ "Server running on port " ++ show port
+    ledgerInfo <- liftIO $ queryLedgerInfo opts.networkId localNodeConnectInfo
     let
       prettyLog = True
       dependencies = mkServerDependencies pool ledgerInfo
@@ -301,11 +314,11 @@ runApp Options{..} = do
     withLogger \appLogger -> do
       Wai.runSettings waiSettings do
         ResponseRewriterMiddleware.mkMiddleware errorRewriter $
-          serverMiddleware debugInfoHttpResponse appLogger logLevel $
+          serverMiddleware debugInfoHttpResponse appLogger opts.logLevel $
             serve api $
               hoistServer
                 api
-                (Handler . ExceptT . try . runServer appLogger logLevel dependencies)
+                (Handler . ExceptT . try . runServer appLogger opts.logLevel dependencies)
                 serverWithOpenApi
 
 mkParser :: IO (Parser (IO ()))
@@ -318,6 +331,7 @@ mkParser = do
       <*> logLevelParser
       <*> nodeSocketParser
       <*> networkIdParser
+      <*> portParser
 
     versionOption =
       infoOption ("marlowe-runtime-server " <> showVersion version) $

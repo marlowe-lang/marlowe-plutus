@@ -48,7 +48,6 @@ import Language.Marlowe.Runtime.Web.Core.Tx (TextEnvelope, TxId)
 import Language.Marlowe.Runtime.Web.Role.TokenFilter (RoleTokenFilter)
 import Language.Marlowe.Runtime.Web.Tx.API (
   CardanoTx,
-  CardanoTxBody,
   PostTxAPI,
   TxJSON,
  )
@@ -117,12 +116,6 @@ instance ToJSON (BurnRoleTokensTxEnvelope CardanoTx) where
       [ ("txId", toJSON txId)
       , ("tx", toJSON txEnvelope)
       ]
-instance ToJSON (BurnRoleTokensTxEnvelope CardanoTxBody) where
-  toJSON BurnRoleTokensTxEnvelope{..} =
-    object
-      [ ("txId", toJSON txId)
-      , ("txBody", toJSON txEnvelope)
-      ]
 
 instance FromJSON (BurnRoleTokensTxEnvelope CardanoTx) where
   parseJSON =
@@ -134,42 +127,19 @@ instance FromJSON (BurnRoleTokensTxEnvelope CardanoTx) where
             <*> obj .: "tx"
       )
 
-instance FromJSON (BurnRoleTokensTxEnvelope CardanoTxBody) where
-  parseJSON =
-    withObject
-      "BurnRoleTokensTxEnvelope"
-      ( \obj ->
-          BurnRoleTokensTxEnvelope
-            <$> obj .: "txId"
-            <*> obj .: "txBody"
-      )
-
 instance ToSchema (BurnRoleTokensTxEnvelope CardanoTx) where
   declareNamedSchema _ = do
     txIdSchema <- declareSchemaRef (Proxy :: Proxy TxId)
-    txEnvelopeSchema <- declareSchemaRef (Proxy :: Proxy TextEnvelope)
+    -- txEnvelopeSchema <- declareSchemaRef (Proxy :: Proxy TextEnvelope)
     return $
       NamedSchema (Just "BurnRoleTokensTxEnvelope") $
         mempty
           & type_ ?~ OpenApiObject
           & OpenApi.description ?~ "The \"type\" property of \"tx\" must be \"Tx BabbageEra\" or \"Tx ConwayEra\""
           & properties
-            .~ [ ("txId", txIdSchema)
-               , ("tx", txEnvelopeSchema)
+            .~ [
+               ("txId", txIdSchema)
+               -- , ("tx", txEnvelopeSchema)
                ]
           & required .~ ["txId", "tx"]
 
-instance ToSchema (BurnRoleTokensTxEnvelope CardanoTxBody) where
-  declareNamedSchema _ = do
-    txIdSchema <- declareSchemaRef (Proxy :: Proxy TxId)
-    txEnvelopeSchema <- declareSchemaRef (Proxy :: Proxy TextEnvelope)
-    return $
-      NamedSchema (Just "BurnRoleTokensTxEnvelope") $
-        mempty
-          & type_ ?~ OpenApiObject
-          & OpenApi.description ?~ "The \"type\" property of \"txBody\" must be \"TxBody BabbageEra\" or \"TxBody ConwayEra\""
-          & properties
-            .~ [ ("txId", txIdSchema)
-               , ("txBody", txEnvelopeSchema)
-               ]
-          & required .~ ["txId", "txBody"]

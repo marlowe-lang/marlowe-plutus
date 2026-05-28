@@ -65,7 +65,6 @@ library
     , hasql
     , hasql-implicits
     , iproute
-    , network-ip
     , postgresql-syntax
     , scientific
     , text

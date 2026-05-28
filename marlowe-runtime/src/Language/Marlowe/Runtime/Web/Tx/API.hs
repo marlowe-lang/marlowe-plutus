@@ -5,7 +5,6 @@ module Language.Marlowe.Runtime.Web.Tx.API (
   TxHeader (..),
   Tx (..),
   CardanoTx,
-  CardanoTxBody,
   ContractTx,
   CreateTxEnvelope (..),
   ApplyInputsTx,
@@ -122,7 +121,6 @@ data Tx = Tx
 
 data TxJSON a
 data CardanoTx
-data CardanoTxBody
 data ContractTx
 data ApplyInputsTx
 data WithdrawTx
@@ -157,14 +155,6 @@ instance ToJSON (CreateTxEnvelope CardanoTx) where
       , ("tx", toJSON txEnvelope)
       , ("safetyErrors", toJSON safetyErrors)
       ]
-instance ToJSON (CreateTxEnvelope CardanoTxBody) where
-  toJSON CreateTxEnvelope{..} =
-    object
-      [ ("contractId", toJSON contractId)
-      , ("txBody", toJSON txEnvelope)
-      , ("safetyErrors", toJSON safetyErrors)
-      ]
-
 instance FromJSON (CreateTxEnvelope CardanoTx) where
   parseJSON =
     withObject
@@ -175,20 +165,6 @@ instance FromJSON (CreateTxEnvelope CardanoTx) where
               .: "contractId"
             <*> obj
               .: "tx"
-            <*> obj
-              .: "safetyErrors"
-      )
-
-instance FromJSON (CreateTxEnvelope CardanoTxBody) where
-  parseJSON =
-    withObject
-      "CreateTxEnvelope"
-      ( \obj ->
-          CreateTxEnvelope
-            <$> obj
-              .: "contractId"
-            <*> obj
-              .: "txBody"
             <*> obj
               .: "safetyErrors"
       )
@@ -211,24 +187,6 @@ instance ToSchema (CreateTxEnvelope CardanoTx) where
                 ]
           & required .~ ["contractId", "tx"]
 
-instance ToSchema (CreateTxEnvelope CardanoTxBody) where
-  declareNamedSchema _ = do
-    contractIdSchema <- declareSchemaRef (Proxy :: Proxy TxOutRef)
-    txEnvelopeSchema <- declareSchemaRef (Proxy :: Proxy TextEnvelope)
-    safetyErrorsSchema <- declareSchemaRef (Proxy :: Proxy [SafetyError])
-    return $
-      NamedSchema (Just "CreateTxBodyEnvelope") $
-        mempty
-          & type_ ?~ OpenApiObject
-          & OpenApi.description ?~ "The \"type\" property of \"txBody\" must be \"TxBody BabbageEra\" or \"TxBody ConwayEra\""
-          & properties
-            .~ HashMap.fromList
-                [ ("contractId", contractIdSchema)
-                , ("txBody", txEnvelopeSchema)
-                , ("safetyErrors", safetyErrorsSchema)
-                ]
-          & required .~ ["contractId", "txBody"]
-
 data WithdrawTxEnvelope tx = WithdrawTxEnvelope
   { withdrawalId :: TxId
   , txEnvelope :: TextEnvelope
@@ -241,12 +199,6 @@ instance ToJSON (WithdrawTxEnvelope CardanoTx) where
       [ ("withdrawalId", toJSON withdrawalId)
       , ("tx", toJSON txEnvelope)
       ]
-instance ToJSON (WithdrawTxEnvelope CardanoTxBody) where
-  toJSON WithdrawTxEnvelope{..} =
-    object
-      [ ("withdrawalId", toJSON withdrawalId)
-      , ("txBody", toJSON txEnvelope)
-      ]
 
 instance FromJSON (WithdrawTxEnvelope CardanoTx) where
   parseJSON =
@@ -256,16 +208,6 @@ instance FromJSON (WithdrawTxEnvelope CardanoTx) where
           WithdrawTxEnvelope
             <$> obj .: "withdrawalId"
             <*> obj .: "tx"
-      )
-
-instance FromJSON (WithdrawTxEnvelope CardanoTxBody) where
-  parseJSON =
-    withObject
-      "WithdrawTxEnvelope"
-      ( \obj ->
-          WithdrawTxEnvelope
-            <$> obj .: "withdrawalId"
-            <*> obj .: "txBody"
       )
 
 instance ToSchema (WithdrawTxEnvelope CardanoTx) where
@@ -284,22 +226,6 @@ instance ToSchema (WithdrawTxEnvelope CardanoTx) where
                 ]
           & required .~ ["withdrawalId", "tx"]
 
-instance ToSchema (WithdrawTxEnvelope CardanoTxBody) where
-  declareNamedSchema _ = do
-    withdrawalIdSchema <- declareSchemaRef (Proxy :: Proxy TxId)
-    txEnvelopeSchema <- declareSchemaRef (Proxy :: Proxy TextEnvelope)
-    return $
-      NamedSchema (Just "WithdrawTxBodyEnvelope") $
-        mempty
-          & type_ ?~ OpenApiObject
-          & OpenApi.description ?~ "The \"type\" property of \"txBody\" must be \"TxBody BabbageEra\" or \"TxBody ConwayEra\""
-          & properties
-            .~ HashMap.fromList
-                [ ("withdrawalId", withdrawalIdSchema)
-                , ("txBody", txEnvelopeSchema)
-                ]
-          & required .~ ["withdrawalId", "txBody"]
-
 data ApplyInputsTxEnvelope tx = ApplyInputsTxEnvelope
   { contractId :: TxOutRef
   , transactionId :: TxId
@@ -316,14 +242,6 @@ instance ToJSON (ApplyInputsTxEnvelope CardanoTx) where
       , ("tx", toJSON txEnvelope)
       , ("safetyErrors", toJSON safetyErrors)
       ]
-instance ToJSON (ApplyInputsTxEnvelope CardanoTxBody) where
-  toJSON ApplyInputsTxEnvelope{..} =
-    object
-      [ ("contractId", toJSON contractId)
-      , ("transactionId", toJSON transactionId)
-      , ("txBody", toJSON txEnvelope)
-      , ("safetyErrors", toJSON safetyErrors)
-      ]
 
 instance FromJSON (ApplyInputsTxEnvelope CardanoTx) where
   parseJSON =
@@ -333,18 +251,6 @@ instance FromJSON (ApplyInputsTxEnvelope CardanoTx) where
           contractId <- obj .: "contractId"
           transactionId <- obj .: "transactionId"
           txEnvelope <- obj .: "tx"
-          safetyErrors <- obj .: "safetyErrors"
-          pure ApplyInputsTxEnvelope{..}
-      )
-
-instance FromJSON (ApplyInputsTxEnvelope CardanoTxBody) where
-  parseJSON =
-    withObject
-      "ApplyInputsTxEnvelope"
-      ( \obj -> do
-          contractId <- obj .: "contractId"
-          transactionId <- obj .: "transactionId"
-          txEnvelope <- obj .: "txBody"
           safetyErrors <- obj .: "safetyErrors"
           pure ApplyInputsTxEnvelope{..}
       )
@@ -369,22 +275,3 @@ instance ToSchema (ApplyInputsTxEnvelope CardanoTx) where
                  ]
           & required .~ ["contractId", "transactionId", "tx"]
 
-instance ToSchema (ApplyInputsTxEnvelope CardanoTxBody) where
-  declareNamedSchema _ = do
-    contractIdSchema <- declareSchemaRef (Proxy :: Proxy TxOutRef)
-    transactionIdSchema <- declareSchemaRef (Proxy :: Proxy TxId)
-    txEnvelopeSchema <- declareSchemaRef (Proxy :: Proxy TextEnvelope)
-    safetyErrorsSchema <- declareSchemaRef (Proxy :: Proxy [SafetyError])
-    return $
-      NamedSchema (Just "ApplyInputsTxEnvelope") $
-        mempty
-          & type_ ?~ OpenApiObject
-          & OpenApi.description ?~ "The \"type\" property of \"txBody\" must be \"TxBody BabbageEra\" or \"TxBody ConwayEra\""
-          & properties
-            .~ HashMap.fromList
-                 [ ("contractId", contractIdSchema)
-                 , ("transactionId", transactionIdSchema)
-                 , ("txBody", txEnvelopeSchema)
-                 , ("safetyErrors", safetyErrorsSchema)
-                 ]
-          & required .~ ["contractId", "transactionId", "txBody"]

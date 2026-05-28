@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedLists #-}
-{-# LANGUAGE StrictData #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+
+-- FIXME
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 
 -- | This module defines the request and response types in the Marlowe Runtime
 -- | Web API.
@@ -96,68 +98,83 @@ parseSetOrSingle = \case
   Array arr -> parseJSON $ Array arr
   v -> Set.singleton <$> parseJSON v
 
+-- | Type only defined to provide a schema for the pair of sub-filters
+data RoleTokenFilterPair
+
+instance ToSchema RoleTokenFilterPair where
+  declareNamedSchema _ =
+    pure $ NamedSchema (Just "RoleTokenFilterPair") $ mempty
+      & type_ ?~ OpenApiObject
+      & properties .~
+          [ ("fst", Ref (OpenApi.Reference "RoleTokenFilter"))
+          , ("snd", Ref (OpenApi.Reference "RoleTokenFilter"))
+          ]
+      & required .~ ["fst", "snd"]
+
 instance ToSchema RoleTokenFilter where
   declareNamedSchema _ = do
-    roleTokenFilterSchema <- declareSchemaRef $ Proxy @RoleTokenFilter
-    roleTokenFilterPairSchema <- declareSchemaRef $ Proxy @(RoleTokenFilter, RoleTokenFilter)
-    let setOrSingleSchema
-          :: forall a
-           . (ToSchema a)
-          => Proxy a
-          -> Declare (Definitions Schema) (Referenced Schema)
-        setOrSingleSchema p = do
-          singleSchema <- declareSchemaRef p
-          setSchema <- declareSchemaRef $ Proxy @(Set a)
-          pure $ Inline $ mempty & oneOf ?~ [singleSchema, setSchema]
+    roleTokenFilterPairSchema <- declareSchemaRef (Proxy @RoleTokenFilterPair)
+    let
+      roleTokenFilterSchema = Ref (OpenApi.Reference "RoleTokenFilter")
+      setOrSingleSchema
+            :: forall a
+             . (ToSchema a)
+            => Proxy a
+            -> Declare (Definitions Schema) (Referenced Schema)
+      setOrSingleSchema p = do
+        singleSchema <- declareSchemaRef p
+        setSchema <- declareSchemaRef $ Proxy @(Set a)
+        pure $ Inline $ mempty & oneOf ?~ [singleSchema, setSchema]
     txOutRefSchema <- setOrSingleSchema $ Proxy @TxOutRef
     policyIdSchema <- setOrSingleSchema $ Proxy @PolicyId
     assetIdSchema <- setOrSingleSchema $ Proxy @AssetId
-    let andSchema =
+    let
+      andSchema =
           mempty
             & type_ ?~ OpenApiObject
             & OpenApi.description ?~ "Matches any role tokens matched by both sub-filters."
             & required .~ ["and"]
             & properties .~ [("and", roleTokenFilterPairSchema)]
-        orSchema =
-          mempty
-            & type_ ?~ OpenApiObject
-            & OpenApi.description ?~ "Matches any role tokens matched by either sub-filter."
-            & required .~ ["or"]
-            & properties .~ [("or", roleTokenFilterPairSchema)]
-        notSchema =
-          mempty
-            & type_ ?~ OpenApiObject
-            & OpenApi.description ?~ "Matches any role tokens not matched by the sub-filter."
-            & required .~ ["not"]
-            & properties .~ [("not", roleTokenFilterSchema)]
-        anySchema =
-          mempty
-            & type_ ?~ OpenApiBoolean
-            & OpenApi.description ?~ "Matches any role token."
-            & enum_ ?~ [Bool True]
-        noneSchema =
-          mempty
-            & type_ ?~ OpenApiBoolean
-            & OpenApi.description ?~ "Matches no role token."
-            & enum_ ?~ [Bool False]
-        contractsSchema =
-          mempty
-            & type_ ?~ OpenApiObject
-            & OpenApi.description ?~ "Matches any role tokens used by the given contract(s)."
-            & required .~ ["contract_id"]
-            & properties .~ [("contract_id", txOutRefSchema)]
-        policiesSchema =
-          mempty
-            & type_ ?~ OpenApiObject
-            & OpenApi.description ?~ "Matches any role tokens with the given currency symbol(s)."
-            & required .~ ["roles_currency"]
-            & properties .~ [("roles_currency", policyIdSchema)]
-        tokensSchema =
-          mempty
-            & type_ ?~ OpenApiObject
-            & OpenApi.description ?~ "Matches only the given role token(s)."
-            & required .~ ["role_tokens"]
-            & properties .~ [("role_tokens", assetIdSchema)]
+      orSchema =
+        mempty
+          & type_ ?~ OpenApiObject
+          & OpenApi.description ?~ "Matches any role tokens matched by either sub-filter."
+          & required .~ ["or"]
+          & properties .~ [("or", roleTokenFilterPairSchema)]
+      notSchema =
+        mempty
+          & type_ ?~ OpenApiObject
+          & OpenApi.description ?~ "Matches any role tokens not matched by the sub-filter."
+          & required .~ ["not"]
+          & properties .~ [("not", roleTokenFilterSchema)]
+      anySchema =
+        mempty
+          & type_ ?~ OpenApiBoolean
+          & OpenApi.description ?~ "Matches any role token."
+          & enum_ ?~ [Bool True]
+      noneSchema =
+        mempty
+          & type_ ?~ OpenApiBoolean
+          & OpenApi.description ?~ "Matches no role token."
+          & enum_ ?~ [Bool False]
+      contractsSchema =
+        mempty
+          & type_ ?~ OpenApiObject
+          & OpenApi.description ?~ "Matches any role tokens used by the given contract(s)."
+          & required .~ ["contract_id"]
+          & properties .~ [("contract_id", txOutRefSchema)]
+      policiesSchema =
+        mempty
+          & type_ ?~ OpenApiObject
+          & OpenApi.description ?~ "Matches any role tokens with the given currency symbol(s)."
+          & required .~ ["roles_currency"]
+          & properties .~ [("roles_currency", policyIdSchema)]
+      tokensSchema =
+        mempty
+          & type_ ?~ OpenApiObject
+          & OpenApi.description ?~ "Matches only the given role token(s)."
+          & required .~ ["role_tokens"]
+          & properties .~ [("role_tokens", assetIdSchema)]
     pure $
       NamedSchema (Just "RoleTokenFilter") $
         mempty
@@ -165,15 +182,15 @@ instance ToSchema RoleTokenFilter where
           & oneOf
             ?~ fmap
               Inline
-              [ andSchema
-              , orSchema
-              , notSchema
-              , anySchema
-              , noneSchema
-              , contractsSchema
-              , policiesSchema
-              , tokensSchema
-              ]
+                [ noneSchema
+                , anySchema
+                , contractsSchema
+                , notSchema
+                , policiesSchema
+                , tokensSchema
+                , andSchema
+                , orSchema
+                ]
 
 instance HasDTO Chain.RoleTokenFilter where
   type DTO Chain.RoleTokenFilter = RoleTokenFilter
