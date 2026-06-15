@@ -211,6 +211,7 @@ let
       cardano-node
       # inputs.process-compose
       pkgs.process-compose
+      pkgs.dbeaver-bin
 
       # db-schema-info generator
 
@@ -258,15 +259,20 @@ let
       # Vars required by testnet part of the process compose:
       export TESTNET_DIR="$RUN_DIR/testnet"
       export CARDONNAY_TESTNET_ID="9"
-      source <(cardonnay control print-env -i "$CARDONNAY_TESTNET_ID" -w "$TESTNET_DIR")
       export CARDANO_NODE_NETWORK_ID=42
-      eval "$(cardonnay inspect faucet -i "$CARDONNAY_TESTNET_ID" -w "$TESTNET_DIR" | jq -r 'to_entries[] | "export FAUCET_\(.key|ascii_upcase)=\(.value|@sh)"')"
+      source <(cardonnay control print-env -i "$CARDONNAY_TESTNET_ID" -w "$TESTNET_DIR")
+
+      # This **will be** initialized by the testnet process compose when executed
+      export FAUCET_ADDR_FILE="$TESTNET_DIR/faucet.addr"
+      export FAUCET_SKEY_FILE="$TESTNET_DIR/faucet.skey"
+      export MARLOWE_PUBLISHING_INFO_FILE=$"$TESTNET_DIR/marlowe-publishing-info.json"
 
       export PROCESS_COMPOSE_TESTNET_YAML=${process-compose-testnet-yaml}
       export PROCESS_COMPOSE_POSTGRES_YAML=${process-compose-postgres-yaml}
       export PROCESS_COMPOSE_DEV_ENV_YAML=${process-compose-dev-env-yaml}
 
       export LD_LIBRARY_PATH="${ld-library-path}:$LD_LIBRARY_PATH"
+      export PATH=$PATH:"$ROOT_DIR/marlowe-integration/node_modules/.bin"
 
       # ${db-schema-info}/bin/db-schema-info sql/final
     '';

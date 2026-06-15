@@ -134,9 +134,6 @@ let
           }
           trap 'remove_tmp_pg_init_sock_dir "$PGHOST"' EXIT
           pg_ctl -D "$PGDATA" -w start -o "-c unix_socket_directories=$PGHOST -c listen_addresses= -p $PGPORT"
-          echo "CREATE DATABASE marlowe;" | psql_with_args -d postgres
-          echo "CREATE USER marlowe;" | psql_with_args -d postgres
-          echo "ALTER DATABASE marlowe OWNER TO marlowe;" | psql_with_args -d postgres
           pg_ctl -D "$PGDATA" -m fast -w stop
           remove_tmp_pg_init_sock_dir "$PGHOST"
         else
@@ -155,17 +152,7 @@ let
       set -x
 
       export PGDATA="$POSTGRES_DIR/pgdata"
-      postgres -D "$PGDATA" -k "$PGDATA"
-    '';
-  };
-
-  initialize-postgres = writeShellApplication {
-    name = "initialize-postgres";
-    runtimeInputs = [sqitchPg];
-    text = ''
-      set -x
-      export PGDATA="$POSTGRES_DIR/pgdata"
-      sqitch rebase db:pg://marlowe@localhost/marlowe --chdir "$SQITCH_CHDIR" || sqitch deploy db:pg://marlowe@localhost/marlowe --chdir "$SQITCH_CHDIR"
+      postgres -D "$PGDATA" -k "$PGDATA" -p "$PGPORT"
     '';
   };
 
@@ -175,16 +162,16 @@ let
     text = ''
       set -x
       export PGDATA="$POSTGRES_DIR/pgdata"
-      pg_isready -h localhost -d marlowe
+      pg_isready -h localhost -d postgres -p "$PGPORT"
     '';
   };
 in {
   "clear-postgres-state" = {
-    namespace = "marlowe@postgres";
+    namespace = "postgres";
     command = "${clear-postgres-state}/bin/clear-postgres-state";
   };
   "postgres-init" = {
-    namespace = "marlowe@postgres";
+    namespace = "postgres";
     log_location = "./.pc-postgres-init.log";
     depends_on = {
       "clear-postgres-state" = {
@@ -194,7 +181,7 @@ in {
     command = "${setup-postgres}/bin/setup-postgres";
   };
   "postgres-server" = {
-    namespace = "marlowe@postgres";
+    namespace = "postgres";
     log_location = "./.pc-postgres.log";
     depends_on = {
       "postgres-init" = {
@@ -218,15 +205,6 @@ in {
       timeout_seconds = 4;
       success_threshold = 1;
       failure_threshold = 5;
-    };
-  };
-  "initialize-postgres" = {
-    namespace = "marlowe@postgres";
-    command = "${initialize-postgres}/bin/initialize-postgres";
-    depends_on = {
-      "postgres-server" = {
-        condition = "process_healthy";
-      };
     };
   };
 }

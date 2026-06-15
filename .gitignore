@@ -9,4 +9,7 @@ marlowe-integration/node_modules
 marlowe-integration/dist
 marlowe-integration/.yarn
 marlowe-integration/.pnp.*
+marlowe-integration/**/node_modules
 .run
+out
+

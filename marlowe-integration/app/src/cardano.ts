@@ -1,10 +1,15 @@
 import { err, ok, Result } from "neverthrow";
 import type { Tagged } from "type-fest";
 
-// Type level tagging of the types.
-// Please note that this is somewhat weak type safety
-// as it is enough to say: `"x" as TxIdHex` to convince
-// the compiler that x is of type `TxIdHex`.
+// TODO: A lot of this module should be at unified with
+// our growing cardano-ts library which is currently
+// linked through a portal locally.
+
+// We use type level tagging across the project.
+// Please avoid using `as` casting at all cost.
+// Types which are tagged carry with them usually some
+// invariants enforced either by the "smart contructor"
+// or by the source of the data.
 export type TxBodyHex = Tagged<string, "TxBodyHex">;
 export type TxHex = Tagged<string, "TxHex">;
 export type WitnessSetHex = Tagged<string, "WitnessSetHex">;
@@ -50,7 +55,6 @@ export namespace TxOutRefHex {
   }
 }
 
-// TODO: Migrate to bigint
 export type Lovelace = number;
 export const ONE_ADA: Lovelace = 1_000_000;
 

@@ -2,7 +2,7 @@
   description = "Lightweight Marlowe Runtime: transaction builders, indexer and web server";
 
   inputs = {
-    cardano-node.url = "github:IntersectMBO/cardano-node/10.6.3";
+    cardano-node.url = "github:IntersectMBO/cardano-node/11.0.1";
 
     cardonnay-src = {
       url = "github:IntersectMBO/cardonnay?ref=v0.3.6";
@@ -117,6 +117,7 @@
       packages = {
         # NOTE this is important or the static builds will fail with:
         # Error: pg_config not found
+        process-compose-postgres-yaml = pkgs.callPackage ./process-compose/postgres.nix {};
       };
       projectFlake = project.flake {};
     in {

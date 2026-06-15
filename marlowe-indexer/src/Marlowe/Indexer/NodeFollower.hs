@@ -65,12 +65,6 @@ import Data.Text (Text)
 logInfo_ :: MonadLog m => Text -> m ()
 logInfo_ msg = Log.logInfo_ $ "[NodeFollower] " <> msg
 
--- logInfo :: ToJSON a => MonadLog m => Text -> a -> m ()
--- logInfo msg = Log.logInfo ("[NodeFollower] " <> msg)
--- 
--- logAttention :: ToJSON a => MonadLog m => Text -> a -> m ()
--- logAttention msg = Log.logAttention ("[NodeFollower] " <> msg)
-
 type NumberedCardanoBlock = (BlockNo, BlockInMode)
 type NumberedChainTip = (WithOrigin BlockNo, ChainTip)
 

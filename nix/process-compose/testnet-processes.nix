@@ -39,10 +39,21 @@
     runtimeInputs = [cardonnay cardano-node cardano-cli];
     text = ''
       set -x
-      # I'm experimenting a bit here with Dijkstra:
+      # If you want to experiment with Dijkstra protocol version please uncomment the line below and set the desired version.
+      # export PROTOCOL_VERSION=12
+      # That inspiration was taken from here:
       # https://github.com/IntersectMBO/cardonnay/blob/4c9f5396b41d9f959e3da4708690f0789547ddcc/src/cardonnay_scripts/scripts/common/common-start-fast#L236
-      export PROTOCOL_VERSION=12
       cardonnay create -t conway_fast -w "$TESTNET_DIR" -i "$CARDONNAY_TESTNET_ID"
+    '';
+  };
+
+  set-faucet-info = writeShellApplication {
+    name = "set-faucet-info";
+    runtimeInputs = [coreutils];
+    text = ''
+      set -x
+      cp "$(cardonnay inspect faucet -i 9 -w "$TESTNET_DIR" | jq -r .skey_file)" "$FAUCET_SKEY_FILE"
+      cardonnay inspect faucet -i 9 -w "$TESTNET_DIR" | jq -r .address > "$FAUCET_ADDR_FILE"
     '';
   };
 in {
@@ -83,6 +94,14 @@ in {
       timeout_seconds = 3;
       success_threshold = 1;
       failure_threshold = 60;
+    };
+  };
+
+  set-faucet-info = {
+    namespace = "testnet";
+    command = "${set-faucet-info}/bin/set-faucet-info";
+    depends_on = {
+      initialize-testnet.condition = "process_healthy";
     };
   };
 }
