@@ -1,0 +1,32 @@
+{
+  "dependencies": {
+    "@konduit/codec": "workspace:^",
+    "@konduit/konduit-consumer": "workspace:^",
+    "@marlowe-lang/language": "workspace:^",
+    "neverthrow": "^8.2.0",
+    "type-fest": "^5.7.0"
+  },
+  "exports": {
+    "./": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "dist/index.js",
+  "module": "dist/index.es.js",
+  "name": "@marlowe-lang/runtime",
+  "private": true,
+  "scripts": {
+    "build": "tsc --build",
+    "test": "vitest"
+  },
+  "type": "module",
+  "version": "0.0.1"
+}

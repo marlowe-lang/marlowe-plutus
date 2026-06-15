@@ -28,17 +28,18 @@ import Options.Applicative (
   option,
   progDesc,
   short,
-  strOption, ReadM, asum, flag', eitherReader,
+  strOption, ReadM, asum, flag', eitherReader, value, (<|>), showDefault,
  )
 import Paths_marlowe_indexer (version)
 import Cardano.Api qualified as C
-import Cardano.Api.Network (NetworkId (..))
 import Marlowe.Plutus.Binaries.Devel (marloweValidatorHash, rolePayoutValidatorHash)
 import Data.Foldable (Foldable(..))
 import qualified Hasql.Connection.Settings as Hasql
 import qualified Hasql.Pool.Config as Hasql
 import qualified Data.Text as T
 import Log.Class (logInfo_, logInfo)
+import qualified Text.Read as T
+import System.Environment.Blank (getEnv)
 
 data Options = Options
   { databaseUri :: Hasql.Settings
@@ -82,33 +83,40 @@ logLevelParser =
     , pure LogInfo
     ]
 
+getEnvNetworkId :: IO (Maybe C.NetworkId)
+getEnvNetworkId =
+  fmap (C.Testnet . C.NetworkMagic)
+    . (T.readMaybe =<<)
+    <$> getEnv "CARDANO_NODE_NETWORK_ID"
 
-nodeSocketPathParser :: Parser FilePath
-nodeSocketPathParser =
-  strOption $
-    fold
-      [ long "node-socket-file"
-      , metavar "FILE_PATH"
-      , help "The path to the node socket."
-      ]
-
-networkIdParser :: Parser C.NetworkId
-networkIdParser =
-  asum
-    [ flag' Mainnet $
-        fold
-          [ long "mainnet"
-          , help "Connect to a mainnet node."
-          ]
-    , Testnet . C.NetworkMagic
-        <$> option
-          auto
-          ( fold
-              [ long "testnet-magic"
-              , help "Connect to a testnet node with the given network magic."
-              ]
+mkNetworkIdParser :: IO (Parser C.NetworkId)
+mkNetworkIdParser = do
+  possibleNodeNetworkId <- getEnvNetworkId
+  pure do
+    let
+      networkMod = maybe mempty value possibleNodeNetworkId
+      mainnetParser = flag' C.Mainnet (long "mainnet" <> help "Execute on mainnet.")
+      testnetParser = option
+          (C.Testnet . C.NetworkMagic . toEnum <$> auto)
+          ( long "testnet-magic"
+              <> metavar "INTEGER"
+              <> networkMod
+              <> help "Network magic. Defaults to the CARDANO_NODE_NETWORK_ID environment variable's value."
           )
-    ]
+    mainnetParser <|> testnetParser
+
+mkNodeSocketParser :: IO (Parser FilePath)
+mkNodeSocketParser = do
+  possibleNodeSocketPath <- getEnv "CARDANO_NODE_SOCKET_PATH"
+  pure $ strOption do
+    let
+      opt = long "socket-path"
+        <> short 's'
+        <> showDefault
+        <> help "Location of the cardano-node socket file. Defaults to the CARDANO_NODE_SOCKET_PATH environment variable's value."
+    case possibleNodeSocketPath of
+      Just path -> opt <> value path
+      Nothing -> opt
 
 runIndexer :: Options -> IO ()
 runIndexer Options{..} = do
@@ -142,8 +150,6 @@ runIndexer Options{..} = do
 
     logInfo_ "Starting Marlowe Indexer:"
     logInfo "Script hashes:" marloweScriptHashes
-    -- logInfo "Memory cost config:" memoryCostConfig
-    -- logInfo "Node connection info:" localNodeConnectInfo
 
     runComponent_ $ mkIndexer IndexerDependencies
       { localNodeConnectInfo
@@ -152,8 +158,10 @@ runIndexer Options{..} = do
       , marloweScriptHashes = marloweScriptHashes
       }
 
-parser :: Parser (IO ())
-parser = do
+mkParser :: IO (Parser (IO ()))
+mkParser = do
+  nodeSocketPathParser <- mkNodeSocketParser
+  networkIdParser <- mkNetworkIdParser
   let
     parserOptions = Options
       <$> databaseUriParser
@@ -165,10 +173,11 @@ parser = do
       infoOption ("marlowe-indexer " <> showVersion version) $
         long "version" <> short 'v' <> help "Show version."
 
-  helper <*> versionOption <*> (runIndexer <$> parserOptions)
+  pure $ helper <*> versionOption <*> (runIndexer <$> parserOptions)
 
 main :: IO ()
 main = do
+  parser <- mkParser
   let
     parserInfo :: ParserInfo (IO ())
     parserInfo = do

@@ -293,15 +293,25 @@ loadMarloweContextErrorToApiError err = ApiError (show err) errorCode details st
   where
     details = case err of
       LoadMarloweContextErrorNotFound -> tagged "LoadMarloweContextErrorNotFound" []
-      LoadMarloweContextErrorVersionMismatch version ->
+      LoadMarloweContextErrorVersionMismatch expected actual ->
         tagged
           "LoadMarloweContextErrorVersionMismatch"
-          ["version" .= toJSON (toDTO version)]
+          [ "expected" .= toJSON (toDTO expected)
+          , "actual" .= toJSON (toDTO actual)
+          ]
       LoadMarloweContextToCardanoError -> tagged "LoadMarloweContextToCardanoError" []
       MarloweScriptNotPublished scriptHash ->
         tagged
           "MarloweScriptNotPublished"
           ["scriptHash" .= toJSON (toDTO scriptHash)]
+      MarloweAddressNotScriptAddress addr ->
+        tagged
+          "MarloweAddressNotScriptAddress"
+          ["address" .= toJSON (toDTO addr)]
+      CardanoConversionFailure msg ->
+        tagged
+          "CardanoConversionFailure"
+          ["msg" .= msg]
       PayoutScriptNotPublished scriptHash ->
         tagged
           "PayoutScriptNotPublished"
@@ -317,18 +327,22 @@ loadMarloweContextErrorToApiError err = ApiError (show err) errorCode details st
 
     statusCode = case err of
       LoadMarloweContextErrorNotFound -> 404
-      LoadMarloweContextErrorVersionMismatch _ -> 400
+      LoadMarloweContextErrorVersionMismatch _ _ -> 400
       LoadMarloweContextToCardanoError -> 500
       MarloweScriptNotPublished _ -> 500
+      MarloweAddressNotScriptAddress _ -> 500
+      CardanoConversionFailure _ -> 500
       PayoutScriptNotPublished _ -> 500
       ExtractCreationError _ -> 500
       ExtractMarloweTransactionError _ -> 500
 
     errorCode = case err of
       LoadMarloweContextErrorNotFound -> "LoadMarloweContextErrorNotFound"
-      LoadMarloweContextErrorVersionMismatch _ -> "LoadMarloweContextErrorVersionMismatch"
+      LoadMarloweContextErrorVersionMismatch _ _ -> "LoadMarloweContextErrorVersionMismatch"
       LoadMarloweContextToCardanoError -> "LoadMarloweContextToCardanoError"
       MarloweScriptNotPublished _ -> "MarloweScriptNotPublished"
+      MarloweAddressNotScriptAddress _ -> "MarloweAddressNotScriptAddress"
+      CardanoConversionFailure _ -> "CardanoConversionFailure"
       PayoutScriptNotPublished _ -> "PayoutScriptNotPublished"
       ExtractCreationError _ -> "ExtractCreationError"
       ExtractMarloweTransactionError _ -> "ExtractMarloweTransactionError"
@@ -433,9 +447,11 @@ instance ToDTO ApplyInputsError where
 statusCodeLoadMarloweContextError :: LoadMarloweContextError -> Int
 statusCodeLoadMarloweContextError = \case
   LoadMarloweContextErrorNotFound -> 404
-  LoadMarloweContextErrorVersionMismatch _ -> 400
+  LoadMarloweContextErrorVersionMismatch _ _ -> 400
   LoadMarloweContextToCardanoError -> 500
   MarloweScriptNotPublished _ -> 500
+  MarloweAddressNotScriptAddress _ -> 500
+  CardanoConversionFailure _ -> 500
   PayoutScriptNotPublished _ -> 500
   ExtractCreationError _ -> 500
   ExtractMarloweTransactionError _ -> 500

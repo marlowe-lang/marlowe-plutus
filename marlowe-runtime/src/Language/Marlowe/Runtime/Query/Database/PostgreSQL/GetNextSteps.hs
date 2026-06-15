@@ -37,7 +37,7 @@ import Language.Marlowe.Runtime.ChainSync.Api (
   fromDatum,
   mkTxOutAssets,
   unTxIx,
-  unsafeTxOutAssets,
+  unsafeTxOutAssets, ChainTip(ChainTip),
  )
 import Language.Marlowe.Runtime.Core.Api (
   ContractId (..),
@@ -81,10 +81,10 @@ orient :: ChainPoint -> T.Transaction Orientation
 orient pos = do
   tip <- getTip
   case (pos, tip) of
-    (Genesis, Genesis) -> pure AtTip
-    (Genesis, At tip') -> pure $ BeforeTip tip'
-    (_, Genesis) -> pure $ RolledBack Genesis Genesis
-    (At pos', At tip')
+    (Genesis, ChainTip Nothing) -> pure AtTip
+    (Genesis, ChainTip (Just tip')) -> pure $ BeforeTip tip'
+    (_, ChainTip Nothing) -> pure $ RolledBack Genesis Genesis
+    (At pos', ChainTip (Just tip'))
       | pos' == tip' -> pure AtTip
       | otherwise -> do
           let BlockHeader{..} = pos'

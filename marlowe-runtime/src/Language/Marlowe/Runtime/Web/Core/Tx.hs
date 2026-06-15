@@ -11,6 +11,7 @@ module Language.Marlowe.Runtime.Web.Core.Tx (
   TxId (..),
   TextEnvelope (..),
   TxStatus (..),
+  fromCardanoUTxO,
 ) where
 
 import Control.Lens ((&), (.~), (?~))
@@ -61,9 +62,10 @@ import qualified Data.Text as T
 import Data.Word (Word16)
 import Language.Marlowe.Runtime.Web.Core.Semantics.Schema ()
 import qualified Data.ByteString as BS
-import Cardano.Binary (FromCBOR (fromCBOR), enforceSize)
+import Cardano.Binary (FromCBOR (fromCBOR), enforceSize, encodeListLen)
 import Data.Data (Typeable)
 import qualified Cardano.Ledger.Core as Ledger
+import qualified Data.Map as Map
 
 data TxBodyInAnyEra where
   TxBodyInAnyEra :: (IsShelleyBasedEra era) => TxBody era -> TxBodyInAnyEra
@@ -87,6 +89,8 @@ data TextEnvelope = TextEnvelope
   , teCborHex :: Base16
   }
   deriving (Show, Eq, Ord, Generic)
+
+instance NFData TextEnvelope
 
 data TxStatus
   = Unsigned
@@ -253,7 +257,7 @@ data TransactionUnspentOutput era = TransactionUnspentOutput
   { txIn :: C.TxIn
   , txOut :: C.TxOut C.CtxUTxO era
   }
-  deriving (Show)
+  deriving (Show, Eq, Generic)
 
 instance C.HasTypeProxy era => C.HasTypeProxy (TransactionUnspentOutput era) where
   data AsType (TransactionUnspentOutput era) = AsTransactionUnspentOutput (C.AsType era)
@@ -269,8 +273,9 @@ instance
   , C.IsShelleyBasedEra era
   ) => ToCBOR (TransactionUnspentOutput era) where
     toCBOR (TransactionUnspentOutput txin txout) =
-      toCBOR txin
-        <> toCBOR txout
+      encodeListLen 2
+        <> toCBOR txin
+          <> toCBOR txout
 
 deriving instance
   ( C.IsShelleyBasedEra era
@@ -296,7 +301,6 @@ instance
         Right tuo -> pure tuo
         Left err -> fail $ "Failed to parse TransactionUnspentOutput: " ++ show err
 
-
 instance
   ( C.IsShelleyBasedEra era
   ) => ToSchema (TransactionUnspentOutput era) where
@@ -321,3 +325,6 @@ instance
   , C.IsShelleyBasedEra era
   ) => ToHttpApiData (TransactionUnspentOutput era) where
     toUrlPiece tuo = toUrlPiece (Base16 (C.serialiseToCBOR tuo))
+
+fromCardanoUTxO :: C.UTxO era -> [TransactionUnspentOutput era]
+fromCardanoUTxO (C.UTxO m) = [TransactionUnspentOutput txIn txOut | (txIn, txOut) <- Map.toList m]

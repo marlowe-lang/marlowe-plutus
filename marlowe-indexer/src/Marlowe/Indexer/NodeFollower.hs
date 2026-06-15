@@ -7,6 +7,7 @@ module Marlowe.Indexer.NodeFollower (
   NodeFollower (..),
   NodeFollowerDependencies (..),
   RollbackToBlock (..),
+  areChangesEmpty,
   blockHeaderToPoint,
   mkLocalTipFromBlockHeader,
   mkNodeFollower,
@@ -28,7 +29,7 @@ import Cardano.Api (
 import Network.TypedProtocol (N(..), pattern Succ, Nat (..))
 import Control.Arrow ((&&&))
 import Control.Concurrent.Component (Component, mkComponent)
-import Control.Concurrent.STM (STM, TVar, modifyTVar, newTVar, readTVar, writeTVar)
+import Control.Concurrent.STM (STM, TVar, modifyTVar, newTVar, readTVar, writeTVar, retry)
 import Control.Monad (guard, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString.Base16 (encodeBase16)
@@ -36,16 +37,17 @@ import Data.IORef (IORef)
 import Data.IntMap.Lazy (IntMap)
 import qualified Data.IntMap.Lazy as IntMap
 import Data.List (sortOn)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, isNothing)
 import Data.Ord (Down (..))
 import Data.String (fromString)
 import Data.Time (UTCTime, diffUTCTime, getCurrentTime, secondsToNominalDiffTime)
 import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import Ouroboros.Network.Point (WithOrigin (..))
 import Text.Printf (printf)
-import UnliftIO (MonadIO, MonadUnliftIO, atomicModifyIORef, atomically, newIORef, withRunInIO, writeIORef)
+import UnliftIO (MonadIO, MonadUnliftIO, atomicModifyIORef, atomically, newIORef, withRunInIO, writeIORef, readTVarIO)
 import Ouroboros.Network.Protocol.ChainSync.ClientPipelined (ClientPipelinedStIdle (..), ClientStNext (..), ClientPipelinedStIntersect (..), mapChainSyncClientPipelined)
-import Log (MonadLog, logInfo_)
+import Log (MonadLog)
+import Log qualified
 import Ouroboros.Network.Protocol.ChainSync.PipelineDecision (MkPipelineDecision, PipelineDecision (..), pipelineDecisionLowHighMark, runPipelineDecision)
 import Data.Base16.Types (extractBase16)
 import qualified Marlowe.Indexer.NodeFollower.Block as Block
@@ -58,6 +60,16 @@ import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoint
 import Marlowe.Indexer.NodeQuerier (NodeQuerier, runQuery, Query (QueryStartup))
 import Data.Functor ((<&>))
 import Cardano.Ledger.BaseTypes (NonZero(..))
+import Data.Text (Text)
+
+logInfo_ :: MonadLog m => Text -> m ()
+logInfo_ msg = Log.logInfo_ $ "[NodeFollower] " <> msg
+
+-- logInfo :: ToJSON a => MonadLog m => Text -> a -> m ()
+-- logInfo msg = Log.logInfo ("[NodeFollower] " <> msg)
+-- 
+-- logAttention :: ToJSON a => MonadLog m => Text -> a -> m ()
+-- logAttention msg = Log.logAttention ("[NodeFollower] " <> msg)
 
 type NumberedCardanoBlock = (BlockNo, BlockInMode)
 type NumberedChainTip = (WithOrigin BlockNo, ChainTip)
@@ -136,6 +148,10 @@ toEmptyChanges changes =
     , changesTxCount = 0
     }
 
+areChangesEmpty :: Changes -> Bool
+areChangesEmpty Changes{..} =
+  isNothing changesRollback && null changesBlocks && changesBlockCount == 0 && changesTxCount == 0
+
 data MemoryCostConfig = MemoryCostConfig
   { maxMemoryCost :: Int
   , changesMemoryCostModel :: ChangesMemoryCostModel
@@ -178,6 +194,7 @@ mkNodeFollower NodeFollowerDependencies{..}  = mkComponent "indexer-node-client"
       changes = do
         -- Read the changes and reset the state
         currentChanges <- readTVar changesVar
+        when (areChangesEmpty currentChanges) retry
         modifyTVar changesVar toEmptyChanges
         pure currentChanges
 
@@ -186,15 +203,11 @@ mkNodeFollower NodeFollowerDependencies{..}  = mkComponent "indexer-node-client"
         mapChainSyncClientPipelined id id (blockToBlockNo &&& id) (chainTipToBlockNo &&& id) $
           mkPipelinedClient
             changesVar
-
-            -- querier = mkNodeQuerier NodeQuerierDependencies{localNodeConnectInfo}
-            -- (systemStart, C.GenesisParameters{protocolParamSecurity}, _eraHistory) <- querier.runQuery $ QueryRequest QueryStartup
-            -- . SecurityParameter . toInteger . unNonZero $ protocolParamSecurity
-            --
             do
-              securityParam <- liftIO (atomically $ readTVar securityParamVar) >>= \case
+              securityParam <- liftIO (readTVarIO securityParamVar) >>= \case
                 Just s -> pure s
                 Nothing -> do
+                  logInfo_ "Querying system start from node..."
                   s <- lift $ runQuery nodeQuerier QueryStartup <&> \(_, C.GenesisParameters{protocolParamSecurity}, _) ->
                     SecurityParameter . toInteger . unNonZero $ protocolParamSecurity
 

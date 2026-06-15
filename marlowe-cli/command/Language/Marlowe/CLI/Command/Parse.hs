@@ -1,7 +1,3 @@
-{-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 -----------------------------------------------------------------------------
@@ -56,30 +52,29 @@ module Language.Marlowe.CLI.Command.Parse (
   requiredSignersOpt,
   timeoutHelpMsg,
   txBodyFileOpt,
+  outTxFileOpt,
   walletOpt,
 ) where
 
-import Cardano.Api (
-  AddressInEra,
-  AsType (..),
-  AssetId (..),
-  AssetName (..),
-  NetworkId (..),
-  NetworkMagic (..),
-  Quantity (..),
-  SlotNo (..),
-  StakeAddressReference (..),
-  TxId (..),
-  TxIn (..),
-  TxIx (..),
-  Value,
-  deserialiseAddress,
-  deserialiseFromRawBytesHex,
-  lovelaceToValue,
-  quantityToLovelace,
-  valueFromList,
- )
-import Cardano.Api (StakeAddress (..), fromShelleyStakeCredential)
+import Cardano.Api
+    ( AddressInEra,
+      AsType(..),
+      AssetId(..),
+      NetworkId(..),
+      NetworkMagic(..),
+      Quantity(..),
+      SlotNo(..),
+      StakeAddressReference(..),
+      TxId(..),
+      TxIn(..),
+      TxIx(..),
+      Value,
+      deserialiseAddress,
+      deserialiseFromRawBytesHex,
+      lovelaceToValue,
+      quantityToLovelace,
+      StakeAddress(..),
+      fromShelleyStakeCredential )
 import Control.Applicative ((<|>))
 import Data.List.Split (splitOn)
 import Language.Marlowe.CLI.Types (
@@ -89,6 +84,7 @@ import Language.Marlowe.CLI.Types (
   SigningKeyFile (SigningKeyFile),
   SomeTimeout (..),
   TxBodyFile (TxBodyFile),
+  TxFile (TxFile),
  )
 import Marlowe.Plutus.Semantics.Types (ChoiceId (..), Input (..), InputContent (..), Party (..), Token (..))
 import Marlowe.Plutus.Semantics.Types.Address (deserialiseAddressBech32)
@@ -111,6 +107,7 @@ import Marlowe.Plutus.Semantics.Types qualified as M
 import Options.Applicative qualified as O
 import PlutusLedgerApi.Common (MajorProtocolVersion)
 import PlutusLedgerApi.Common.Versions (alonzoPV, vasilPV, changPV)
+import GHC.IsList (IsList(fromList))
 
 -- | Parser for network ID.
 parseNetworkId :: O.Mod O.OptionFields NetworkId -> O.Parser NetworkId
@@ -124,7 +121,7 @@ parseNetworkId network =
         ( O.long "testnet-magic"
             <> O.metavar "INTEGER"
             <> network
-            <> O.help "Network magic. Defaults to the CARDANO_TESTNET_MAGIC environment variable's value."
+            <> O.help "Network magic. Defaults to the CARDANO_NODE_NETWORK_ID environment variable's value."
         )
 
 -- | Parser for stake address reference.
@@ -150,7 +147,7 @@ parsePOSIXTime = POSIXTime <$> O.auto
 
 -- | Parser for Timeout.
 parseTimeout :: O.ReadM SomeTimeout
-parseTimeout = O.eitherReader $ \s -> case s =~ "^([1-9][[:digit:]]*|0)([s|m|h|d|w]?)$" of
+parseTimeout = O.eitherReader $ \s -> case s =~ ("^([1-9][[:digit:]]*|0)([s|m|h|d|w]?)$" :: String) of
   [[_, instant, ""]] -> do
     timeout <- readEither instant
     pure $ AbsoluteTimeout (fromInteger timeout)
@@ -177,7 +174,7 @@ parseTxIn :: O.ReadM TxIn
 parseTxIn =
   O.eitherReader $
     \s ->
-      case s =~ "^([[:xdigit:]]{64})#([1-9][[:digit:]]*|0)$" of
+      case s =~ ("^([[:xdigit:]]{64})#([1-9][[:digit:]]*|0)$" :: String) of
         [[_, txId, txIx]] -> do
           txId' <- readTxIdEither txId
           txIx' <- TxIx <$> readEither txIx
@@ -253,7 +250,7 @@ readAssetValueEither s =
     (amount, ' ' : token) -> do
       token' <- readAssetIdEither $ dropWhile (== ' ') token
       amount' <- Quantity <$> readEither amount
-      pure $ valueFromList [(token', amount')]
+      pure $ fromList [(token', amount')]
     _ -> Left "Invalid asset value."
 
 -- | Parser for `AssetId`.
@@ -267,7 +264,7 @@ readAssetIdEither
   -> Either String AssetId
   -- ^ Either the asset ID or an error message.
 readAssetIdEither s =
-  case s =~ "^([[:xdigit:]]{56})\\.([^+]+)$" of
+  case s =~ ("^([[:xdigit:]]{56})\\.([^+]+)$" :: String) of
     [[_, symbol, name]] -> case deserialiseFromRawBytesHex $ BS8.pack symbol of
       Right symbol' ->
         Right $
@@ -339,7 +336,7 @@ readTokenEither
   -> Either String Token
   -- ^ Either the token or an error message.
 readTokenEither s =
-  case s =~ "^([[:xdigit:]]{56})\\.([^+]+)$" of
+  case s =~ ("^([[:xdigit:]]{56})\\.([^+]+)$" :: String) of
     [[_, symbol, name]] -> case Base16.decode $ BS8.pack symbol of
       Right symbol' ->
         Right $
@@ -505,6 +502,10 @@ walletOpt = O.option . parseWallet
 txBodyFileOpt :: O.Parser TxBodyFile
 txBodyFileOpt =
   TxBodyFile <$> O.strOption (O.long "out-file" <> O.metavar "FILE" <> O.help "Output file for transaction body.")
+
+outTxFileOpt :: O.Parser TxFile
+outTxFileOpt =
+  TxFile <$> O.strOption (O.long "out-tx-file" <> O.metavar "FILE" <> O.help "The output file containing a transaction.")
 
 publishingStrategyOpt :: forall era. C.BabbageEraOnwards era -> O.Parser (PublishingStrategy era)
 publishingStrategyOpt era =

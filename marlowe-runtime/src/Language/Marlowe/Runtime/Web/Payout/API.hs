@@ -56,6 +56,7 @@ import Servant.Pagination (
   HasPagination (RangeType, getFieldValue), Ranges,
  )
 import Language.Marlowe.Runtime.Web.Adapter.Pagination (PaginatedResponse)
+import Control.DeepSeq (NFData)
 
 data PayoutHeader = PayoutHeader
   { payoutId :: TxOutRef
@@ -72,6 +73,8 @@ data Payout = Payout
   , assets :: Assets
   }
   deriving (FromJSON, ToJSON, ToSchema, Show, Eq, Generic)
+
+instance NFData Payout
 
 data PayoutStatus
   = Available

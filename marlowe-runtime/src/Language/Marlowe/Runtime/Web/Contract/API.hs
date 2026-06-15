@@ -263,6 +263,8 @@ data ContractState = ContractState
   }
   deriving (Show, Eq, Generic, ToJSON, FromJSON, ToSchema)
 
+instance NFData ContractState
+
 data ContractHeader = ContractHeader
   { contractId :: TxOutRef
   , roleTokenMintingPolicyId :: PolicyId

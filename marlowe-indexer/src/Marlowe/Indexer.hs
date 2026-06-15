@@ -68,7 +68,8 @@ mkIndexer IndexerDependencies{..} =
         indexedComponent = do
           nodeQuerier <- nodeQuerierComponent
           nodeFollower <- nodeFollowerComponent nodeQuerier
-          marloweChainFollower <- marloweChainFollowerComponent nodeQuerier nodeFollower
+          nodeQuerier' <- nodeQuerierComponent
+          marloweChainFollower <- marloweChainFollowerComponent nodeQuerier' nodeFollower
           storeComponent marloweChainFollower
 
     (run, ()) <- runComponent indexedComponent

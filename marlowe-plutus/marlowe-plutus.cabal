@@ -238,6 +238,7 @@ library marlowe-testing
     , marlowe-plutus:{marlowe-plutus}
     , mtl >=2.2 && <3
     , QuickCheck >=2.14 && <3
+    , quickcheck-instances
     , plutus-core
     , plutus-ledger-api
     , plutus-tx

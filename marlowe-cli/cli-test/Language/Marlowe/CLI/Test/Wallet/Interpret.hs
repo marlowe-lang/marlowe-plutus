@@ -114,7 +114,7 @@ import Language.Marlowe.CLI.Transaction (
   buildMintingImpl,
  )
 import Language.Marlowe.CLI.Types (
-  AnUTxO (unAnUTxO),
+  AUTxO (unAUTxO),
   CurrencyIssuer (CurrencyIssuer),
   MarloweScriptsRefs (..),
   PayFromScript,
@@ -206,7 +206,7 @@ addPublishingCosts nickname marloweScriptsRefs = do
   let MarloweScriptsRefs{mrMarloweValidator, mrRolePayoutValidator, mrOpenRoleValidator} = marloweScriptsRefs
       total =
         foldMap
-          (toPlutusValue . C.txOutValueToValue . CV.txOutValue . snd . unAnUTxO . fst)
+          (toPlutusValue . C.txOutValueToValue . CV.txOutValue . snd . unAUTxO . fst)
           [mrMarloweValidator, mrRolePayoutValidator, mrOpenRoleValidator]
   updateWallet nickname $ \wallet ->
     wallet
@@ -258,14 +258,14 @@ getQueryContext = do
 fetchWalletUTxOs
   :: (InterpretMonad env st m era)
   => Wallet era
-  -> m [AnUTxO era]
+  -> m [AUTxO era]
 fetchWalletUTxOs (_waAddress -> address) = do
   utxo <- queryByAddress address
   pure $ CT.fromUTxO utxo
 
 fetchWalletsUTxOs
   :: (InterpretMonad env st m era)
-  => m (Map.Map WalletNickname [AnUTxO era])
+  => m (Map.Map WalletNickname [AUTxO era])
 fetchWalletsUTxOs = do
   wallets <- getAllWallets
   let walletsAddresses = wallets <&> \wallet -> _waAddress wallet
@@ -280,7 +280,7 @@ fetchWalletsUTxOs = do
 
   let addressToUtxos =
         Map.fromListWith mappend $
-          utxos <&> \anUtxo@(CT.AnUTxO (_, C.TxOut addr _ _ _)) ->
+          utxos <&> \anUtxo@(CT.AUTxO (_, C.TxOut addr _ _ _)) ->
             (toPlutusAddress addr, [anUtxo])
 
   pure $
@@ -292,9 +292,9 @@ fetchWalletsValue
    . (InterpretMonad env st m era)
   => m (Map.Map WalletNickname P.Value)
 fetchWalletsValue = do
-  (walletsUtxos :: Map.Map WalletNickname [CT.AnUTxO era]) <- fetchWalletsUTxOs
+  (walletsUtxos :: Map.Map WalletNickname [CT.AUTxO era]) <- fetchWalletsUTxOs
   pure $
-    walletsUtxos <&> foldMap \(CT.AnUTxO (_, C.TxOut _ txOutValue _ _)) ->
+    walletsUtxos <&> foldMap \(CT.AUTxO (_, C.TxOut _ txOutValue _ _)) ->
       CV.toPlutusValue $ C.txOutValueToValue txOutValue
 
 fetchWalletValue
@@ -304,7 +304,7 @@ fetchWalletValue
   -> m P.Value
 fetchWalletValue wallet = do
   walletUtxos <- fetchWalletUTxOs wallet
-  pure $ foldMapFlipped walletUtxos \(CT.AnUTxO (_, C.TxOut _ txOutValue _ _)) ->
+  pure $ foldMapFlipped walletUtxos \(CT.AUTxO (_, C.TxOut _ txOutValue _ _)) ->
     CV.toPlutusValue $ C.txOutValueToValue txOutValue
 
 getSingletonCurrency
@@ -511,8 +511,8 @@ interpret
   -> m ()
 interpret so@CheckBalance{..} = do
   wallet@Wallet{..} <- getWallet woWalletNickname
-  utxos <- fetchWalletUTxOs wallet :: m [AnUTxO era]
-  let onChainTotal = CV.toPlutusValue $ foldMap CT.anUTxOValue utxos
+  utxos <- fetchWalletUTxOs wallet :: m [AUTxO era]
+  let onChainTotal = CV.toPlutusValue $ foldMap CT.aUTxOValue utxos
       fees = walletTxFees wallet
       administrativeCosts = lovelaceToPlutusValue fees <> _waPublishingCosts
 
@@ -601,7 +601,7 @@ interpret so@BurnAll{..} = do
   Currencies (Map.toList -> currencies) <- use currenciesL
   allWalletsUtxos <- fold <$> fetchWalletsUTxOs
   wallets <- getAllWallets
-  let initialTotal = toPlutusValue $ foldMap CT.anUTxOValue allWalletsUtxos
+  let initialTotal = toPlutusValue $ foldMap CT.aUTxOValue allWalletsUtxos
       initialSymbols = Set.fromList $ P.symbols initialTotal
   for_ currencies \(currencyNickname, Currency{ccIssuer = possibleIssuer, ccCurrencySymbol, ccMintingExpirationSlot}) -> case possibleIssuer of
     Just issuer ->
@@ -711,8 +711,8 @@ interpret SplitWallet{..} = do
   void $ buildFaucet ("[createCollaterals] " :: String) [address] values address skey
 interpret wo@ReturnFunds{} = do
   (era :: BabbageEraOnwards era) <- view eraL
-  (allWalletsUtxos :: Map.Map WalletNickname [AnUTxO era]) <- fetchWalletsUTxOs
-  (utxos, signingKeys) <- ifoldMapMFlipped allWalletsUtxos \n (utxos :: [CT.AnUTxO era]) -> do
+  (allWalletsUtxos :: Map.Map WalletNickname [AUTxO era]) <- fetchWalletsUTxOs
+  (utxos, signingKeys) <- ifoldMapMFlipped allWalletsUtxos \n (utxos :: [CT.AUTxO era]) -> do
     if n /= faucetNickname
       then do
         (Wallet{_waSigningKey, _waExternal} :: Wallet era) <- getWallet n
@@ -722,8 +722,8 @@ interpret wo@ReturnFunds{} = do
       else pure mempty
 
   Wallet{_waAddress} <- getFaucet
-  let total = foldMap CT.anUTxOValue utxos
-      inputs = map (fst . CT.unAnUTxO) utxos
+  let total = foldMap CT.aUTxOValue utxos
+      inputs = map (fst . CT.unAUTxO) utxos
       outputs = []
       changeAddress = _waAddress
 

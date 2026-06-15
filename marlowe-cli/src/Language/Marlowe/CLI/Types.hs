@@ -7,23 +7,7 @@
 -- Portability :  Portable
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StrictData #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns #-}
 
 -- | Types for the Marlowe CLI tool.
@@ -46,7 +30,7 @@ module Language.Marlowe.CLI.Types (
   ValidatorInfo (..),
 
   -- * eUTxOs
-  AnUTxO (..),
+  AUTxO (..),
   PayFromScript (..),
   PayToScript (..),
 
@@ -72,10 +56,12 @@ module Language.Marlowe.CLI.Types (
   MarloweScriptsRefs (..),
   PublishingStrategy (..),
 
-  -- * Newtype wrappers
+  -- * Helpers
+  MessageFormat(..),
   PrintStats (..),
   SigningKeyFile (..),
   TxBodyFile (..),
+  TxFile (..),
 
   -- * constants
   marlowePlutusVersion,
@@ -92,7 +78,7 @@ module Language.Marlowe.CLI.Types (
   txWitnessSigningKeyToSomePaymentSigningKey,
 
   -- * accessors and converters
-  anUTxOValue,
+  aUTxOValue,
   getVerificationKey,
   queryContextNetworkId,
   toQueryContext,
@@ -186,6 +172,8 @@ import Plutus.V1.Ledger.SlotConfig (SlotConfig, posixTimeToEnclosingSlot, slotTo
 import PlutusLedgerApi.V1 (CurrencySymbol, Datum, DatumHash, ExBudget, Redeemer)
 import PlutusLedgerApi.V1 qualified as P
 import PlutusLedgerApi.V3 qualified as PV3
+import qualified Data.Aeson as A
+import qualified Data.Aeson.Types as A
 
 -- | Exception for Marlowe CLI.
 newtype CliError = CliError {unCliError :: String}
@@ -290,7 +278,7 @@ instance ToJSON SomeMarloweTransaction where
             eraStr = case era of
               BabbageEraOnwardsBabbage -> "babbage"
               BabbageEraOnwardsConway -> "conway"
-              BabbageEraOnwardsDijkstra -> "dijkstra"
+              -- BabbageEraOnwardsDijkstra -> "dijkstra"
             plutusVersionStr :: String
             plutusVersionStr = case plutusVersion of
               C.PlutusScriptV1 -> "PlutusScriptV1"
@@ -626,7 +614,7 @@ data OutputQuery era result where
   AssetOnly :: AssetId -> OutputQuery era (OutputQueryResult era)
   PolicyIdOnly :: C.PolicyId -> OutputQuery era (OutputQueryResult era)
   FindReferenceScript
-    :: PlutusScriptVersion lang -> C.ScriptHash -> OutputQuery era (Maybe (AnUTxO era, PlutusScript lang))
+    :: PlutusScriptVersion lang -> C.ScriptHash -> OutputQuery era (Maybe (AUTxO era, PlutusScript lang))
 
 data SomeTimeout = AbsoluteTimeout Integer | RelativeTimeout NominalDiffTime
   deriving stock (Eq, Generic, Show)
@@ -698,6 +686,23 @@ data PublishingStrategy era
 
 newtype PrintStats = PrintStats {unPrintStats :: Bool}
 
+data MessageFormat = MessageFormatText | MessageFormatJson | MessageFormatYaml
+  deriving (Eq)
+
+instance Show MessageFormat where
+  show = \case
+    MessageFormatText -> "text"
+    MessageFormatJson -> "json"
+    MessageFormatYaml -> "yaml"
+
+instance A.ToJSON MessageFormat where
+  toJSON = A.String . \case
+    MessageFormatText -> "text"
+    MessageFormatJson -> "json"
+    MessageFormatYaml -> "yaml"
+
+newtype TxFile = TxFile {unTxFile :: FilePath}
+
 newtype TxBodyFile = TxBodyFile {unTxBodyFile :: FilePath}
 
 newtype SigningKeyFile = SigningKeyFile {unSigningKeyFile :: FilePath}
@@ -705,23 +710,23 @@ newtype SigningKeyFile = SigningKeyFile {unSigningKeyFile :: FilePath}
   deriving anyclass (FromJSON, ToJSON)
 
 -- | A single UTxO. We preserve the `Tuple` structure for consistency with `UTxO`.
-newtype AnUTxO era = AnUTxO {unAnUTxO :: (C.TxIn, C.TxOut C.CtxUTxO era)}
+newtype AUTxO era = AUTxO {unAUTxO :: (C.TxIn, C.TxOut C.CtxUTxO era)}
   deriving stock (Eq, Generic, Show)
   deriving anyclass (FromJSON, ToJSON)
 
-fromUTxO :: C.UTxO era -> [AnUTxO era]
-fromUTxO (Map.toList . C.unUTxO -> items) = map AnUTxO items
+fromUTxO :: C.UTxO era -> [AUTxO era]
+fromUTxO (Map.toList . C.unUTxO -> items) = map AUTxO items
 
-toUTxO :: [AnUTxO era] -> C.UTxO era
-toUTxO (map unAnUTxO -> utxos) = C.UTxO . Map.fromList $ utxos
+toUTxO :: [AUTxO era] -> C.UTxO era
+toUTxO (map unAUTxO -> utxos) = C.UTxO . Map.fromList $ utxos
 
-anUTxOValue :: forall era. AnUTxO era -> C.Value
-anUTxOValue (AnUTxO (_, C.TxOut _ v _ _)) = C.txOutValueToValue v
+aUTxOValue :: forall era. AUTxO era -> C.Value
+aUTxOValue (AUTxO (_, C.TxOut _ v _ _)) = C.txOutValueToValue v
 
 data MarloweScriptsRefs lang era = MarloweScriptsRefs
-  { mrMarloweValidator :: (AnUTxO era, ValidatorInfo lang era)
-  , mrRolePayoutValidator :: (AnUTxO era, ValidatorInfo lang era)
-  , mrOpenRoleValidator :: (AnUTxO era, ValidatorInfo lang era)
+  { mrMarloweValidator :: (AUTxO era, ValidatorInfo lang era)
+  , mrRolePayoutValidator :: (AUTxO era, ValidatorInfo lang era)
+  , mrOpenRoleValidator :: (AUTxO era, ValidatorInfo lang era)
   }
 
 data CoinSelectionStrategy = CoinSelectionStrategy

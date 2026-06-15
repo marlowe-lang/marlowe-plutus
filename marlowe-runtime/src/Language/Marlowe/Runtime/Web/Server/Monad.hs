@@ -4,6 +4,7 @@
 
 -- | Defines a custom Monad for the web server's handler functions to run in.
 module Language.Marlowe.Runtime.Web.Server.Monad (
+  ApplyInputs,
   InitContract,
   LoadTxError (..),
   ServerDependencies (..),
@@ -60,7 +61,7 @@ import Language.Marlowe.Runtime.Core.Api
 --import Servant (Handler, ServerError)
 import Language.Marlowe.Runtime.Query (SomeContractState, TempTx)
 import qualified Language.Marlowe.Runtime.Query as Query
-import Log (LogT, MonadLog, logInfo_, Logger, LogLevel)
+import Log (LogT, MonadLog, Logger, LogLevel)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Lens (Getter, view)
 import Log.Monad (runLogT)
@@ -96,7 +97,6 @@ newtype ServerM a = ServerM {runServerM :: LogT (ReaderT (ServerDependencies Ser
 runServer :: Logger -> LogLevel -> ServerDependencies ServerM -> ServerM a -> IO a
 runServer logger logLevel deps server =
   flip runReaderT deps $ runLogT "marlowe-runtime-server" logger logLevel $ runServerM do
-    logInfo_ "Starting Marlowe Runtime Server"
     server
 
 runEff0

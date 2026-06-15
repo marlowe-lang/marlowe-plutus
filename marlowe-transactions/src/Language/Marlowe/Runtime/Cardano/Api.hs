@@ -258,11 +258,18 @@ toCardanoTxOutDatum
   -> Maybe DatumHash
   -> Maybe Datum
   -> Maybe (C.TxOutDatum C.CtxTx era)
-toCardanoTxOutDatum =
-  curry . C.inEonForEra (const $ Just C.TxOutDatumNone) \scriptDataSupported -> \case
-    (Nothing, Nothing) -> Just C.TxOutDatumNone
-    (Just hash, Nothing) -> C.TxOutDatumHash scriptDataSupported <$> toCardanoDatumHash hash
-    (_, Just datum) -> Just $ C.TxOutSupplementalDatum scriptDataSupported $ unsafeHashableScriptData $ toCardanoScriptData datum
+toCardanoTxOutDatum era mDatumHash mDatum = do
+  let
+    onEra = C.inEonForEra (Just C.TxOutDatumNone) \scriptDataSupported -> case (mDatumHash, mDatum) of
+      (Nothing, Nothing) -> Just C.TxOutDatumNone
+      (Just hash, Nothing) -> C.TxOutDatumHash scriptDataSupported <$> toCardanoDatumHash hash
+      (_, Just datum) -> Just $ C.TxOutSupplementalDatum scriptDataSupported $ unsafeHashableScriptData $ toCardanoScriptData datum
+      -- -- FIXME: Inline datum should be an option on the table as well
+      -- --        but currently it breaks min ADA adjustment.
+      -- (_, Just datum) -> do
+      --  babbageEraOnwards <- C.inEonForEra Nothing pure era
+      --  Just . C.TxOutDatumInline babbageEraOnwards . unsafeHashableScriptData $ toCardanoScriptData datum
+  onEra era
 
 toCardanoTxOutDatum'
   :: C.CardanoEra era

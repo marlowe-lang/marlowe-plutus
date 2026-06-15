@@ -149,13 +149,23 @@ instance Arbitrary SubmitStatus where
   arbitrary = elements [Submitting, Accepted]
   shrink = genericShrink
 
+instance Arbitrary a => Arbitrary (Expected a) where
+  arbitrary = Expected <$> arbitrary
+  shrink (Expected a) = Expected <$> shrink a
+
+instance Arbitrary a => Arbitrary (Actual a) where
+  arbitrary = Actual <$> arbitrary
+  shrink (Actual a) = Actual <$> shrink a
+
 instance Arbitrary LoadMarloweContextError where
   arbitrary =
     oneof
       [ pure LoadMarloweContextErrorNotFound
-      , LoadMarloweContextErrorVersionMismatch <$> arbitrary
+      , LoadMarloweContextErrorVersionMismatch <$> arbitrary <*> arbitrary
       , pure LoadMarloweContextToCardanoError
       , MarloweScriptNotPublished <$> arbitrary
+      , MarloweAddressNotScriptAddress <$> arbitrary
+      , CardanoConversionFailure <$> arbitrary
       , PayoutScriptNotPublished <$> arbitrary
       , ExtractCreationError <$> arbitrary
       , ExtractMarloweTransactionError <$> arbitrary

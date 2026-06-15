@@ -141,7 +141,7 @@ import Language.Marlowe.CLI.Transaction (
   submitBody,
  )
 import Language.Marlowe.CLI.Types (
-  AnUTxO (AnUTxO, unAnUTxO),
+  AUTxO (AUTxO, unAUTxO),
   CliEnv,
   CliError (..),
   DatumInfo (..),
@@ -156,7 +156,7 @@ import Language.Marlowe.CLI.Types (
   SigningKeyFile (..),
   SomeMarloweTransaction (..),
   SomePaymentSigningKey,
-  TxBodyFile (TxBodyFile, unTxBodyFile),
+  TxFile (TxFile),
   TxBuildupContext (..),
   ValidatorInfo (..),
   askEra,
@@ -222,8 +222,6 @@ import Marlowe.Plutus.AssocMap qualified as AM (toList)
 import PlutusTx.AssocMap qualified as PAM (toList)
 import Prettyprinter (Pretty (..))
 import System.IO (hPutStrLn, stderr)
-import qualified Data.Text as T
-import Cardano.Crypto.Hash (hashToTextAsHex)
 
 -- | Serialise a deposit input to a file.
 makeDeposit
@@ -557,7 +555,7 @@ makeMarlowe marloweIn@MarloweTransaction{..} transactionInput =
           when (txInterval' /= txInterval) $
             liftIO $
               hPutStrLn stderr $
-                "Rounding  `TransactionInput` txInterval boundaries to:" <> show txInterval'
+                "Rounding `TransactionInput` txInterval boundaries to:" <> show txInterval'
           pure ti{txInterval = txInterval'}
 
     transactionInput' <- roundTxInterval transactionInput
@@ -627,7 +625,7 @@ runTransaction
   -- ^ The files for required signing keys.
   -> Maybe FilePath
   -- ^ The file containing JSON metadata, if any.
-  -> TxBodyFile
+  -> TxFile
   -- ^ The output file for the transaction body.
   -> Maybe Second
   -- ^ Number of seconds to wait for the transaction to be confirmed, if it is to be confirmed.
@@ -637,7 +635,7 @@ runTransaction
   -- ^ Assertion that the transaction is invalid.
   -> m TxId
   -- ^ Action to build the transaction body.
-runTransaction connection marloweInBundle marloweOutFile inputs outputs changeAddress signingKeyFiles metadataFile (TxBodyFile _bodyFile) timeout printStats invalid =
+runTransaction connection marloweInBundle marloweOutFile inputs outputs changeAddress signingKeyFiles metadataFile (TxFile txFile) timeout printStats invalid =
   do
     metadata <- readMaybeMetadata metadataFile
     SomeMarloweTransaction _ era' marloweOut' <- decodeFileStrict marloweOutFile
@@ -663,7 +661,10 @@ runTransaction connection marloweInBundle marloweOutFile inputs outputs changeAd
               metadata
               printStats
               invalid
-          -- doWithShelleyBasedEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
+          doWithShelleyBasedEra
+            $ liftCliIO
+            $ writeFileTextEnvelope (File txFile) Nothing
+            $ C.makeSignedTransaction [] body
           pure $ getTxId body
 
     case testSameEra era era' of
@@ -711,6 +712,7 @@ runTransactionImpl
 runTransactionImpl txBuildupCtx marloweInBundle marloweOut' inputs outputs changeAddress signingKeys metadata printStats invalid =
   do
     let queryCtx = toQueryContext txBuildupCtx
+    liftIO $ hPutStrLn stderr $ "Running transcation with marlowe out:" <> show marloweOut'
     era <- askEra @era
     protocol <- getLedgerProtocolParams queryCtx
     let marloweParams = MarloweParams { rolesCurrency = mtRolesCurrency marloweOut' }
@@ -759,7 +761,6 @@ runTransactionImpl txBuildupCtx marloweInBundle marloweOut' inputs outputs chang
                   guard (outputValue /= mempty)
                   pure $
                     buildPayToScript era scriptAddress outputValue outputDatum
-
               roleAddress = viAddress $ mtRoleValidator marloweOut
           (payments :: [(AddressInEra era, C.TxOutDatum C.CtxTx era, Api.Value)]) <-
             catMaybes
@@ -807,13 +808,6 @@ runTransactionImpl txBuildupCtx marloweInBundle marloweOut' inputs outputs chang
                 metadata
                 printStats
                 invalid
-          liftIO $ putStrLn "Built transaction body successfully."
-          liftIO $ putStrLn "Submitting transaction with id:"
-          let
-            txId@(C.TxId txIdBytes) = getTxId body
-            bodyFile = File ((T.unpack . hashToTextAsHex $ txIdBytes) <> ".tx.json")
-          liftIO $ print txId
-          doWithShelleyBasedEra $ liftCliIO $ writeFileTextEnvelope bodyFile Nothing body
           void $ submitBody txBuildupCtx body signingKeys invalid
           pure body
     go marloweOut'
@@ -840,7 +834,7 @@ withdrawFunds
   -- ^ The files for required signing keys.
   -> Maybe FilePath
   -- ^ The file containing JSON metadata, if any.
-  -> TxBodyFile
+  -> TxFile
   -- ^ The output file for the transaction body.
   -> Maybe Second
   -- ^ Number of seconds to wait for the transaction to be confirmed, if it is to be confirmed.
@@ -850,7 +844,7 @@ withdrawFunds
   -- ^ Assertion that the transaction is invalid.
   -> m TxId
   -- ^ Action to build the transaction body.
-withdrawFunds connection marloweOutFile roleName collateral inputs outputs changeAddress signingKeyFiles metadataFile (TxBodyFile bodyFile) timeout printStats invalid =
+withdrawFunds connection marloweOutFile roleName collateral inputs outputs changeAddress signingKeyFiles metadataFile (TxFile txFile) timeout printStats invalid =
   do
     metadata <- readMaybeMetadata metadataFile
     SomeMarloweTransaction _ _ marloweOut <- decodeFileStrict marloweOutFile
@@ -896,7 +890,10 @@ withdrawFunds connection marloweOutFile roleName collateral inputs outputs chang
           metadata
           printStats
           invalid
-    doWithShelleyBasedEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
+    doWithShelleyBasedEra
+      $ liftCliIO
+      $ writeFileTextEnvelope (File txFile) Nothing
+      $ C.makeSignedTransaction [] body
     let txBuildupCtx = mkNodeTxBuildup connection timeout
     submitBody txBuildupCtx body signingKeys invalid
 
@@ -918,8 +915,8 @@ autoRunTransaction
   -- ^ The files for required signing keys.
   -> Maybe FilePath
   -- ^ The file containing JSON metadata, if any.
-  -> TxBodyFile
-  -- ^ The output file for the transaction body.
+  -> TxFile
+  -- ^ The output file for the unsigned transaction.
   -> Maybe Second
   -- ^ Number of seconds to wait for the transaction to be confirmed, if it is to be confirmed.
   -> Bool
@@ -928,7 +925,7 @@ autoRunTransaction
   -- ^ Assertion that the transaction is invalid.
   -> m TxId
   -- ^ Action to build the transaction body.
-autoRunTransaction connection marloweInBundle marloweOutFile changeAddress signingKeyFiles metadataFile (TxBodyFile bodyFile) timeout printStats invalid =
+autoRunTransaction connection marloweInBundle marloweOutFile changeAddress signingKeyFiles metadataFile (TxFile txFile) timeout printStats invalid =
   do
     metadata <- readMaybeMetadata metadataFile
     SomeMarloweTransaction _ era' marloweOut' <- decodeFileStrict marloweOutFile
@@ -954,7 +951,10 @@ autoRunTransaction connection marloweInBundle marloweOutFile changeAddress signi
               printStats
               invalid
           -- Write the transaction file.
-          doWithShelleyBasedEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
+          doWithShelleyBasedEra
+            $ liftCliIO
+            $ writeFileTextEnvelope (File txFile) Nothing
+            $ C.makeSignedTransaction [] body
           pure $ getTxId body
 
     case testSameEra era era' of
@@ -1231,8 +1231,8 @@ autoWithdrawFunds
   -- ^ The files for required signing keys.
   -> Maybe FilePath
   -- ^ The file containing JSON metadata, if any.
-  -> TxBodyFile
-  -- ^ The output file for the transaction body.
+  -> TxFile
+  -- ^ The output file for the transaction.
   -> Maybe Second
   -- ^ Number of seconds to wait for the transaction to be confirmed, if it is to be confirmed.
   -> PrintStats
@@ -1241,7 +1241,7 @@ autoWithdrawFunds
   -- ^ Assertion that the transaction is invalid.
   -> m TxId
   -- ^ Action to build the transaction body.
-autoWithdrawFunds connection marloweOutFile roleName changeAddress signingKeyFiles metadataFile bodyFile timeout printStats invalid =
+autoWithdrawFunds connection marloweOutFile roleName changeAddress signingKeyFiles metadataFile (TxFile txFile) timeout printStats invalid =
   do
     era <- askEra
     -- Read the Marlowe transaction information that was used to populate the role-payout address.
@@ -1270,14 +1270,17 @@ autoWithdrawFunds connection marloweOutFile roleName changeAddress signingKeyFil
               printStats
               invalid
 
-          doWithShelleyBasedEra $ liftCliIO $ writeFileTextEnvelope (File $ unTxBodyFile bodyFile) Nothing txBody
+          doWithShelleyBasedEra
+            $ liftCliIO
+            $ writeFileTextEnvelope (File txFile) Nothing
+            $ C.makeSignedTransaction [] txBody
           pure $ getTxId txBody
 
     case testSameEra era era' of
       Just Refl -> go marloweOut
       Nothing -> throwError $ fromString $ "Running in " <> show era <> ", read file in " <> show era'
 
-type FilterPayouts era = [AnUTxO era] -> [AnUTxO era]
+type FilterPayouts era = [AUTxO era] -> [AUTxO era]
 
 -- | Withdraw funds for a specific role from the role address, without selecting inputs or outputs.
 autoWithdrawFundsImpl
@@ -1333,17 +1336,17 @@ autoWithdrawFundsImpl txBuildupCtx token validatorInfo range changeAddress signi
             TxOutDatumHash _ datumHash -> datumHash == roleHash
     -- Find the role token.
     allPayouts <-
-      fmap (map AnUTxO . filter (checkRole . snd) . M.toList . unUTxO)
+      fmap (map AUTxO . filter (checkRole . snd) . M.toList . unUTxO)
         . queryByAddress queryCtx
         $ roleAddress
     -- Set the value of one role token.
     role <- liftCli $ toCardanoValue $ singleton rolesCurrency roleName 1
     let utxos = filterPayoutUtxos allPayouts
         -- Build the spending from the script.
-        spend = buildPayFromScript roleScript (Just $ diDatum roleDatum) roleRedeemer . fst . unAnUTxO <$> utxos
+        spend = buildPayFromScript roleScript (Just $ diDatum roleDatum) roleRedeemer . fst . unAUTxO <$> utxos
         -- Find how much is being spent from the script.
         -- The output value should include the spending from the script and the role token.
-        withdrawn = mconcat [txOutValueToValue value | AnUTxO (_, TxOut _ value _ _) <- utxos]
+        withdrawn = mconcat [txOutValueToValue value | AUTxO (_, TxOut _ value _ _) <- utxos]
     -- Ensure that the output meets the min-Ada requirement.
     output <- ensureMinUtxo protocol (changeAddress, C.TxOutDatumNone, withdrawn <> role) >>= uncurry3 makeTxOut'
 

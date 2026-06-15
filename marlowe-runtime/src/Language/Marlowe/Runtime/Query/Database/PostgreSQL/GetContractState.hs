@@ -46,7 +46,9 @@ import Language.Marlowe.Runtime.Core.Api (
 import qualified PlutusLedgerApi.V2 as PV2
 import Prelude hiding (init)
 
-getContractState :: ContractId -> T.Transaction (Maybe Query.SomeContractState)
+type GetContractState m = ContractId -> m (Maybe Query.SomeContractState)
+
+getContractState :: GetContractState T.Transaction
 getContractState (ContractId TxOutRef{..}) = runMaybeT do
   let params = (unTxId txId, fromIntegral $ unTxIx txIx)
   (contractId, roleTokenMintingPolicyId, metadata, initialBlock, initialOutput) <-

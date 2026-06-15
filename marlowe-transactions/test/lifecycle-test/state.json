@@ -1,0 +1,11 @@
+{
+    "accounts": [
+        [
+            [{ "address": "addr_test1vzu2tr288maa3x2wef40te9g5e765dklftm2wmclp7n689qlhhfpv" }, { "currency_symbol": "", "token_name": "" }],
+            3000000
+        ]
+    ],
+    "boundValues": [],
+    "choices": [],
+    "minTime": 1
+}

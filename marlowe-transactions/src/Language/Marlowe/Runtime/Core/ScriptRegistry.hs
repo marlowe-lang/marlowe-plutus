@@ -67,6 +67,10 @@ fromCardanoPlutusScriptV2 :: C.PlutusScript C.PlutusScriptV2 -> ScriptInPlutus
 fromCardanoPlutusScriptV2 (C.PlutusScriptSerialised bytes) =
     ScriptInPlutusV2 bytes
 
+fromCardanoPlutusScriptV3 :: C.PlutusScript C.PlutusScriptV3 -> ScriptInPlutus
+fromCardanoPlutusScriptV3 (C.PlutusScriptSerialised bytes) =
+    ScriptInPlutusV3 bytes
+
 fromCardanoScriptInAnyLang :: C.ScriptInAnyLang -> Maybe ScriptInPlutus
 fromCardanoScriptInAnyLang (C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV2) (C.PlutusScript C.PlutusScriptV2 (C.PlutusScriptSerialised bytes))) =
     Just $ ScriptInPlutusV2 bytes
@@ -967,21 +971,16 @@ getMarloweVersion hash =
     , (SomeMarloweVersion MarloweV1,) <$> Map.lookup hash develScripts
     ]
 
--- | Get the set of known script hash sets associated with the given Marlowe
--- version.
---
--- NOTE Membership of the current script addresses is enforced in the test
--- suite.
-getScripts :: MarloweVersion v -> Set MarloweScripts
-getScripts = \case
+newtype GetAllScripts = GetAllScripts (forall v. MarloweVersion v -> Set MarloweScripts)
+
+getAllScripts :: GetAllScripts
+getAllScripts = GetAllScripts \case
   MarloweV1 -> v1Scripts
 
-type GetCurrentScripts v = MarloweVersion v -> MarloweScripts
+-- Provides the current official version of the scripts for a given
+-- language version.
+newtype GetCurrentScripts = GetCurrentScripts (forall v. MarloweVersion v -> MarloweScripts)
 
--- | Get the current script hash set for the given Marlowe version as of the
--- current git commit.
---
--- NOTE: Enforced in the test suite.
-getCurrentScripts :: GetCurrentScripts v
-getCurrentScripts = \case
+getCurrentScripts :: GetCurrentScripts
+getCurrentScripts = GetCurrentScripts \case
   MarloweV1 -> caseAsDataV1Scripts

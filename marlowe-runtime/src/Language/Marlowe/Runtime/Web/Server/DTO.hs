@@ -98,7 +98,7 @@ import Language.Marlowe.Runtime.Core.Api (
  )
 import qualified Language.Marlowe.Runtime.Core.Api as Core
 import qualified Language.Marlowe.Runtime.Core.Api as Core.Api (Payout (..))
-import Language.Marlowe.Runtime.Transaction.Api (Account (..), Accounts, mkAccounts, unAccounts)
+import Language.Marlowe.Runtime.Transaction.Api (Account (..), Accounts, mkAccounts, unAccounts, Actual(Actual), Expected(Expected))
 import qualified Language.Marlowe.Runtime.Transaction.Api as Tx
 import qualified Language.Marlowe.Runtime.Web.Contract.API as Web
 import qualified Language.Marlowe.Runtime.Web.Core.Address as Web
@@ -125,8 +125,11 @@ import qualified Servant.Pagination as Pagination
 import Unsafe.Coerce (unsafeCoerce)
 import qualified Language.Marlowe.Runtime.Query as Query
 import qualified Cardano.Api as C
-import Language.Marlowe.Runtime.Cardano.Api (toCardanoTxIn, fromCardanoTxIn, fromCardanoTxOutCtxUTxO)
-import Language.Marlowe.Runtime.Cardano.Api (toCardanoTxOut)
+import Language.Marlowe.Runtime.Cardano.Api
+    ( toCardanoTxIn,
+      fromCardanoTxIn,
+      fromCardanoTxOutCtxUTxO,
+      toCardanoTxOut )
 import Control.Monad.Catch (MonadThrow (throwM), Exception)
 
 -- | A class that states a type has a DTO representation.
@@ -946,6 +949,24 @@ instance FromDTO Chain.UTxO where
       txOutRef = fromCardanoTxIn txIn
     transactionOutput <- fromCardanoTxOutCtxUTxO C.ConwayEra txOut
     pure $ Chain.UTxO txOutRef transactionOutput
+
+instance HasDTO (Actual a) where
+  type DTO (Actual a) = DTO a
+
+instance ToDTO a => ToDTO (Actual a) where
+  toDTO (Actual a) = toDTO a
+
+instance FromDTO a => FromDTO (Actual a) where
+  fromDTO = fmap Actual . fromDTO
+
+instance HasDTO (Expected a) where
+  type DTO (Expected a) = DTO a
+
+instance ToDTO a => ToDTO (Expected a) where
+  toDTO (Expected a) = toDTO a
+
+instance FromDTO a => FromDTO (Expected a) where
+  fromDTO = fmap Expected . fromDTO
 
 -- instance ToDTO (Query.TempTx Tx.ContractInitializedInEra) where
 --   toDTO Query.TempTx{..} =

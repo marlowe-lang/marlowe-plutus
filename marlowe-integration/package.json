@@ -1,30 +1,29 @@
 {
-  "author": "paluh (aka Tomasz Rybarczyk)",
-  "bin": {
-    "marlowe-integration": "dist/index.js"
-  },
-  "description": "Integration framework for the Marlowe Runtime components.",
-  "devDependencies": {
-    "@tsconfig/node-lts": "^24.0.0",
-    "@types/node": "^25.6.0",
-    "@types/pg": "^8.11.0",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.3"
-  },
-  "license": "BSD 3-Clause",
-  "main": "yes",
-  "name": "yes",
-  "repository": "https://github.com/marlowe-lang/marlowe-runtime-ng",
+  "name": "marlowe-lang",
+  "packageManager": "yarn-berry",
+  "workspaces": [
+    "packages/*",
+    "app"
+  ],
   "scripts": {
-    "cli": "tsx src/index.ts",
-    "build": "tsc",
-    "start": "node dist/index.js"
+    "build": "tsc --build"
   },
-  "type": "module",
-  "version": "0.0.1",
-  "dependencies": {
-    "pg": "^8.16.0",
-    "vitest": "^4.1.5",
-    "yargs": "^18.0.0"
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@vtsls/language-server": "^0.2.9",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vite-plugin-dts": "^4.5.4",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.5.0",
+    "vitest": "^4.1.8",
+    "vue-tsc": "^3.3.4"
+  },
+  "resolutions": {
+    "@konduit/bln@workspace:^": "portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/bln",
+    "@konduit/cardano-keys@workspace:^": "portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/cardano-keys",
+    "@konduit/codec@workspace:^": "portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/codec",
+    "@konduit/konduit-consumer@workspace:^": "portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/konduit-consumer"
   }
 }

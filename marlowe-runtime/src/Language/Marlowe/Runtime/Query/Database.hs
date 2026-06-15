@@ -20,7 +20,7 @@ import Language.Marlowe.Runtime.Query (
   Withdrawal,
   WithdrawalFilter,
  )
-import Language.Marlowe.Runtime.ChainSync.Api (BlockHeader, ChainPoint, TxId, TxOutRef)
+import Language.Marlowe.Runtime.ChainSync.Api (BlockHeader, ChainPoint, TxId, TxOutRef, ChainTip)
 import Language.Marlowe.Runtime.Core.Api (ContractId, SomeMarloweVersion)
 import Language.Marlowe.Runtime.History.Api
     ( MarloweBlock, SomeCreateStep, SomeContractStep )
@@ -79,10 +79,8 @@ logDatabaseQueries :: MonadLog m => DatabaseQueries m -> DatabaseQueries m
 logDatabaseQueries DatabaseQueries{..} =
   DatabaseQueries
     { getTip = do
-        let
-          ev = "GetTip"
         result <- getTip
-        logTrace ev result
+        logTrace "GetTip" result
         pure result
     , getTipForContract = \contractId -> do
         let
@@ -221,7 +219,7 @@ hoistDatabaseQueries f DatabaseQueries{..} =
     }
 
 data DatabaseQueries m = DatabaseQueries
-  { getTip :: m ChainPoint
+  { getTip :: m ChainTip
   , getTipForContract :: ContractId -> m ChainPoint
   , getCreateStep :: ContractId -> m (Maybe (BlockHeader, SomeCreateStep))
   , getIntersection :: [BlockHeader] -> m (Maybe BlockHeader)

@@ -44,6 +44,7 @@ common lang
     GADTs
     GeneralizedNewtypeDeriving
     ImportQualifiedPost
+    ImpredicativeTypes
     KindSignatures
     LambdaCase
     MultiParamTypeClasses
@@ -57,7 +58,7 @@ common lang
     RecordWildCards
     ScopedTypeVariables
     StandaloneDeriving
-    StrictData
+    -- StrictData
     TupleSections
     TypeApplications
     TypeFamilies
@@ -180,6 +181,7 @@ library
     Language.Marlowe.Runtime.Web.Adapter.Servant.UVerbT
     Language.Marlowe.Runtime.Web.Adapter.URI
     Language.Marlowe.Runtime.Web.API
+    Language.Marlowe.Runtime.Web.Client
     Language.Marlowe.Runtime.Web.Core.Address
     Language.Marlowe.Runtime.Web.Contract.API
     Language.Marlowe.Runtime.Web.Contract.Server
@@ -217,7 +219,7 @@ library
     Language.Marlowe.Runtime.Web.Withdrawal.API
     Language.Marlowe.Runtime.Web.Withdrawal.Server
 
-executable marlowe-runtime-server
+executable server
   import:          lang
   hs-source-dirs:  server
   main-is:         Main.hs
@@ -229,6 +231,7 @@ executable marlowe-runtime-server
     Marlowe.Runtime.Server.Contrib.Servant.ResponseRewriterMiddleware
   build-depends:
     , aeson
+    , aeson-pretty
     , async-components
     , base
     , base16-bytestring
@@ -263,6 +266,7 @@ executable marlowe-runtime-server
     , log-base
     , log-base-inlined
     , marlowe-binaries
+    , marlowe-cli
     , marlowe-object
     , marlowe-plutus ^>=0.2
     , marlowe-runtime
@@ -307,3 +311,89 @@ executable marlowe-runtime-server
     , witherable
     , variations
     , vector
+    , yaml
+
+executable cli
+  import:          lang
+  hs-source-dirs:  client
+  main-is:         Main.hs
+  ghc-options:
+    -threaded -j8
+  other-modules:
+    Commands
+    Commands.Formatters.Servant
+    Commands.Init
+    Commands.GetContract
+    Commands.Options.ContractId
+    Commands.Options.MessageFormat
+    Commands.Options.Port
+    Commands.Options.ServantClientRunner
+    Paths_marlowe_runtime
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , base
+    , base16-bytestring
+    , bytestring
+    , cardano-api
+    , case-insensitive
+    , containers
+    , deepseq
+    , errors
+    , filepath
+    , http-client
+    , marlowe-plutus
+    , marlowe-runtime
+    , marlowe-transactions
+    , mtl
+    , newtype
+    , optparse-applicative
+    , parsec
+    , servant
+    , servant-client
+    , servant-client-core
+    , text
+    , transformers
+    , yaml
+
+library gen
+  import:          lang
+  hs-source-dirs:  gen
+  visibility:      public
+  exposed-modules:
+    Language.Marlowe.Runtime.Web.Gen
+  build-depends:
+    , aeson
+    , base
+    , bytestring
+    , cardano-api
+    , cardano-api:gen
+    , hedgehog-quickcheck
+    , marlowe-object:gen
+    , marlowe-plutus:{marlowe-testing, marlowe-plutus}
+    , marlowe-runtime
+    , marlowe-transactions:gen
+    , openapi3
+    , regex-posix
+    , QuickCheck
+    , quickcheck-instances
+    , servant
+    , text
+
+test-suite test
+  import:          lang
+  type:           exitcode-stdio-1.0
+  main-is:        Spec.hs
+  hs-source-dirs:  test
+  other-modules:
+    -- Language.Marlowe.Runtime.Transaction.BuildConstraintsSpec
+    -- Language.Marlowe.Runtime.Transaction.BuildConstraintsSpec.PropertyBased
+    Language.Marlowe.Runtime.Web.Contract.APISpec
+  build-depends:
+    , aeson
+    , base
+    , cardano-api
+    , hspec
+    , hspec-core
+    , marlowe-runtime:{gen, marlowe-runtime}
+    , QuickCheck

@@ -1,0 +1,1 @@
+export type AddressBech32 = string;

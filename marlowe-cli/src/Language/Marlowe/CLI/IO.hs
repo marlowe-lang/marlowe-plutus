@@ -136,7 +136,6 @@ import Language.Marlowe.CLI.Types (
  )
 import Lens.Micro ((^.))
 import Ouroboros.Network.Protocol.LocalStateQuery.Type
-import Ouroboros.Network.Protocol.LocalTxSubmission.Client (SubmitResult (..))
 import PlutusCore.Evaluation.Machine.ExBudgetingDefaults
 import PlutusLedgerApi.Common (MajorProtocolVersion)
 import PlutusLedgerApi.V1 (BuiltinData)
@@ -305,12 +304,12 @@ readMaybeMetadata file =
       (fmap (TxMetadataInEra era) . liftCli . metadataFromJson TxMetadataJsonNoSchema)
       metadata
 
--- | Read the CARDANO_TESTNET_MAGIC environment variable for the default network magic.
+-- | Read the CARDANO_NODE_NETWORK_ID environment variable for the default network magic.
 getNetworkMagic :: IO (Maybe NetworkId)
 getNetworkMagic =
   fmap (Testnet . NetworkMagic)
     . (readMaybe =<<)
-    <$> lookupEnv "CARDANO_TESTNET_MAGIC"
+    <$> lookupEnv "CARDANO_NODE_NETWORK_ID"
 
 -- | Read the CARDANO_NODE_SOCKET_PATH environment variable for the default node socket path.
 getNodeSocketPath :: IO (Maybe FilePath)
@@ -551,14 +550,18 @@ submitTxBody txBuildupContext txBody signings =
       (NodeTxBuildup connection (DoSubmit timeout)) -> do
         result <- liftIO . submitTxToNodeLocal connection $ C.TxInMode shelleyEra tx
         case result of
-          SubmitSuccess -> do
+          C.TxSubmitSuccess -> do
             when (toMicroseconds timeout > 0) $
               waitForUtxos connection timeout [C.TxIn txId $ C.TxIx 0]
             pure txId
-          SubmitFail reason -> do
-            liftIO $ hPutStrLn stderr "Submission of the transaction failed:"
+          C.TxSubmitFail validationError -> do
+            liftIO $ hPutStrLn stderr "Transaction submission failed with validation error:"
             liftIO $ hPrint stderr txBody
-            throwError . CliError $ show reason
+            throwError . CliError $ show validationError
+          C.TxSubmitError exception -> do
+            liftIO $ hPutStrLn stderr "Transaction submission failed with exception:"
+            liftIO $ hPrint stderr txBody
+            throwError . CliError $ show exception
       (PureTxBuildup utxosVar NodeStateInfo{nsiProtocolParameters}) -> do
         case checkTxLimits era nsiProtocolParameters txBody of
           Just exceeded -> do

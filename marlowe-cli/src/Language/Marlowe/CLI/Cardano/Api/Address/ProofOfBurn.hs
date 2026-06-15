@@ -32,7 +32,6 @@ import Cardano.Api (fromShelleyPaymentCredential, toShelleyScriptHash)
 import Cardano.Crypto.Hash qualified as C
 import Cardano.Crypto.Hash.Class (hashFromBytes, hashToBytes, hashWith)
 import Cardano.Ledger.Credential (Credential (KeyHashObj))
-import Cardano.Ledger.Crypto (StandardCrypto)
 import Cardano.Ledger.Keys (KeyHash (KeyHash), KeyRole (Payment))
 import Cardano.Ledger.Core qualified as L
 import Data.Bits (xor)
@@ -60,7 +59,7 @@ paymentCredential tag = do
 hashTag
   :: ByteString
   -- ^ Any bytestring.
-  -> KeyHash 'Payment
+  -> KeyHash Payment
 hashTag tag = KeyHash $ hashWith (const tag) undefined
 
 -- | Flip the last bit of a payment key hash.

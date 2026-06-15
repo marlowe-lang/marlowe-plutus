@@ -1,15 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-incomplete-patterns -Wno-deprecations #-}
 
 -----------------------------------------------------------------------------
@@ -71,7 +60,11 @@ module Language.Marlowe.CLI.Transaction (
   selectCoins,
 ) where
 
--- import Data.Aeson.Encode.Pretty (encodePretty)
+import Data.Yaml qualified as Yaml
+import Data.ByteString.Char8 qualified as BS8
+import Data.ByteString.Lazy.Char8 qualified as LBS8
+import Data.Aeson.Encode.Pretty qualified as A
+import Cardano.Api qualified as C
 import Cardano.Api (
   AddressInEra (..),
   AllegraEraOnwards (..),
@@ -171,7 +164,6 @@ import Cardano.Api (
   SimpleScriptOrReferenceInput (SScript),
   fromPlutusData,
  )
-import Cardano.Api qualified as C
 import Cardano.Ledger.Alonzo.Scripts (ExUnits (..))
 import Cardano.Ledger.Alonzo.TxWits (Redeemers (..))
 import Cardano.Ledger.Babbage.Core qualified as Ledger
@@ -187,13 +179,12 @@ import Control.Monad.Except (MonadError, liftEither, runExcept, throwError)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (MonadReader)
 import Control.Monad.Trans (lift)
-import Data.Aeson (ToJSON (toJSON))
+import Data.Aeson (ToJSON (toJSON), (.=))
 import Data.Aeson qualified as A (Value (Null, Object), object)
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Key qualified as Aeson.Key
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.ByteString qualified as BS (length)
-import Data.ByteString.Char8 qualified as BS8 (unpack)
 import Data.Fixed (div')
 import Data.Foldable (Foldable (fold), for_)
 import Data.Function (on)
@@ -245,12 +236,13 @@ import Language.Marlowe.CLI.IO (
   submitTxBody',
  )
 import Language.Marlowe.CLI.Types (
-  AnUTxO (AnUTxO),
+  AUTxO (AUTxO),
   CliEnv,
   CliError (..),
   CoinSelectionStrategy (CoinSelectionStrategy, csPreserveInlineDatums, csPreserveReferenceScripts, csPreserveTxIns),
   CurrencyIssuer (CurrencyIssuer),
   MarloweScriptsRefs (MarloweScriptsRefs),
+  MessageFormat(..),
   MintingAction (BurnAll, Mint, maIssuer),
   OutputQuery (..),
   OutputQueryResult (..),
@@ -263,7 +255,7 @@ import Language.Marlowe.CLI.Types (
   SomePaymentSigningKey,
   SubmitMode (DoSubmit),
   TokensRecipient (..),
-  TxBodyFile (TxBodyFile),
+  TxFile (TxFile),
   TxBuildupContext (..),
   ValidatorInfo (ValidatorInfo, viHash, viScript),
   askEra,
@@ -276,7 +268,7 @@ import Language.Marlowe.CLI.Types (
   toAddressAny',
   toPaymentVerificationKey,
   toQueryContext,
-  validatorInfo',
+  validatorInfo', TxBodyFile (TxBodyFile),
  )
 import Language.Marlowe.CLI.Types qualified as PayToScript (PayToScript (value))
 import Language.Marlowe.Scripts
@@ -314,7 +306,7 @@ buildSimple
   -- ^ The change address.
   -> Maybe FilePath
   -- ^ The file containing JSON metadata, if any.
-  -> TxBodyFile
+  -> TxFile
   -- ^ The output file for the transaction body.
   -> Bool
   -- ^ Whether to print statistics about the transaction.
@@ -322,7 +314,7 @@ buildSimple
   -- ^ Assertion that the transaction is invalid.
   -> m TxId
   -- ^ Action to build the transaction body.
-buildSimple txBuildupCtx signingKeyFiles inputs outputs changeAddress metadataFile (TxBodyFile bodyFile) printStats invalid =
+buildSimple txBuildupCtx signingKeyFiles inputs outputs changeAddress metadataFile (TxFile txFile) printStats invalid =
   do
     metadata <- readMaybeMetadata metadataFile
     signingKeys <- mapM readSigningKey signingKeyFiles
@@ -344,7 +336,11 @@ buildSimple txBuildupCtx signingKeyFiles inputs outputs changeAddress metadataFi
         metadata
         printStats
         invalid
-    doWithCardanoEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
+    doWithCardanoEra
+      . liftCliIO
+      . writeFileTextEnvelope (File txFile) Nothing
+      . C.makeSignedTransaction []
+      $ body
     submitBody txBuildupCtx body signingKeys invalid
 
 -- | Build a non-Marlowe transaction that cleans an address.
@@ -366,13 +362,13 @@ buildClean
   -- ^ The mint value.
   -> TxMetadataInEra era
   -- ^ The metadata.
-  -> TxBodyFile
+  -> TxFile
   -- ^ The output file for the transaction body.
   -> Maybe Second
   -- ^ Number of seconds to wait for the transaction to be confirmed, if it is to be confirmed.
   -> m TxId
   -- ^ Action to build the transaction body.
-buildClean connection signingKeyFiles lovelace changeAddress range mintValue metadata (TxBodyFile bodyFile) timeout =
+buildClean connection signingKeyFiles lovelace changeAddress range mintValue metadata (TxFile txFile) timeout =
   do
     signingKeys <- mapM readSigningKey signingKeyFiles
     utxos <-
@@ -409,7 +405,11 @@ buildClean connection signingKeyFiles lovelace changeAddress range mintValue met
         metadata
         False
         False
-    doWithCardanoEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
+    doWithCardanoEra
+      . liftCliIO
+      . writeFileTextEnvelope (File txFile) Nothing
+      . C.makeSignedTransaction []
+      $ body
     let txBuildupCtx = mkNodeTxBuildup connection timeout
     submitTxBody txBuildupCtx body signingKeys
 
@@ -618,13 +618,13 @@ buildMinting
   -- ^ The slot number after which minting is no longer possible.
   -> AddressInEra era
   -- ^ The change address.
-  -> TxBodyFile
+  -> TxFile
   -- ^ The output file for the transaction body.
   -> Maybe Second
   -- ^ Number of seconds to wait for the transaction to be confirmed, if it is to be confirmed.
   -> m ()
   -- ^ Action to build the transaction body.
-buildMinting connection signingKeyFile mintingAction metadataFile expires changeAddress (TxBodyFile bodyFile) timeout = do
+buildMinting connection signingKeyFile mintingAction metadataFile expires changeAddress (TxFile txFile) timeout = do
   signingKey <- readSigningKey signingKeyFile
   let currencyIssuer = CurrencyIssuer changeAddress signingKey
   mintingAction' <- case mintingAction of
@@ -649,7 +649,11 @@ buildMinting connection signingKeyFile mintingAction metadataFile expires change
     _ -> throwError "Metadata should file should contain a json object"
   let txBuildupCtx = mkNodeTxBuildup connection timeout
   (body, policy) <- buildMintingImpl txBuildupCtx mintingAction' metadata expires (PrintStats True)
-  doWithCardanoEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
+  doWithCardanoEra
+    . liftCliIO
+    . writeFileTextEnvelope (File txFile) Nothing
+    . C.makeSignedTransaction []
+    $ body
   liftIO . putStrLn $ read . show . unPolicyId $ policy
 
 nonAdaValue :: Value -> Value
@@ -853,7 +857,7 @@ buildIncoming
   -- ^ The change address.
   -> Maybe FilePath
   -- ^ The file containing JSON metadata, if any.
-  -> TxBodyFile
+  -> TxFile
   -- ^ The output file for the transaction body.
   -> Maybe Second
   -- ^ Number of seconds to wait for the transaction to be confirmed, if it is to be confirmed.
@@ -863,7 +867,7 @@ buildIncoming
   -- ^ Assertion that the transaction is invalid.
   -> m TxId
   -- ^ Action to build the transaction body.
-buildIncoming connection scriptAddress signingKeyFiles outputDatumFile outputValue inputs outputs changeAddress metadataFile (TxBodyFile bodyFile) timeout printStats invalid =
+buildIncoming connection scriptAddress signingKeyFiles outputDatumFile outputValue inputs outputs changeAddress metadataFile (TxFile txFile) timeout printStats invalid =
   do
     era <- askEra
     metadata <- readMaybeMetadata metadataFile
@@ -886,7 +890,11 @@ buildIncoming connection scriptAddress signingKeyFiles outputDatumFile outputVal
         metadata
         printStats
         invalid
-    doWithCardanoEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
+    doWithCardanoEra
+      . liftCliIO
+      . writeFileTextEnvelope (File txFile) Nothing
+      . C.makeSignedTransaction []
+      $ body
     let txBuildupCtx = mkNodeTxBuildup connection timeout
     submitBody txBuildupCtx body signingKeys invalid
 
@@ -962,9 +970,9 @@ buildPublishingImpl
   -- ^ The change address.
   -> PublishingStrategy era
   -> CoinSelectionStrategy
-  -> PrintStats
+  -> MessageFormat
   -> m ([TxBody era], MarloweScriptsRefs C.PlutusScriptV3 era)
-buildPublishingImpl buildupCtx signingKey expires changeAddress publishingStrategy coinSelectionStrategy (PrintStats printStats) = do
+buildPublishingImpl buildupCtx signingKey expires changeAddress publishingStrategy coinSelectionStrategy messageFormat = do
   let queryCtx = toQueryContext buildupCtx
   pm <- buildScriptPublishingInfo queryCtx marloweValidator publishingStrategy
   pp <- buildScriptPublishingInfo queryCtx payoutValidator publishingStrategy
@@ -976,49 +984,51 @@ buildPublishingImpl buildupCtx signingKey expires changeAddress publishingStrate
 
   initialUTxOs <- queryByAddress queryCtx changeAddress
 
-  let publish utxos publishScripts = do
-        outputs <- for publishScripts buildPublishedScriptTxOut
-        (_, inputs, outputs') <-
-          selectCoins
-            queryCtx
-            mempty
-            outputs
-            Nothing
-            changeAddress
-            coinSelectionStrategy
-            (Just utxos)
+  let
+    printStats = False
+    publish utxos publishScripts = do
+      outputs <- for publishScripts buildPublishedScriptTxOut
+      (_, inputs, outputs') <-
+        selectCoins
+          queryCtx
+          mempty
+          outputs
+          Nothing
+          changeAddress
+          coinSelectionStrategy
+          (Just utxos)
 
-        (txBodyContent, txBody) <-
-          buildBodyWithContent
-            queryCtx
-            ([] :: [PayFromScript C.PlutusScriptV3])
-            Nothing
-            []
-            inputs
-            outputs'
-            Nothing
-            changeAddress
-            ((0,) <$> expires)
-            [hashSigningKey signingKey]
-            TxMintNone
-            TxMetadataNone
-            printStats
-            False
-            (Just utxos)
+      (txBodyContent, txBody) <-
+        buildBodyWithContent
+          queryCtx
+          ([] :: [PayFromScript C.PlutusScriptV3])
+          Nothing
+          []
+          inputs
+          outputs'
+          Nothing
+          changeAddress
+          ((0,) <$> expires)
+          [hashSigningKey signingKey]
+          TxMintNone
+          TxMetadataNone
+          printStats
+          False
+          (Just utxos)
 
-        -- We track utxo set which we operate on so we can construct
-        -- the next transaction.
-        let TxBodyContent{txIns, txInsCollateral, txOuts} = txBodyContent
-            txIns' = do
-              let collateralTxIns = case txInsCollateral of
-                    TxInsCollateralNone -> []
-                    TxInsCollateral _ txInsCollateral' -> txInsCollateral'
-              collateralTxIns <> (fst <$> txIns)
-            txId = C.getTxId txBody
-            newUtxos = Map.fromList $ foldMapFlipped (zip [0 ..] txOuts) \(idx, txOut@(C.TxOut addr _ _ _)) ->
-              [(C.TxIn txId (C.TxIx idx), C.toCtxUTxOTxOut txOut) | addr == changeAddress]
-            utxos' = unUTxO utxos `Map.withoutKeys` S.fromList txIns' <> newUtxos
-        pure (UTxO utxos', txBody)
+      -- We track utxo set which we operate on so we can construct
+      -- the next transaction.
+      let TxBodyContent{txIns, txInsCollateral, txOuts} = txBodyContent
+          txIns' = do
+            let collateralTxIns = case txInsCollateral of
+                  TxInsCollateralNone -> []
+                  TxInsCollateral _ txInsCollateral' -> txInsCollateral'
+            collateralTxIns <> (fst <$> txIns)
+          txId = C.getTxId txBody
+          newUtxos = Map.fromList $ foldMapFlipped (zip [0 ..] txOuts) \(idx, txOut@(C.TxOut addr _ _ _)) ->
+            [(C.TxIn txId (C.TxIx idx), C.toCtxUTxOTxOut txOut) | addr == changeAddress]
+          utxos' = unUTxO utxos `Map.withoutKeys` S.fromList txIns' <> newUtxos
+      pure (UTxO utxos', txBody)
 
   (utxos', txBody1) <- publish initialUTxOs [pm, pp]
   (_, txBody2) <- publish utxos' [po]
@@ -1041,62 +1051,63 @@ buildPublishingImpl buildupCtx signingKey expires changeAddress publishingStrate
         (ix, txOut) <-
           liftEither $ note "Unable to find published script" $ listToMaybe $ mapMaybe match $ zip [0 ..] txOuts
         let txOut' = C.toCtxUTxOTxOut txOut
-        pure (AnUTxO (C.TxIn txId (C.TxIx ix), txOut'))
+        pure (AUTxO (C.TxIn txId (C.TxIx ix), txOut'))
 
   marloweRef <- do
     let (_, _, referenceScriptInfo) = pm
         ValidatorInfo{viScript} = referenceScriptInfo
-    anUTxO <- findReferenceScriptOutput txBody1 viScript
-    pure (anUTxO, referenceScriptInfo)
+    aUTxO <- findReferenceScriptOutput txBody1 viScript
+    pure (aUTxO, referenceScriptInfo)
 
   rolePayoutRef <- do
     let (_, _, referenceScriptInfo) = pp
         ValidatorInfo{viScript} = referenceScriptInfo
-    anUTxO <- findReferenceScriptOutput txBody1 viScript
-    pure (anUTxO, referenceScriptInfo)
+    aUTxO <- findReferenceScriptOutput txBody1 viScript
+    pure (aUTxO, referenceScriptInfo)
 
   openRoleRef <- do
     let (_, _, referenceScriptInfo) = po
         ValidatorInfo{viScript} = referenceScriptInfo
-    anUTxO <- findReferenceScriptOutput txBody2 viScript
-    pure (anUTxO, referenceScriptInfo)
+    aUTxO <- findReferenceScriptOutput txBody2 viScript
+    pure (aUTxO, referenceScriptInfo)
 
-  let txBodies = [txBody1, txBody2]
-      serialiseAddress (_, addr, _) = T.unpack . C.serialiseAddress $ addr
-      showScriptHash (_, _, ValidatorInfo{viHash}) = show viHash
-      showMinAda (ma, _, _) = show ma
-      showTxIn (AnUTxO (txIn, _), _) = show txIn
+  let
+    txBodies = [txBody1, txBody2]
+    serialiseAddress (_, addr, _) = T.unpack . C.serialiseAddress $ addr
+    getScriptHash (_, _, ValidatorInfo{viHash}) = viHash
+    getMinAda (ma, _, _) = ma
 
-  when printStats $ liftIO do
-    hPutStrLn stderr ""
-    hPutStrLn stderr $
-      "Marlowe script published at address: " <> serialiseAddress pm
-    hPutStrLn stderr ""
-    hPutStrLn stderr $ "Marlowe script hash: " <> showScriptHash pm
-    hPutStrLn stderr ""
-    hPutStrLn stderr $
-      "Marlowe ref script UTxO min ADA: " <> showMinAda pm
-    hPutStrLn stderr ""
-    hPutStrLn stderr $ "Marlowe ref script UTxO: " <> showTxIn marloweRef
+    jsonInfo = A.object
+      [ "marlowe" .= fst marloweRef
+      , "payout" .= fst rolePayoutRef
+      , "openRole" .= fst openRoleRef
+      ]
+  liftIO $ case messageFormat of
+    MessageFormatText -> do
+      let
+        showScriptHash = show . getScriptHash
+        getTxIn (AUTxO (txIn, _), _) = txIn
+        showTxIn = show . getTxIn
+        showMinAda = show . getMinAda
+        summary =
+          "Marlowe script published at address: " <> serialiseAddress pm <> "\n"
+            <> "Marlowe script hash: " <> showScriptHash pm <> "\n"
+            <> "Marlowe ref script UTxO min ADA: " <> showMinAda pm <> "\n"
+            <> "Marlowe ref script UTxO: " <> showTxIn marloweRef <> "\n\n"
+            <> "Payout script published at address: " <> serialiseAddress pp <> "\n"
+            <> "Payout script hash: " <> showScriptHash pp <> "\n"
+            <> "Payout ref script UTxO min ADA: " <> showMinAda pp <> "\n"
+            <> "Payout ref script UTxO: " <> showTxIn rolePayoutRef <> "\n\n"
+            <> "Open role script published at address: " <> serialiseAddress po <> "\n"
+            <> "Open role script hash: " <> showScriptHash po <> "\n"
+            <> "Open role ref script UTxO min ADA: " <> showMinAda po <> "\n"
+            <> "Open role ref script UTxO: " <> showTxIn openRoleRef
+      putStrLn summary
+    MessageFormatJson ->
+      LBS8.putStrLn $ A.encodePretty jsonInfo
+    MessageFormatYaml ->
+      BS8.putStrLn $ Yaml.encode jsonInfo
 
-    hPutStrLn stderr ""
-    hPutStrLn stderr $
-      "Payout script published at address: " <> serialiseAddress pp
-    hPutStrLn stderr ""
-    hPutStrLn stderr $ "Payout script hash: " <> showScriptHash pp
-    hPutStrLn stderr ""
-    hPutStrLn stderr $ "Payout ref script UTxO min ADA: " <> showMinAda pp
-    hPutStrLn stderr ""
-    hPutStrLn stderr $ "Payout ref script UTxO: " <> showTxIn rolePayoutRef
-
-    hPutStrLn stderr ""
-    hPutStrLn stderr $ "Open role script published at address: " <> serialiseAddress po
-    hPutStrLn stderr ""
-    hPutStrLn stderr $ "Open role script hash: " <> showScriptHash po
-    hPutStrLn stderr ""
-    hPutStrLn stderr $ "Open role ref script UTxO min ADA: " <> showMinAda po
-    hPutStrLn stderr ""
-    hPutStrLn stderr $ "Open role ref script UTxO: " <> showTxIn openRoleRef
   pure (txBodies, MarloweScriptsRefs marloweRef rolePayoutRef openRoleRef)
 
 -- CLI command handler.
@@ -1115,11 +1126,11 @@ buildPublishing
   -> AddressInEra era
   -- ^ The change address.
   -> Maybe (PublishingStrategy era)
-  -> TxBodyFile
+  -> TxFile
   -> Maybe Second
-  -> PrintStats
+  -> MessageFormat
   -> m ()
-buildPublishing connection signingKeyFile expires changeAddress strategy (TxBodyFile bodyFile) timeout printStats = do
+buildPublishing connection signingKeyFile expires changeAddress strategy (TxFile txFile) timeout printStats = do
   let strategy' = fromMaybe (PublishAtAddress changeAddress) strategy
   signingKey <- readSigningKey signingKeyFile
   (txBodies, _) <-
@@ -1132,8 +1143,14 @@ buildPublishing connection signingKeyFile expires changeAddress strategy (TxBody
       defaultCoinSelectionStrategy
       printStats
 
-  for_ txBodies \txBody ->
-    doWithCardanoEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing txBody
+  for_ (zip [0..] txBodies) \(idx, txBody) -> do
+    let
+      txFile' = show (idx :: Int) <> txFile
+    doWithCardanoEra
+      . liftCliIO
+      . writeFileTextEnvelope (File txFile') Nothing
+      . C.makeSignedTransaction []
+      $ txBody
   let txBuildupCtx = mkNodeTxBuildup connection timeout
   for_ txBodies \txBody ->
     void $ submitTxBody txBuildupCtx txBody [signingKey]
@@ -1154,9 +1171,9 @@ publishImpl
   -- ^ The change address.
   -> PublishingStrategy era
   -> CoinSelectionStrategy
-  -> PrintStats
+  -> MessageFormat
   -> m ([TxBody era], MarloweScriptsRefs C.PlutusScriptV3 era)
-publishImpl txBuildupCtx signingKey expires changeAddress publishingStrategy coinSelectionStrategy printStats = do
+publishImpl txBuildupCtx signingKey expires changeAddress publishingStrategy coinSelectionStrategy messageFormat = do
   (txBodies, _) <-
     buildPublishingImpl @era
       txBuildupCtx
@@ -1165,13 +1182,13 @@ publishImpl txBuildupCtx signingKey expires changeAddress publishingStrategy coi
       changeAddress
       publishingStrategy
       coinSelectionStrategy
-      printStats
+      messageFormat
   for_ txBodies \txBody ->
     submitTxBody txBuildupCtx txBody [signingKey]
 
   refs <- do
     let queryCtx = toQueryContext txBuildupCtx
-    findMarloweScriptsRefs queryCtx publishingStrategy printStats >>= \case
+    findMarloweScriptsRefs queryCtx publishingStrategy (PrintStats False) >>= \case
       Nothing -> throwError . CliError $ "Unable to find just published scripts by tx:" <> show (map getTxId txBodies)
       Just m -> pure m
   pure (txBodies, refs)
@@ -1187,7 +1204,7 @@ findScriptRef
   -> ScriptHash
   -> PublishingStrategy era
   -> PrintStats
-  -> m (Maybe (AnUTxO era, ValidatorInfo C.PlutusScriptV3 era))
+  -> m (Maybe (AUTxO era, ValidatorInfo C.PlutusScriptV3 era))
 findScriptRef queryCtx scriptHash publishingStrategy (PrintStats printStats) = do
   era <- askEra
   let networkId = queryContextNetworkId queryCtx
@@ -1204,7 +1221,7 @@ findScriptRef queryCtx scriptHash publishingStrategy (PrintStats printStats) = d
 
   runMaybeT do
     let query = FindReferenceScript C.plutusScriptVersion scriptHash
-    (u@(AnUTxO (txIn, _)), script) <- MaybeT $ selectUtxosImpl queryCtx publisher query
+    (u@(AUTxO (txIn, _)), script) <- MaybeT $ selectUtxosImpl queryCtx publisher query
     i <- lift $ buildValidatorInfo queryCtx script (Just txIn) NoStakeAddress
     pure (u, i)
 
@@ -1244,7 +1261,7 @@ findPublished queryCtx publishingStrategy = do
   let publishingStrategy' = fromMaybe (PublishPermanently NoStakeAddress) publishingStrategy
   findMarloweScriptsRefs @era queryCtx publishingStrategy' (PrintStats True) >>= \case
     Just (MarloweScriptsRefs (mu, mi) (ru, ri) (ou, oi)) -> do
-      let refJSON (AnUTxO (i, _)) ValidatorInfo{viHash} =
+      let refJSON (AUTxO (i, _)) ValidatorInfo{viHash} =
             A.object
               [ ("txIn", toJSON i)
               , ("hash", toJSON viHash)
@@ -1296,7 +1313,7 @@ buildContinuing
   -- ^ The last valid slot for the transaction.
   -> Maybe FilePath
   -- ^ The file containing JSON metadata, if any.
-  -> TxBodyFile
+  -> TxFile
   -- ^ The output file for the transaction body.
   -> Maybe Second
   -- ^ Number of seconds to wait for the transaction to be confirmed, if it is to be confirmed.
@@ -1306,7 +1323,7 @@ buildContinuing
   -- ^ Assertion that the transaction is invalid.
   -> m TxId
   -- ^ Action to build the transaction body.
-buildContinuing connection scriptAddress validatorFile redeemerFile inputDatumFile signingKeyFiles txIn outputDatumFile outputValue inputs outputs collateral changeAddress minimumSlot maximumSlot metadataFile (TxBodyFile bodyFile) timeout printStats invalid =
+buildContinuing connection scriptAddress validatorFile redeemerFile inputDatumFile signingKeyFiles txIn outputDatumFile outputValue inputs outputs collateral changeAddress minimumSlot maximumSlot metadataFile (TxFile txFile) timeout printStats invalid =
   do
     metadata <- readMaybeMetadata metadataFile
     validator <- liftCliIO ((readFileTextEnvelope (File validatorFile)) :: IO (Either (C.FileError C.TextEnvelopeError) (C.PlutusScript C.PlutusScriptV3)))
@@ -1332,7 +1349,11 @@ buildContinuing connection scriptAddress validatorFile redeemerFile inputDatumFi
         metadata
         printStats
         invalid
-    doWithCardanoEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
+    doWithCardanoEra
+      . liftCliIO
+      . writeFileTextEnvelope (File txFile) Nothing
+      . C.makeSignedTransaction []
+      $ body
     let txBuildupCtx = mkNodeTxBuildup connection timeout
     submitBody txBuildupCtx body signingKeys invalid
 
@@ -1368,7 +1389,7 @@ buildOutgoing
   -- ^ The last valid slot for the transaction.
   -> Maybe FilePath
   -- ^ The file containing JSON metadata, if any.
-  -> TxBodyFile
+  -> TxFile
   -- ^ The output file for the transaction body.
   -> Maybe Second
   -- ^ Number of seconds to wait for the transaction to be confirmed, if it is to be confirmed.
@@ -1378,7 +1399,7 @@ buildOutgoing
   -- ^ Assertion that the transaction is invalid.
   -> m TxId
   -- ^ Action to build the transaction body.
-buildOutgoing connection validatorFile redeemerFile inputDatumFile signingKeyFiles txIn inputs outputs collateral changeAddress minimumSlot maximumSlot metadataFile (TxBodyFile bodyFile) timeout printStats invalid =
+buildOutgoing connection validatorFile redeemerFile inputDatumFile signingKeyFiles txIn inputs outputs collateral changeAddress minimumSlot maximumSlot metadataFile (TxFile txFile) timeout printStats invalid =
   do
     metadata <- readMaybeMetadata metadataFile
     validator <- liftCliIO ((readFileTextEnvelope (File validatorFile)) :: IO (Either (C.FileError C.TextEnvelopeError) (C.PlutusScript C.PlutusScriptV3)))
@@ -1402,7 +1423,11 @@ buildOutgoing connection validatorFile redeemerFile inputDatumFile signingKeyFil
         metadata
         printStats
         invalid
-    doWithCardanoEra $ liftCliIO $ writeFileTextEnvelope (File bodyFile) Nothing body
+    doWithCardanoEra
+      . liftCliIO
+      . writeFileTextEnvelope (File txFile) Nothing
+      . C.makeSignedTransaction []
+      $ body
     let txBuildupCtx = mkNodeTxBuildup connection timeout
     submitBody txBuildupCtx body signingKeys invalid
 
@@ -1482,7 +1507,8 @@ buildBody
   -- ^ Assertion that the transaction is invalid.
   -> m (TxBody era)
   -- ^ The action to build the transaction body.
-buildBody queryCtx payFromScript payToScript extraInputs inputs outputs collateral changeAddress slotRange extraSigners mintValue metadata printStats invalid =
+buildBody queryCtx payFromScript payToScript extraInputs inputs outputs collateral changeAddress slotRange extraSigners mintValue metadata printStats invalid = do
+  liftIO $ hPutStrLn stderr $ "Buidling tx with slot range: " <> show slotRange
   snd
     <$> buildBodyWithContent
       queryCtx
@@ -1611,7 +1637,7 @@ buildBodyWithContent queryCtx payFromScript payToScript extraInputs inputs outpu
           when (counter == 0) $ throwError . CliError $ do
             "Unsuccessful balancing of the transaction: " <> show (TxBodyContent{..})
           let -- Recompute execution units with full set of UTxOs, including change.
-              buildTxBodyContent = TxBodyContent{..}{txOuts = mkChangeTxOut changeValue : txOuts}
+              buildTxBodyContent = TxBodyContent{txValidityLowerBound, txValidityUpperBound, ..}{txOuts = mkChangeTxOut changeValue : txOuts}
               trial =
                 makeTransactionBodyAutoBalance
                   (convert era)
@@ -1727,6 +1753,10 @@ submit
 submit connection (TxBodyFile bodyFile) signingKeyFiles timeout =
   do
     body <- doWithCardanoEra $ liftCliIO $ readFileTextEnvelope $ File bodyFile
+    doWithCardanoEra
+      . liftCliIO
+      . writeFileTextEnvelope (File bodyFile) Nothing
+      $ body
     signings <- mapM readSigningKey signingKeyFiles
     let txBuildupCtx = mkNodeTxBuildup connection (Just timeout)
     submitTxBody txBuildupCtx body signings
@@ -1910,7 +1940,7 @@ filterUtxos = do
         t@(_, TxOut _ _ _ (ReferenceScript _ script)) ->
           if hashScriptInAnyLang script == scriptHash
             then case (pv, script) of
-              (PlutusScriptV3, C.ScriptInAnyLang _ (C.PlutusScript PlutusScriptV3 script')) -> Just (AnUTxO t, script')
+              (PlutusScriptV3, C.ScriptInAnyLang _ (C.PlutusScript PlutusScriptV3 script')) -> Just (AUTxO t, script')
               -- FIXME: Improve error reporting
               _ -> Nothing
             else Nothing
@@ -2016,7 +2046,7 @@ maximumFee (LedgerProtocolParameters pp) = do
       txFeePerByte = pp ^. Ledger.ppTxFeePerByteL
       -- txFeeFixed aka minFeeB
       txFeeFixed = pp ^. Ledger.ppTxFeeFixedL
-      txFee = txFeeFixed + Ledger.Coin (Ledger.unCoin txFeePerByte * maxTxSize)
+      txFee = txFeeFixed + Ledger.fromCompact txFeePerByte.unCoinPerByte * maxTxSize
 
       maxTxExecutionUnits = pp ^. Ledger.ppMaxTxExUnitsL
       prices = pp ^. Ledger.ppPricesL

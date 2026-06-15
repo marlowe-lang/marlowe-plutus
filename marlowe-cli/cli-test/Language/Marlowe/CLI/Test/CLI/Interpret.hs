@@ -16,7 +16,7 @@ module Language.Marlowe.CLI.Test.CLI.Interpret where
 
 import Language.Marlowe.CLI.Transaction (buildPayFromScript, findMarloweScriptsRefs, publishImpl, selectUtxosImpl)
 import Language.Marlowe.CLI.Types (
-  AnUTxO (..),
+  AUTxO (..),
   CoinSelectionStrategy (CoinSelectionStrategy),
   MarloweScriptsRefs (..),
   MarloweTransaction (..),
@@ -29,7 +29,7 @@ import Language.Marlowe.CLI.Types (
   fromUTxO,
   toQueryContext,
   toSlotRoundedPlutusPOSIXTime,
-  unAnUTxO,
+  unAUTxO,
   validatorInfoScriptOrReference,
  )
 import Language.Marlowe.Client qualified as Client
@@ -239,7 +239,7 @@ autoRunTransaction currency defaultSubmitter prev curr@MarloweTransaction{..} in
                       roleTokenAssetId = C.AssetId policyId roleAssetName
                       queryCtx = toQueryContext txBuildupCtx
                   runCli era "[AutoRun]" (selectUtxosImpl queryCtx openRoleAddress (AssetOnly roleTokenAssetId)) >>= \case
-                    OutputQueryResult{oqrMatching = fromUTxO -> (AnUTxO (txIn, _) : _)} -> do
+                    OutputQueryResult{oqrMatching = fromUTxO -> (AUTxO (txIn, _) : _)} -> do
                       let scriptOrReference = validatorInfoScriptOrReference openRoleValidatorInfo
                           redeemer = P.Redeemer $ P.toBuiltinData P.emptyByteString
                           payFromOpenRole :: PayFromScript C.PlutusScriptV2
@@ -321,7 +321,7 @@ publishCurrentValidators publishPermanently possiblePublisher = do
       logTraceMsg' = logStoreLabeledMsg fnName
       queryCtx = toQueryContext txBuildupCtx
   runCli era fnName (findMarloweScriptsRefs @_ queryCtx publishingStrategy printStats) >>= \case
-    Just marloweScriptRefs@(MarloweScriptsRefs (AnUTxO (mTxIn, _), mv) (AnUTxO (pTxIn, _), pv) (AnUTxO (orTxIn, _), orv)) -> do
+    Just marloweScriptRefs@(MarloweScriptsRefs (AUTxO (mTxIn, _), mv) (AUTxO (pTxIn, _), pv) (AUTxO (orTxIn, _), orv)) -> do
       let logValidatorInfo ValidatorInfo{..} =
             logTraceMsg' $ Text.unpack (C.serialiseAddress viAddress)
 
@@ -569,7 +569,7 @@ interpret co@Withdraw{..} = do
         filterPayoutsUTxOs utxos = do
           let txIds = map snd possibleWithdrawals
               txInId (C.TxIn txId _) = txId
-          filter (flip elem txIds . txInId . fst . unAnUTxO) utxos
+          filter (flip elem txIds . txInId . fst . unAUTxO) utxos
 
     let anyWithdrawalsExist =
           possibleWithdrawals `anyFlipped` \(MarloweTransaction{..}, _) ->

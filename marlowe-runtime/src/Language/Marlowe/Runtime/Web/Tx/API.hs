@@ -78,6 +78,7 @@ import Servant.Pagination (
   HasPagination (RangeType, getFieldValue),
  )
 import qualified Cardano.Api as C
+import Control.DeepSeq (NFData)
 
 data TxHeader = TxHeader
   { contractId :: TxOutRef
@@ -147,6 +148,8 @@ data CreateTxEnvelope tx = CreateTxEnvelope
   , safetyErrors :: [SafetyError]
   }
   deriving (Show, Eq, Generic)
+
+instance NFData (CreateTxEnvelope tx)
 
 instance ToJSON (CreateTxEnvelope CardanoTx) where
   toJSON CreateTxEnvelope{..} =

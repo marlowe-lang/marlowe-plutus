@@ -1,4 +1,3 @@
-{-# LANGUAGE BlockArguments #-}
 -----------------------------------------------------------------------------
 --
 -- Module      :  $Headers
@@ -8,10 +7,6 @@
 -- Portability :  Portable
 --
 -----------------------------------------------------------------------------
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wno-deprecations #-}
 
 -- | Transaction-related commands in the Marlowe CLI tool.
@@ -24,6 +19,7 @@ module Language.Marlowe.CLI.Command.Transaction (
   runTransactionCommand,
 ) where
 
+import Cardano.Api qualified as C
 import Cardano.Api (
   AddressInEra,
   BabbageEraOnwards,
@@ -53,7 +49,7 @@ import Language.Marlowe.CLI.Command.Parse (
   publishingStrategyOpt,
   requiredSignerOpt,
   requiredSignersOpt,
-  txBodyFileOpt,
+  outTxFileOpt,
  )
 import Language.Marlowe.CLI.Transaction (
   buildContinuing,
@@ -67,10 +63,11 @@ import Language.Marlowe.CLI.Transaction (
 import Language.Marlowe.CLI.Types (
   CliEnv,
   CliError,
-  PrintStats (PrintStats),
+  MessageFormat(MessageFormatJson, MessageFormatText, MessageFormatYaml),
   PublishingStrategy,
   QueryExecutionContext (QueryNode),
   SigningKeyFile,
+  TxFile,
   TxBodyFile (TxBodyFile),
   mkNodeTxBuildup,
  )
@@ -98,7 +95,7 @@ data TransactionCommand era
       -- ^ The change address.
       , metadataFile :: Maybe FilePath
       -- ^ The file containing JSON metadata, if any.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -129,7 +126,7 @@ data TransactionCommand era
       -- ^ The change address.
       , metadataFile :: Maybe FilePath
       -- ^ The file containing JSON metadata, if any.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -174,7 +171,7 @@ data TransactionCommand era
       -- ^ The last valid slot for the transaction.
       , metadataFile :: Maybe FilePath
       -- ^ The file containing JSON metadata, if any.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -213,7 +210,7 @@ data TransactionCommand era
       -- ^ The last valid slot for the transaction.
       , metadataFile :: Maybe FilePath
       -- ^ The file containing JSON metadata, if any.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -228,7 +225,7 @@ data TransactionCommand era
       -- ^ The network ID, if any.
       , socketPath :: FilePath
       -- ^ The path to the node socket.
-      , bodyFile :: TxBodyFile
+      , txBodyFile :: TxBodyFile
       -- ^ The JSON file containing the transaction body.
       , signingKeyFiles :: [SigningKeyFile]
       -- ^ The signing key files.
@@ -245,12 +242,13 @@ data TransactionCommand era
       , change :: AddressInEra era
       -- ^ The change address.
       , strategy :: Maybe (PublishingStrategy era)
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
       , expires :: Maybe SlotNo
-      -- ^ The slot number after which minting is no longer possible.
+      , messageFormat :: MessageFormat
+      -- ^ The format for messages printed by this command to the stdout.
       }
   | FindPublished
       { network :: NetworkId
@@ -283,6 +281,7 @@ runTransactionCommand era command =
         printTxId :: TxId -> m ()
         printTxId = liftIO . putStrLn . ("TxId " <>) . show
         padTxOut (address, value) = (address, TxOutDatumNone, value)
+        outputs' :: [(AddressInEra era, C.TxOutDatum C.CtxTx era, Api.Value)]
         outputs' = padTxOut <$> outputs command
     shelleyBasedEraConstraints (babbageEraOnwardsToShelleyBasedEra era) case command of
       BuildTransact{..} ->
@@ -293,7 +292,7 @@ runTransactionCommand era command =
           outputs'
           change
           metadataFile
-          bodyFile
+          txFile
           printStats
           invalid
           >>= printTxId
@@ -308,7 +307,7 @@ runTransactionCommand era command =
           outputs'
           change
           metadataFile
-          bodyFile
+          txFile
           submitTimeout
           printStats
           invalid
@@ -331,7 +330,7 @@ runTransactionCommand era command =
           minimumSlot
           maximumSlot
           metadataFile
-          bodyFile
+          txFile
           submitTimeout
           printStats
           invalid
@@ -351,7 +350,7 @@ runTransactionCommand era command =
           minimumSlot
           maximumSlot
           metadataFile
-          bodyFile
+          txFile
           submitTimeout
           printStats
           invalid
@@ -359,7 +358,7 @@ runTransactionCommand era command =
       Submit{..} ->
         submit
           connection
-          bodyFile
+          txBodyFile
           signingKeyFiles
           (fromMaybe 0 submitTimeout)
           >>= printTxId
@@ -370,13 +369,30 @@ runTransactionCommand era command =
           expires
           change
           strategy
-          bodyFile
+          txFile
           submitTimeout
-          (PrintStats True)
+          messageFormat
       FindPublished{..} ->
         findPublished @_
           (QueryNode connection)
           strategy
+
+messageFormatParser :: O.Parser MessageFormat
+messageFormatParser = do
+  let
+    readMessageFormat :: O.ReadM MessageFormat
+    readMessageFormat = O.eitherReader $ \case
+      "text" -> Right MessageFormatText
+      "json" -> Right MessageFormatJson
+      "yaml" -> Right MessageFormatYaml
+      other -> Left $ "Unknown message format: " <> other <> ". Expected one of: text, json, yaml."
+  O.option readMessageFormat
+    ( O.long "message-format"
+        <> O.metavar "text|json|yaml"
+        <> O.value MessageFormatText
+        <> O.showDefault
+        <> O.help "Format of command output."
+    )
 
 -- | Parser for transaction-related commands.
 parseTransactionCommand
@@ -436,7 +452,7 @@ buildSimpleOptions era network socket =
     <*> (O.optional . O.strOption)
       ( O.long "metadata-file" <> O.metavar "METADATA_FILE" <> O.help "JSON file containing metadata."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
@@ -505,7 +521,7 @@ buildIncomingOptions era network socket =
     <*> (O.optional . O.strOption)
       ( O.long "metadata-file" <> O.metavar "METADATA_FILE" <> O.help "JSON file containing metadata."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
@@ -605,7 +621,7 @@ buildContinuingOptions era network socket =
     <*> (O.optional . O.strOption)
       ( O.long "metadata-file" <> O.metavar "METADATA_FILE" <> O.help "JSON file containing metadata."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
@@ -692,7 +708,7 @@ buildOutgoingOptions era network socket =
     <*> (O.optional . O.strOption)
       ( O.long "metadata-file" <> O.metavar "METADATA_FILE" <> O.help "JSON file containing metadata."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
@@ -777,7 +793,7 @@ publishOptions era network socket =
           <> O.help "Address to receive ADA in excess of fee."
       )
     <*> O.optional (publishingStrategyOpt era)
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
@@ -788,6 +804,7 @@ publishOptions era network socket =
           <> O.metavar "SLOT_NO"
           <> O.help "The slot number after which minting is no longer possible."
       )
+    <*> messageFormatParser
 
 -- | Parser for the "find-publish" command.
 findPublishedCommand

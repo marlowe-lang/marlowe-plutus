@@ -48,7 +48,7 @@ import qualified Data.Set as Set
 import qualified Language.Marlowe.Runtime.Core.ScriptRegistry as ScriptRegistry
 import System.Exit (die)
 import Language.Marlowe.Runtime.Transaction.Api (LoadHelpersContextError(LoadHelpersContextErrorNotFound), RoleTokensConfig(RoleTokensNone), ContractInitialized(ContractInitialized), ContractInitializedInEra(txBody, contractId))
-import Language.Marlowe.Runtime.Transaction.Builders (execInit)
+import Language.Marlowe.Runtime.Transaction.Builders (execInit, Connector(Connector))
 import Language.Marlowe.Runtime.Cardano.Api (fromCardanoUTxO, fromPlutusSerialisedScript)
 import Log (LogLevel(LogTrace), runLogT)
 import Log.Backend.StandardOutput (withStdOutLogger)
@@ -90,8 +90,8 @@ readAddress =
   eitherReader $
     first show . C.deserialiseFromBech32 . fromString
 
-fundingWalletParser :: Parser (C.Address C.ShelleyAddr)
-fundingWalletParser =
+fundingAddressParser :: Parser (C.Address C.ShelleyAddr)
+fundingAddressParser =
   option readAddress $
     fold
       [ long "funding-wallet-address"
@@ -153,7 +153,7 @@ mkNetworkIdParser = do
           ( long "testnet-magic"
               <> metavar "INTEGER"
               <> networkMod
-              <> help "Network magic. Defaults to the CARDANO_TESTNET_MAGIC environment variable's value."
+              <> help "Network magic. Defaults to the CARDANO_NODE_NETWORK_ID environment variable's value."
           )
     mainnetParser <|> testnetParser
 
@@ -171,7 +171,7 @@ mkInitCommandParser = do
       <*> switch do
         long "devel-scripts"
           <> help "Compile the devel script variants with tracing preserved."
-      <*> fundingWalletParser
+      <*> fundingAddressParser
       <*> messageFormatParser
       <*> networkIdParser
       <*> socketPathParser
@@ -205,8 +205,8 @@ runInitCommand cmd = do
       (,,,)
         <$> C.querySystemStart
         <*> C.queryEraHistory
-        <*> C.queryProtocolParameters C.ShelleyBasedEraDijkstra
-        <*> C.queryUtxo C.ShelleyBasedEraDijkstra (C.QueryUTxOByAddress $ Set.fromList [C.AddressShelley cmd.fundingAddress])
+        <*> C.queryProtocolParameters C.ShelleyBasedEraConway
+        <*> C.queryUtxo C.ShelleyBasedEraConway (C.QueryUTxOByAddress $ Set.fromList [C.AddressShelley cmd.fundingAddress])
 
   (systemStart, eraHistory, protocolParams, walletUtxos) <- case rawQueryResult of
     Right (Right systemStart, Right eraHistory, Right (Right protocolParams), Right (Right walletUtxos@(C.UTxO walletUtxosMap))) -> do
@@ -244,7 +244,8 @@ runInitCommand cmd = do
     runLogT "marlowe-transactions-cli" logger LogTrace $
       execInit
         mkRoleTokensPolicy
-        C.DijkstraEra
+        C.ConwayEra
+        Connector
         ScriptRegistry.getCurrentScripts
         solveConstraints
         protocolParams

@@ -47,7 +47,7 @@ import Language.Marlowe.CLI.Command.Parse (
   parseTxOut,
   publishingStrategyOpt,
   requiredSignersOpt,
-  txBodyFileOpt,
+  outTxFileOpt,
  )
 import Language.Marlowe.CLI.Run (
   autoRunTransaction,
@@ -65,7 +65,7 @@ import Language.Marlowe.CLI.Types (
   PublishingStrategy,
   QueryExecutionContext (..),
   SigningKeyFile,
-  TxBodyFile,
+  TxFile,
  )
 import Marlowe.Plutus.Semantics (MarloweParams (MarloweParams))
 import Marlowe.Plutus.Semantics.Types (Input)
@@ -142,7 +142,7 @@ data RunCommand era
       -- ^ The files containing the required signing keys.
       , metadataFile :: Maybe FilePath
       -- ^ The file containing JSON metadata, if any.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -173,7 +173,7 @@ data RunCommand era
       -- ^ The files containing the required signing keys.
       , metadataFile :: Maybe FilePath
       -- ^ The file containing JSON metadata, if any.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -198,7 +198,7 @@ data RunCommand era
       -- ^ The files containing the required signing keys.
       , metadataFile :: Maybe FilePath
       -- ^ The file containing JSON metadata, if any.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -223,7 +223,7 @@ data RunCommand era
       -- ^ The files containing the required signing keys.
       , metadataFile :: Maybe FilePath
       -- ^ The file containing JSON metadata, if any.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -326,7 +326,7 @@ runRunCommand command =
           change
           signingKeyFiles
           metadataFile
-          bodyFile
+          txFile
           submitTimeout
           printStats
           invalid
@@ -348,7 +348,7 @@ runRunCommand command =
           change
           signingKeyFiles
           metadataFile
-          bodyFile
+          txFile
           submitTimeout
           printStats
           invalid
@@ -367,7 +367,7 @@ runRunCommand command =
           change
           signingKeyFiles
           metadataFile
-          bodyFile
+          txFile
           submitTimeout
           printStats
           invalid
@@ -386,7 +386,7 @@ runRunCommand command =
           change
           signingKeyFiles
           metadataFile
-          bodyFile
+          txFile
           submitTimeout
           (PrintStats printStats)
           invalid
@@ -559,7 +559,7 @@ runOptions era network socket =
     <*> (O.optional . O.strOption)
       ( O.long "metadata-file" <> O.metavar "METADATA_FILE" <> O.help "JSON file containing metadata."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
@@ -645,7 +645,7 @@ withdrawOptions era network socket =
     <*> (O.optional . O.strOption)
       ( O.long "metadata-file" <> O.metavar "METADATA_FILE" <> O.help "JSON file containing metadata."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
@@ -699,7 +699,7 @@ autoRunOptions era network socket =
     <*> (O.optional . O.strOption)
       ( O.long "metadata-file" <> O.metavar "METADATA_FILE" <> O.help "JSON file containing metadata."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
@@ -770,7 +770,7 @@ autoWithdrawOptions era network socket =
     <*> (O.optional . O.strOption)
       ( O.long "metadata-file" <> O.metavar "METADATA_FILE" <> O.help "JSON file containing metadata."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"

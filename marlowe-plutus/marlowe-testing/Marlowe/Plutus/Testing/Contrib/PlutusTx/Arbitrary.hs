@@ -56,14 +56,14 @@ import Test.Tasty.QuickCheck (
   vectorOf,
  )
 
-import qualified Data.ByteString as BS (ByteString, pack)
-import qualified Data.ByteString.Char8 as BS8 (pack)
+import qualified Data.ByteString as BS (pack)
 import qualified PlutusTx.AssocMap as PlutusTxAM
 import qualified PlutusTx.List as List
 import PlutusLedgerApi.V1 (PubKeyHash, CurrencySymbol, TokenName (TokenName), POSIXTime (POSIXTime), Credential (PubKeyCredential, ScriptCredential), StakingCredential (StakingHash), ScriptHash)
 import Marlowe.Plutus.Semantics.Types (unsafeMkCurrencySymbolHex, mkTokenNameByteString)
 import PlutusLedgerApi.V3.MintValue (emptyMintValue)
 import qualified PlutusLedgerApi.V3 as Ledger
+import Test.QuickCheck.Instances ()
 
 arbitraryPlutusTxAssocMap :: (Eq k) => Gen k -> Gen v -> Gen (PlutusTxAM.Map k v)
 arbitraryPlutusTxAssocMap arbitraryKey arbitraryValue =
@@ -116,9 +116,6 @@ randomScriptHashes =
   , "d877b83fee4a52bd72269ece77d78549fa64e111aa0e20cd4a1c471b"
   ]
 
-
-instance Arbitrary BS.ByteString where
-  arbitrary = BS8.pack <$> arbitrary
 
 instance Arbitrary BuiltinByteString where
   arbitrary = toBuiltin . BS.pack <$> arbitrary

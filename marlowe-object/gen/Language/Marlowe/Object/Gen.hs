@@ -13,7 +13,7 @@ import Data.Functor ((<&>))
 import Language.Marlowe.Object.Bundler (BundlerT (..))
 import Language.Marlowe.Object.Link
 import Language.Marlowe.Object.Types
-import Spec.Marlowe.Semantics.Arbitrary (unValidContractStructure)
+import Marlowe.Plutus.Testing.Semantics.Arbitrary (unValidContractStructure)
 import Test.Gen.Cardano.Api.Typed (genAddressShelley)
 import Test.QuickCheck hiding (label)
 import Test.QuickCheck.Hedgehog (hedgehog)

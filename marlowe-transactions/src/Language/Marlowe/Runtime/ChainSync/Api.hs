@@ -174,6 +174,8 @@ data BlockHeader = BlockHeader
   deriving stock (Show, Eq, Ord, Generic)
   deriving anyclass (Binary, ToJSON, Variations)
 
+-- TODO: What is the motivation between type vs a newtype
+--       around the ChainPoint?
 newtype ChainTip = ChainTip { blockHeader :: Maybe BlockHeader }
   deriving stock (Show, Eq, Ord, Generic)
   deriving newtype (Binary, ToJSON, Variations)

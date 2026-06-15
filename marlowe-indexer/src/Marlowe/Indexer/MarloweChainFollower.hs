@@ -10,18 +10,18 @@ module Marlowe.Indexer.MarloweChainFollower (
 ) where
 
 import qualified Cardano.Api as C
-import Control.Concurrent.STM (STM)
+import Control.Concurrent.STM (STM, retry)
 import qualified Marlowe.Indexer.NodeFollower as NodeFollower
 import Marlowe.Indexer.NodeFollower.Block (withCardanoEraTxs)
 import Language.Marlowe.Runtime.Indexer.MarloweBlock (MarloweBlock, MarloweUTxO)
 import UnliftIO (MonadUnliftIO, newTQueue, writeTQueue, atomically, readTQueue, MonadIO (..))
 import Log (MonadLog)
-import qualified Log (logInfo_, logInfo, logAttention)
+import qualified Log (logInfo_, logInfo, logAttention, logTrace_)
 import Control.Concurrent.Component (Component, mkComponent)
 import Data.Foldable (for_)
 import Data.Maybe (catMaybes)
 import qualified Data.Set as Set
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import Data.Aeson (ToJSON)
 import Data.Text (Text)
 import Marlowe.Indexer.MarloweChainFollower.Extractor (extractMarloweBlock)
@@ -35,6 +35,8 @@ import Data.Set (Set)
 import Control.Monad.State (runStateT)
 import Data.Traversable (for)
 import Control.Monad.Trans.Writer (runWriter)
+import qualified Data.Text as T
+import Marlowe.Indexer.NodeFollower (areChangesEmpty)
 
 -- | The set of dependencies needed by the NodeFollower component.
 data MarloweChainFollowerDependencies m = MarloweChainFollowerDependencies
@@ -110,6 +112,9 @@ mkMarloweChainFollower deps = mkComponent "marlowe-chain-follower" do
 logInfo_ :: MonadLog m => Text -> m ()
 logInfo_ msg = Log.logInfo_ $ "[MarloweChainFollower] " <> msg
 
+logTrace_ :: MonadLog m => Text -> m ()
+logTrace_ msg = Log.logTrace_ ("[MarloweChainFollower] " <> msg)
+
 logInfo :: ToJSON a => MonadLog m => Text -> a -> m ()
 logInfo msg = Log.logInfo ("[MarloweChainFollower] " <> msg)
 
@@ -153,8 +158,9 @@ mkFollowerThread
   -> m ()
 mkFollowerThread emit possibleSystemStart = do
   MarloweChainFollowerDependencies{..} <- ask
-  systemStart <- getSystemStart nodeQuerier possibleSystemStart
   NodeFollower.Changes{..} <- liftIO $ atomically changes
+  systemStart <- getSystemStart nodeQuerier possibleSystemStart
+  logTrace_ "Fetching changes from node follower"
   for_ changesRollback $ \rollbackTo -> do
     let
       rollbackPoint = chainPointFromCardanoRollback rollbackTo
@@ -163,7 +169,6 @@ mkFollowerThread emit possibleSystemStart = do
 
   (eraHistory :: C.EraHistory) <- runQuery nodeQuerier QueryHistory
   marloweUTxO <- getLatestMarloweUTxO
-
   blocks' <- for (reverse changesBlocks) \(C.BlockInMode _ block) -> do
     let
       blockHeader = fromCardanoBlockHeader . C.getBlockHeader $ block
@@ -173,6 +178,7 @@ mkFollowerThread emit possibleSystemStart = do
         logAttention "Failed to extract transactions from block" info
         error "Failed to extract transactions from block"
 
+  logTrace_ $ "Extracting marlowe from " <> T.pack (show (length blocks')) <> " blocks"
   let
     ((possibleBlocks, marloweUTxO'), logs) = runWriter $ flip runStateT marloweUTxO $ for blocks' \(blockHeader, transactions) -> do
       let
@@ -188,7 +194,7 @@ mkFollowerThread emit possibleSystemStart = do
     marloweBlocks = catMaybes possibleBlocks
 
   for_ logs $ \l ->
-    logInfo_ $ "Extract marlowe block: " <> l
+    logTrace_ $ "[Extractor] " <> l
 
   unless (null marloweBlocks) $ do
     -- FIXME: Add JSON instance

@@ -35,14 +35,36 @@ flag defer-plugin-errors
 common lang
   default-language:   Haskell2010
   default-extensions:
+    BlockArguments
+    DataKinds
+    DeriveAnyClass
     DeriveFoldable
     DeriveFunctor
     DeriveGeneric
     DeriveLift
     DeriveTraversable
+    DerivingStrategies
     ExplicitForAll
+    ExistentialQuantification
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NumericUnderscores
+    OverloadedRecordDot
+    OverloadedStrings
+    RankNTypes
+    RecordWildCards
     ScopedTypeVariables
     StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    ViewPatterns
 
   ghc-options:
     -Wall -Wnoncanonical-monad-instances -Wunused-packages
@@ -51,10 +73,6 @@ common lang
 
   if flag(defer-plugin-errors)
     ghc-options: -fplugin-opt PlutusTx.Plugin:defer-errors
-
-  default-extensions:
-    DataKinds
-    ImportQualifiedPost
 
 library
   import:          lang
@@ -122,7 +140,7 @@ library
     , microlens
     , mtl
     , ouroboros-consensus
-    -- , ouroboros-network-protocols
+    , ouroboros-network:{protocols}
     , parser-combinators
     , plutus-core
     , plutus-ledger-ada
@@ -164,7 +182,6 @@ library command
     Language.Marlowe.CLI.Command.Util
 
   build-depends:
-    , appendmap
     , base >=4.9 && <5
     , base16-bytestring
     , bytestring
@@ -175,7 +192,7 @@ library command
     -- , marlowe-cardano
     , marlowe-cli
     , marlowe-plutus
-    , marlowe-plutus-extended
+    -- , marlowe-plutus-extended
     -- , marlowe-cli:cli-test
     -- , marlowe-contracts
     -- , marlowe-runtime:config

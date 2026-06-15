@@ -49,13 +49,18 @@ import Log (
   MonadLog,
   logAttention_,
  )
+import Log qualified
 import qualified Ouroboros.Network.Protocol.LocalStateQuery.Client as Q
 import Control.Concurrent.STM (STM)
-import UnliftIO (MonadUnliftIO, withRunInIO, atomically, writeTVar, newTVar, readTMVar, newEmptyTMVar, writeTMVar, newEmptyTMVarIO, TMVar, registerDelay, readTVar, orElse)
+import UnliftIO (MonadUnliftIO, withRunInIO, atomically, writeTVar, newTVar, readTMVar, newEmptyTMVar, newEmptyTMVarIO, TMVar, registerDelay, readTVar, orElse, takeTMVar, putTMVar)
 import Control.Monad.Reader.Class ( MonadReader, ask )
 import Control.Concurrent.Component (Component, mkComponent)
 import qualified Cardano.Api as C
 import qualified Ouroboros.Network.Protocol.LocalStateQuery.Client as C
+import Control.Monad (void)
+
+logTrace_ :: MonadLog m => Text -> m ()
+logTrace_ msg = Log.logTrace_ $ "[NodeQuerier] " <> msg
 
 data Query a where
   QueryStartup :: Query (SystemStart, GenesisParameters ShelleyEra, EraHistory)
@@ -63,6 +68,8 @@ data Query a where
   QueryParams :: Query (LedgerProtocolParameters ConwayEra)
   QueryTxIns :: [TxIn] -> Query (UTxO ConwayEra)
   QueryAddress :: Address ShelleyAddr -> Query (UTxO ConwayEra)
+
+deriving instance Show (Query a)
 
 data QueryRequest where
   QueryRequest :: Query a -> TMVar a -> QueryRequest
@@ -96,7 +103,10 @@ mkTimeBoundNodeFollower NodeQuerierDependencies{..} (TimeoutSeconds _timeoutSeco
   requestVar <- newEmptyTMVar
   let
     readRequest :: STM QueryRequest
-    readRequest = readTMVar requestVar
+    readRequest = takeTMVar requestVar
+
+    clearRequest :: STM ()
+    clearRequest = void $ takeTMVar requestVar
 
     runNodeQuerier :: m ()
     runNodeQuerier = withRunInIO \runInIO -> do
@@ -105,7 +115,7 @@ mkTimeBoundNodeFollower NodeQuerierDependencies{..} (TimeoutSeconds _timeoutSeco
         stateQueryClient' = do
           let
             LocalStateQueryClient client = stateQueryClient
-          hoistQueryClient (runInIO . flip runReaderT readRequest) $ LocalStateQueryClient $ do
+          hoistQueryClient (runInIO . flip runReaderT (readRequest, clearRequest)) $ LocalStateQueryClient $ do
             atomically $ writeTVar connectedVar True
             client
 
@@ -123,7 +133,7 @@ mkTimeBoundNodeFollower NodeQuerierDependencies{..} (TimeoutSeconds _timeoutSeco
       resultVar <- newEmptyTMVarIO
       let
         req = QueryRequest query resultVar
-      atomically $ writeTMVar requestVar req
+      atomically $ putTMVar requestVar req
       delayVar <- registerDelay (_timeoutSeconds * 1000000)
       let
         readResult = do
@@ -155,6 +165,9 @@ mkNodeQuerier NodeQuerierDependencies{..} = mkComponent "node-querier" $ do
     readRequest :: STM QueryRequest
     readRequest = readTMVar requestVar
 
+    clearRequest :: STM ()
+    clearRequest = void $ takeTMVar requestVar
+
     runNodeQuerier :: m ()
     runNodeQuerier = withRunInIO \runInIO -> do
       let
@@ -162,7 +175,7 @@ mkNodeQuerier NodeQuerierDependencies{..} = mkComponent "node-querier" $ do
         stateQueryClient' = do
           let
             LocalStateQueryClient client = stateQueryClient
-          hoistQueryClient (runInIO . flip runReaderT readRequest) $ LocalStateQueryClient $ do
+          hoistQueryClient (runInIO . flip runReaderT (readRequest, clearRequest)) $ LocalStateQueryClient $ do
             atomically $ writeTVar connectedVar True
             client
 
@@ -176,31 +189,37 @@ mkNodeQuerier NodeQuerierDependencies{..} = mkComponent "node-querier" $ do
             }
 
     doRequest :: forall a. Query a -> m a
-    doRequest query = liftIO do
-      resultVar <- newEmptyTMVarIO
-      let
-        req = QueryRequest query resultVar
-      atomically $ writeTMVar requestVar req
-      atomically $ readTMVar resultVar
+    doRequest query = do
+      logTrace_ $ "Submitting query: " <> T.pack (show query)
+      result <- liftIO do
+        resultVar <- newEmptyTMVarIO
+        let
+          req = QueryRequest query resultVar
+        atomically $ putTMVar requestVar req
+        atomically $ readTMVar resultVar
+      logTrace_ $ "Received query result for: " <> T.pack (show query)
+      pure result
   pure (runNodeQuerier, NodeQuerier doRequest)
 
 stateQueryClient
   :: forall m
    . MonadIO m
   => MonadLog m
-  => MonadReader (STM QueryRequest) m
+  => MonadReader (STM QueryRequest, STM ()) m
   => Q.LocalStateQueryClient BlockInMode ChainPoint QueryInMode m ()
 stateQueryClient = Q.LocalStateQueryClient go
   where
     go = do
-      readRequest <- ask
+      (readRequest, clearRequest) <- ask
       QueryRequest query res <- liftIO $ atomically readRequest
       pure $
         Q.SendMsgAcquire
           VolatileTip
           Q.ClientStAcquiring
             { recvMsgAcquired = handleRequest query \a -> do
-                liftIO $ atomically $ writeTMVar res a
+                liftIO $ atomically do
+                  clearRequest
+                  putTMVar res a
                 pure $ Q.SendMsgRelease go
             , recvMsgFailure = \acquireFailure ->
                 logThrow $

@@ -4,12 +4,14 @@
 
 module Language.Marlowe.Runtime.Transaction.Api (
   -- | Contract Creation API
+  Actual (..),
   Account (..),
   Accounts (..),
   CoinSelectionError (..),
   ConstraintError (..),
   ContractInitialized (..),
   ContractInitializedInEra (..),
+  Expected (..),
   InitBuildupError (..),
   InitError (..),
   Mint (..),
@@ -1609,11 +1611,29 @@ instance Binary WithdrawError
 instance Variations WithdrawError
 instance ToJSON WithdrawError
 
+newtype Expected a = Expected a
+deriving newtype instance Show a => Show (Expected a)
+deriving newtype instance Eq a => Eq (Expected a)
+deriving newtype instance Ord a => Ord (Expected a)
+deriving newtype instance Binary a => Binary (Expected a)
+deriving newtype instance ToJSON a => ToJSON (Expected a)
+deriving newtype instance Variations a => Variations (Expected a)
+
+newtype Actual a = Actual a
+deriving newtype instance Show a => Show (Actual a)
+deriving newtype instance Eq a => Eq (Actual a)
+deriving newtype instance Ord a => Ord (Actual a)
+deriving newtype instance Binary a => Binary (Actual a)
+deriving newtype instance ToJSON a => ToJSON (Actual a)
+deriving newtype instance Variations a => Variations (Actual a)
+
 data LoadMarloweContextError
   = LoadMarloweContextErrorNotFound
-  | LoadMarloweContextErrorVersionMismatch SomeMarloweVersion
+  | LoadMarloweContextErrorVersionMismatch (Expected SomeMarloweVersion) (Actual SomeMarloweVersion)
   | LoadMarloweContextToCardanoError
   | MarloweScriptNotPublished ScriptHash
+  | MarloweAddressNotScriptAddress Address
+  | CardanoConversionFailure String
   | PayoutScriptNotPublished ScriptHash
   | ExtractCreationError ExtractCreationError
   | ExtractMarloweTransactionError ExtractMarloweTransactionError

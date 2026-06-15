@@ -38,9 +38,13 @@ data Assets = Assets
   deriving (Eq, Show, Ord, Generic)
   deriving anyclass (ToJSON, FromJSON, ToSchema)
 
+instance NFData Assets
+
 newtype Tokens = Tokens {unTokens :: Map PolicyId (Map Text Integer)}
   deriving (Eq, Show, Ord, Generic)
   deriving newtype (ToJSON, FromJSON, ToSchema)
+
+instance NFData Tokens
 
 instance Semigroup Tokens where
   Tokens a <> Tokens b = Tokens $ Map.unionWith (Map.unionWith (+)) a b

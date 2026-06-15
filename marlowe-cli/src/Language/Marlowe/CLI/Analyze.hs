@@ -32,7 +32,7 @@ import Control.Monad (guard, liftM2, (<=<))
 import Control.Monad.Except (MonadError (throwError))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson (object, (.=))
-import Data.Bifunctor (bimap, first)
+import Data.Bifunctor (bimap)
 import Data.Foldable (toList)
 import Data.Function (on)
 import Data.List (maximumBy, nub, (\\))
@@ -101,7 +101,6 @@ import Marlowe.Plutus.Semantics.Types.Address (mainnet)
 import Language.Marlowe.Scripts.Types (marloweTxInputsFromInputs)
 
 import Cardano.Api (unsafeHashableScriptData)
-import Cardano.Api qualified as Api
 import Cardano.Api qualified as C
 import Cardano.Api.Serialise.Raw (deserialiseFromRawBytesHex)
 import Cardano.Api.Ledger (ppProtocolVersionL)
@@ -128,7 +127,7 @@ import GHC.Natural (naturalToInteger)
 import Language.Marlowe.CLI.Transaction (babbageEraOnwardsToAllegraEraOnwards, mkTxOutValue)
 import Lens.Micro ((^.))
 import Ouroboros.Network.Protocol.LocalStateQuery.Type (Target (VolatileTip))
-import Plutus.V1.Ledger.Ada qualified as P (adaSymbol, adaToken, lovelaceValueOf)
+import Plutus.V1.Ledger.Ada qualified as P (lovelaceValueOf)
 import Plutus.V1.Ledger.SlotConfig qualified as P (SlotConfig, posixTimeToEnclosingSlot)
 import PlutusLedgerApi.V2 (deserialiseScript)
 import PlutusLedgerApi.V2 qualified as PV2 hiding (evaluateScriptCounting)
@@ -392,7 +391,7 @@ checkMaximumValue era protocol info verbose = Api.babbageEraOnwardsConstraints e
       [ "Actual" .= size
       , "Maximum" .= maxValue
       , "Unit" .= ("byte" :: String)
-      , "Invalid" .= (size > maxValue)
+      , "Invalid" .= (fromIntegral size > maxValue)
       , "Percentage" .= (100 * fromIntegral size / fromIntegral maxValue :: Double)
       ]
         <> maybe [] (pure . ("Worst case" .=)) (guard verbose >> worst)
@@ -641,10 +640,16 @@ checkTransactionSize era protocol ContractInstance{..} (Transaction marloweState
           Api.Mainnet
           (Api.PaymentCredentialByScript scriptHash)
           (Api.StakeAddressByValue $ Api.StakeCredentialByKey stakeKeyHash)
-    oneLovelace <- pure $ Api.lovelaceToValue 1
-    marloweParams <- pure $ MarloweParams ciRolesCurrency
-    inDatum <- pure $ MarloweData{..}
-    redeemer <- pure $ marloweTxInputsFromInputs txInputs
+    let
+      -- NOTE:
+      -- All the below variable assignments were written using a monadic `bind` like:
+      -- `onLovelace <- pure $ Api.lovelaceToValue 1`
+      -- Could it be that this `pure` was necessary to enforce a particular evaluation
+      -- order? I can't see that was the case or that actually mattered.
+      oneLovelace = Api.lovelaceToValue 1
+      marloweParams = MarloweParams ciRolesCurrency
+      inDatum =  MarloweData{..}
+      redeemer = marloweTxInputsFromInputs txInputs
     txIdForScript <- liftCli $ deserialiseFromRawBytesHex (BS8.pack "0000000000000000000000000000000000000000000000000000000000000000")
     let inScript =
           ( Api.TxIn txIdForScript $ Api.TxIx 0

@@ -56,7 +56,7 @@ import Language.Marlowe.CLI.Command.Parse (
   readAddressEither,
   readTokenName,
   requiredSignersOpt,
-  txBodyFileOpt,
+  outTxFileOpt,
   walletOpt,
  )
 import Language.Marlowe.CLI.Merkle (demerkleize, merkleize)
@@ -68,7 +68,7 @@ import Language.Marlowe.CLI.Types (
   OutputQueryResult,
   QueryExecutionContext (QueryNode),
   SigningKeyFile,
-  TxBodyFile,
+  TxFile,
  )
 import Options.Applicative qualified as O
 import Options.Applicative.NonEmpty qualified as O
@@ -88,7 +88,7 @@ data UtilCommand era
       -- ^ The lovelace to send with each bundle of tokens.
       , change :: AddressInEra era
       -- ^ The change address.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -109,7 +109,7 @@ data UtilCommand era
       -- ^ The number of each token to mint.
       , expires :: Maybe SlotNo
       -- ^ The slot number after which minting is no longer possible.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -127,7 +127,7 @@ data UtilCommand era
       -- ^ Additional token providers.
       , metadataFile :: Maybe FilePath
       -- ^ The CIP-25 metadata for the minting, with keys for each token name.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , expires :: Maybe SlotNo
       -- ^ The slot number after which minting is no longer possible.
@@ -142,7 +142,7 @@ data UtilCommand era
       -- ^ The path to the node socket.
       , amount :: Maybe Ledger.Coin
       -- ^ The lovelace to send to the address. By default we drain out the address.
-      , bodyFile :: TxBodyFile
+      , txFile :: TxFile
       -- ^ The output file for the transaction body.
       , submitTimeout :: Maybe Second
       -- ^ Whether to submit the transaction, and its confirmation timeout in seconds.
@@ -228,7 +228,7 @@ runUtilCommand command =
           Nothing
           TxMintNone
           TxMetadataNone
-          bodyFile
+          txFile
           submitTimeout
           >>= printTxId
       Mint{..} -> do
@@ -242,7 +242,7 @@ runUtilCommand command =
           metadataFile
           expires
           addr
-          bodyFile
+          txFile
           submitTimeout
       Burn{..} -> do
         let (addr, skeyFile) = issuer
@@ -253,7 +253,7 @@ runUtilCommand command =
           metadataFile
           expires
           addr
-          bodyFile
+          txFile
           submitTimeout
       Fund{..} -> do
         let (addr, skeyFile) = faucetCredentials
@@ -346,7 +346,7 @@ cleanOptions era network socket =
           <> O.metavar "ADDRESS"
           <> O.help "Address to receive ADA in excess of fee."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
@@ -399,7 +399,7 @@ mintOptions era network socket =
           <> O.metavar "SLOT_NO"
           <> O.help "The slot number after which minting is no longer possible."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
@@ -458,7 +458,7 @@ burnOptions era network socket =
           <> O.metavar "JSON_FILE"
           <> O.help "The CIP-25 metadata, with keys for each token name."
       )
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSlotNo)
       ( O.long "expires"
           <> O.metavar "SLOT_NO"
@@ -501,7 +501,7 @@ fundAddressOptions era network socket =
             "Location of the cardano-node socket file. Defaults to the CARDANO_NODE_SOCKET_PATH environment variable's value."
       )
     <*> (lovelaceOpt <|> sendAllOpt)
-    <*> txBodyFileOpt
+    <*> outTxFileOpt
     <*> (O.optional . O.option parseSecond)
       ( O.long "submit"
           <> O.metavar "SECONDS"
