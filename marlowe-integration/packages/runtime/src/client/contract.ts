@@ -1,7 +1,7 @@
 import type { Json } from "@konduit/codec/json";
 import * as jsonCodecs from "@konduit/codec/json/codecs";
 import * as codec from "@konduit/codec";
-import { ContractId, TxEnvelope } from "./core";
+import { ContractId, MarloweVersion, TxEnvelope } from "./core";
 import type { Tagged } from "type-fest";
 import type { PolicyId } from "@konduit/konduit-consumer/cardano";
 
@@ -42,20 +42,35 @@ export namespace PostCreateContractResponse {
 //   , unclaimedPayouts :: [Payout]
 //   }
 // 
+// FIXME: Turn all the below `Json` types into proper
+// types and codecs.
 export type ContractState = {
+  assets: Json;
+  block: Json | null;
   contractId: ContractId;
-  // roleTokenMintingPolicyId: PolicyId;
-  version: string;
-  // tags: { [key: string]: Json };
-  // metadata: Map<bigint, Json>;
-  // status: string;
-  // block?: Json;
+  currentContract: Json | null;
   initialContract: Json;
   initialState: Json;
-  currentContract?: Json;
-  state?: Json;
-  // utxo?: TxOutRef;
-  // assets: Json;
+  // metadata: Map<bigint, Json>;
+  // roleTokenMintingPolicyId: PolicyId;
+  state: Json | null;
+  // status: string;
+  // tags: { [key: string]: Json };
   // txBody?: TxEnvelope;
   // unclaimedPayouts: Payout[];
+  // utxo?: TxOutRef;
+  version: string;
+}
+
+export namespace ContractState {
+  export const jsonCodec: jsonCodecs.JsonCodec<ContractState> = jsonCodecs.objectOf({
+    assets: jsonCodecs.identityCodec,
+    block: jsonCodecs.nullable(jsonCodecs.identityCodec),
+    contractId: ContractId.jsonCodec,
+    currentContract: jsonCodecs.nullable(jsonCodecs.identityCodec),
+    initialContract: jsonCodecs.identityCodec,
+    initialState: jsonCodecs.identityCodec,
+    state: jsonCodecs.nullable(jsonCodecs.identityCodec),
+    version: MarloweVersion.jsonCodec,
+  })
 }

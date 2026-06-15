@@ -7,7 +7,7 @@ import { POSIXMilliseconds } from '@konduit/konduit-consumer/time/absolute';
 import { Milliseconds } from '@konduit/konduit-consumer/time/duration';
 import type { Path } from '../../exec.js';
 import { toAsync } from '@konduit/konduit-consumer/neverthrow';
-import { waitForResultAsync, waitPatientlyForResultAsync } from '../../neverthrow.js';
+import { waitPatientlyForResultAsync } from '../../neverthrow.js';
 import type { Json } from '@konduit/codec/json';
 import * as json from '@konduit/codec/json';
 

@@ -5,6 +5,12 @@ import type { Tagged } from "type-fest";
 import * as cardano from "@konduit/konduit-consumer/cardano";
 import { err, ok, Result } from "neverthrow";
 
+export type MarloweVersion = "v1";
+
+export namespace MarloweVersion {
+  export const jsonCodec: jsonCodecs.JsonCodec<MarloweVersion> = jsonCodecs.constant("v1" as MarloweVersion);
+}
+
 export type ContractId = Tagged<string, "ContractId">;
 
 export namespace ContractId {

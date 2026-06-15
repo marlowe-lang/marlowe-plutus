@@ -10,7 +10,7 @@ module Marlowe.Indexer.MarloweChainFollower (
 ) where
 
 import qualified Cardano.Api as C
-import Control.Concurrent.STM (STM, retry)
+import Control.Concurrent.STM (STM)
 import qualified Marlowe.Indexer.NodeFollower as NodeFollower
 import Marlowe.Indexer.NodeFollower.Block (withCardanoEraTxs)
 import Language.Marlowe.Runtime.Indexer.MarloweBlock (MarloweBlock, MarloweUTxO)
@@ -21,7 +21,7 @@ import Control.Concurrent.Component (Component, mkComponent)
 import Data.Foldable (for_)
 import Data.Maybe (catMaybes)
 import qualified Data.Set as Set
-import Control.Monad (unless, when)
+import Control.Monad (unless)
 import Data.Aeson (ToJSON)
 import Data.Text (Text)
 import Marlowe.Indexer.MarloweChainFollower.Extractor (extractMarloweBlock)
@@ -36,7 +36,6 @@ import Control.Monad.State (runStateT)
 import Data.Traversable (for)
 import Control.Monad.Trans.Writer (runWriter)
 import qualified Data.Text as T
-import Marlowe.Indexer.NodeFollower (areChangesEmpty)
 
 -- | The set of dependencies needed by the NodeFollower component.
 data MarloweChainFollowerDependencies m = MarloweChainFollowerDependencies

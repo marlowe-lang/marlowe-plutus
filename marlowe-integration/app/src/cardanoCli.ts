@@ -233,7 +233,7 @@ export const submitTx = (
   tmpDir: Path | null = null,
   intervalMs = 1_000,
   timeoutMs = 180_000,
-): ResultAsync<null, WaitForUtxoError> => {
+): ResultAsync<TxIdHex, WaitForUtxoError> => {
   return toAsync(getTxId(txHex))
     .andThen((txIdHex) => {
       // Create temp directory for transaction submission
