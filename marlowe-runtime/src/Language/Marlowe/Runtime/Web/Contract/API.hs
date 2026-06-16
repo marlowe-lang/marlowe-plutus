@@ -246,7 +246,7 @@ instance HasStatus (PostContractsResponse CardanoTx) where
 
 data ContractState = ContractState
   { contractId :: ContractId
-  , roleTokenMintingPolicyId :: PolicyId
+  , roleTokenMintingPolicyId :: Maybe PolicyId
   , version :: MarloweVersion
   , tags :: Map Text Metadata
   , metadata :: Map Word64 Metadata
@@ -267,7 +267,7 @@ instance NFData ContractState
 
 data ContractHeader = ContractHeader
   { contractId :: TxOutRef
-  , roleTokenMintingPolicyId :: PolicyId
+  , roleTokenMintingPolicyId :: Maybe PolicyId
   , version :: MarloweVersion
   , tags :: Map Text Metadata
   , metadata :: Map Word64 Metadata

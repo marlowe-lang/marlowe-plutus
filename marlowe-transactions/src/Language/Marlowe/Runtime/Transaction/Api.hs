@@ -547,7 +547,7 @@ instance Binary (ContractInitialized 'V1) where
 
 data ContractInitializedInEra era v = ContractInitializedInEra
   { contractId :: ContractId
-  , rolesCurrency :: PolicyId
+  , rolesCurrency :: Maybe PolicyId
   , metadata :: MarloweTransactionMetadata
   , marloweScriptHash :: ScriptHash
   , marloweScriptAddress :: Address

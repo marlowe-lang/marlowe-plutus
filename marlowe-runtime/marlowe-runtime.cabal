@@ -322,8 +322,11 @@ executable cli
   other-modules:
     Commands
     Commands.Formatters.Servant
+    Commands.ApplyInputs
     Commands.Init
     Commands.GetContract
+    Commands.Options.Address
+    Commands.Options.CardanoNode
     Commands.Options.ContractId
     Commands.Options.MessageFormat
     Commands.Options.Port

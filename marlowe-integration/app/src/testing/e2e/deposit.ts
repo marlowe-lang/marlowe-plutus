@@ -9,7 +9,7 @@ import type { Path } from '../../exec.js';
 import { toAsync } from '@konduit/konduit-consumer/neverthrow';
 import { waitPatientlyForResultAsync } from '../../neverthrow.js';
 import type { Json } from '@konduit/codec/json';
-import * as json from '@konduit/codec/json';
+import { ContractState } from '@marlowe-lang/runtime/client';
 
 function mkContract(partyAddr: AddressBech32, timeout: POSIXMilliseconds): Contract {
   return {
@@ -42,18 +42,16 @@ export const init = async (faucetAddr: AddressBech32, faucetSkeyFile: Path) => {
       }))
     .andThen(({ txEnvelope, contractId }) => cardanoCli.submitTxEnvelope(txEnvelope).map(() => contractId))
     .andThen((contractId) => waitPatientlyForResultAsync(
-        () => toAsync(marloweRuntimeCli.runGetCLI(contractId, {}, null, true)),
-        (_res: Json) => true,
+        () => toAsync(marloweRuntimeCli.runGet(contractId, {}, null, true)),
+        (_res: ContractState) => true,
         { timeoutMs: 120_000, everyMs: 5_000 }
       ),
     );
   result.match(
-    (contractStatusJSON) => {
-      console.debug(`Contract initialized and transaction submitted successfully.`);
-      console.log(json.stringify(contractStatusJSON, undefined, 2));
+    (contractState: ContractState) => {
+      console.log(contractState);
     },
     (error) => {
-      console.error("Error during contract initialization and transaction submission:");
       if (typeof error === 'object' && error !== null && 'stderr' in error) {
         console.error(error.stderr);
       } else {

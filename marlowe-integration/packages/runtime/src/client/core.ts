@@ -68,3 +68,8 @@ export namespace TxEnvelope {
   })();
 }
 
+//"assets": {
+//  "lovelace": 1008540,
+//  "tokens": {}
+//},
+export type ValueRecord = {

@@ -3,7 +3,7 @@ import * as jsonCodecs from "@konduit/codec/json/codecs";
 import * as codec from "@konduit/codec";
 import { ContractId, MarloweVersion, TxEnvelope } from "./core";
 import type { Tagged } from "type-fest";
-import type { PolicyId } from "@konduit/konduit-consumer/cardano";
+import * as cardano from "@konduit/konduit-consumer/cardano";
 
 export type PostCreateContractResponseRecord = {
   contractId: ContractId;
@@ -24,26 +24,7 @@ export namespace PostCreateContractResponse {
   )
 }
 
-// data ContractState = ContractState
-//   { contractId :: ContractId
-//   , roleTokenMintingPolicyId :: PolicyId
-//   , version :: MarloweVersion
-//   , tags :: Map Text Metadata
-//   , metadata :: Map Word64 Metadata
-//   , status :: TxStatus
-//   , block :: Maybe BlockHeader
-//   , initialContract :: Semantics.Contract
-//   , initialState :: Semantics.State
-//   , currentContract :: Maybe Semantics.Contract
-//   , state :: Maybe Semantics.State
-//   , utxo :: Maybe TxOutRef
-//   , assets :: Assets
-//   , txBody :: Maybe TextEnvelope
-//   , unclaimedPayouts :: [Payout]
-//   }
-// 
-// FIXME: Turn all the below `Json` types into proper
-// types and codecs.
+// FIXME: Every `Json` below is a placeholder.
 export type ContractState = {
   assets: Json;
   block: Json | null;
@@ -52,14 +33,14 @@ export type ContractState = {
   initialContract: Json;
   initialState: Json;
   // metadata: Map<bigint, Json>;
-  // roleTokenMintingPolicyId: PolicyId;
+  roleTokenMintingPolicyId: cardano.PolicyId | null;
   state: Json | null;
   // status: string;
   // tags: { [key: string]: Json };
   // txBody?: TxEnvelope;
   // unclaimedPayouts: Payout[];
   // utxo?: TxOutRef;
-  version: string;
+  version: MarloweVersion;
 }
 
 export namespace ContractState {
@@ -70,6 +51,7 @@ export namespace ContractState {
     currentContract: jsonCodecs.nullable(jsonCodecs.identityCodec),
     initialContract: jsonCodecs.identityCodec,
     initialState: jsonCodecs.identityCodec,
+    roleTokenMintingPolicyId: jsonCodecs.nullable(cardano.PolicyId.jsonCodec),
     state: jsonCodecs.nullable(jsonCodecs.identityCodec),
     version: MarloweVersion.jsonCodec,
   })

@@ -268,7 +268,9 @@ instance ToDTO Query.ContractHeader where
   toDTO Query.ContractHeader{..} =
     Web.ContractHeader
       { contractId = toDTO contractId
-      , roleTokenMintingPolicyId = toDTO rolesCurrency
+      , roleTokenMintingPolicyId = toDTO $ case rolesCurrency of
+          "" -> Nothing
+          policyId -> Just policyId
       , version = toDTO marloweVersion
       , tags = fold $ toDTO $ marloweMetadata metadata
       , metadata = toDTO $ transactionMetadata metadata
@@ -466,7 +468,9 @@ instance ToDTO Query.SomeContractState where
   toDTO (Query.SomeContractState MarloweV1 Query.ContractState{..}) =
     Web.ContractState
       { contractId = toDTO contractId
-      , roleTokenMintingPolicyId = toDTO roleTokenMintingPolicyId
+      , roleTokenMintingPolicyId = toDTO $ case roleTokenMintingPolicyId of
+          "" -> Nothing
+          policyId -> Just policyId
       , version = Web.V1
       , tags = fold $ toDTO $ marloweMetadata metadata
       , metadata = toDTO $ transactionMetadata metadata

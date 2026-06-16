@@ -15,6 +15,7 @@ module Language.Marlowe.Runtime.Web.Client (
   -- healthcheck,
   getContract,
   postContract,
+  postTransaction,
   -- postContractCreateTx,
   -- postContractSource,
   -- postWithdrawal,
@@ -41,6 +42,7 @@ import Language.Marlowe.Runtime.Web.Adapter.CommaList ( CommaList (CommaList),)
 import Language.Marlowe.Runtime.Web.Adapter.Links (retractLink)
 import Language.Marlowe.Runtime.Web.Adapter.Servant (ListObject (..))
 import Language.Marlowe.Runtime.Web.Contract.API ( ContractHeader, ContractSourceId, ContractState, GetContractsResponse, PostContractSourceResponse, PostContractsRequest, PostContractsResponse, GetContractResponse, ContractId,)
+import Language.Marlowe.Runtime.Web.Contract.Transaction.API (PostTransactionsRequest(PostTransactionsRequest), PostTransactionsResponse)
 import Language.Marlowe.Runtime.Web.Core.Address ( Address, StakeAddress,)
 import Language.Marlowe.Runtime.Web.Core.Asset ( AssetId, PolicyId,)
 import Language.Marlowe.Runtime.Web.Core.NetworkId (NetworkId)
@@ -48,7 +50,7 @@ import Language.Marlowe.Runtime.Web.Core.Tip (ChainTip)
 import Language.Marlowe.Runtime.Web.Core.Tx ( TextEnvelope, TxId, TxOutRef,)
 import Language.Marlowe.Runtime.Web.Core.Tx qualified as Web
 import Language.Marlowe.Runtime.Web.Payout.API ( GetPayoutsResponse, PayoutHeader, PayoutState, PayoutStatus,)
-import Language.Marlowe.Runtime.Web.Tx.API ( CardanoTx, CreateTxEnvelope, WithdrawTxEnvelope,)
+import Language.Marlowe.Runtime.Web.Tx.API ( CardanoTx, CreateTxEnvelope, WithdrawTxEnvelope, ApplyInputsTxEnvelope)
 import Language.Marlowe.Runtime.Web.Withdrawal.API (GetWithdrawalsResponse, PostWithdrawalsRequest, Withdrawal, WithdrawalHeader,)
 import Marlowe.Plutus.Semantics.Types (Contract)
 import Pipes (Producer)
@@ -152,6 +154,27 @@ getContract contractId = do
   case matchUnion response of
     Just (contractState :: GetContractResponse) -> pure (retractLink contractState)
     Nothing -> liftIO $ fail "Unexpected response from getContract"
+
+postTransaction
+  :: Address
+  -> [Web.TransactionUnspentOutput C.ConwayEra]
+  -> ContractId
+  -> PostTransactionsRequest
+  -> ClientM (ApplyInputsTxEnvelope CardanoTx)
+postTransaction changeAddress availableUTxOs contractId request = do
+  let
+    (contractApi :<|> _) :<|> _ = runtimeClient
+    _ :<|> (_ :<|> transactionsAPI) = contractApi contractId
+    _ :<|> postTransaction' :<|> _ = transactionsAPI
+
+  union <-
+    postTransaction'
+      request
+      changeAddress
+      (CommaList availableUTxOs)
+  case matchUnion union of
+    Just (response :: PostTransactionsResponse CardanoTx) -> pure (retractLink response)
+    Nothing -> liftIO $ fail "Unexpected response from postTransaction"
 
 -- postContractSource
 --   :: Label

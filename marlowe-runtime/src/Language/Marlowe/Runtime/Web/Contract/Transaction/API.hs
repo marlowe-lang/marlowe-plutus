@@ -7,6 +7,7 @@ module Language.Marlowe.Runtime.Web.Contract.Transaction.API (
   TransactionsAPI,
   GetTransactionsAPI,
   PostTransactionsAPI,
+  PostTransactionsRequest(..),
   GetTransactionsResponse,
   TransactionAPI,
   GetTransactionAPI,
@@ -34,7 +35,7 @@ import Language.Marlowe.Runtime.Web.Tx.API (
   TxJSON,
  )
 import Language.Marlowe.Runtime.Web.Withdrawal.API (
-  PostTransactionsRequest,
+  PostTransactionsRequest(PostTransactionsRequest),
  )
 import Servant (
   Capture,

@@ -191,7 +191,7 @@ buildInitConstraints
   -- ^ Adjust a value to account for the minimum UTxO ledger rule.
   -> Contract v
   -- ^ The contract being instantiated.
-  -> m (Either InitError ((Datum v, TxOutAssets, RolesPolicyId), TxConstraints era v))
+  -> m (Either InitError ((Datum v, TxOutAssets, Maybe RolesPolicyId), TxConstraints era v))
 buildInitConstraints mkRoleTokenMintingPolicy era version walletCtx roles threadName metadata minAda accounts adjustMinUtxo contract = case version of
   MarloweV1 ->
     runTxConstraintsBuilder version $
@@ -237,21 +237,22 @@ buildInitConstraintsV1
   -- ^ Adjust a value to account for the minimum UTxO ledger rule.
   -> Contract 'V1
   -- ^ The contract being instantiated.
-  -> TxConstraintsBuilderM InitError era 'V1 m (Datum 'V1, TxOutAssets, RolesPolicyId)
+  -> TxConstraintsBuilderM InitError era 'V1 m (Datum 'V1, TxOutAssets, Maybe RolesPolicyId)
 buildInitConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName roles metadata minAda accounts adjustMinUtxo contract = do
   -- Output constraints.
 
   -- Role tokens minting and distribution.
-  (roleCurrency, threadToken) <- buildRoleTokenConstraints
+  (possibleRoleCurrency, threadToken) <- buildRoleTokenConstraints
 
-  tell . requiresMetadata $ metadata{transactionMetadata = nftsMetadata roleCurrency <> transactionMetadata metadata}
+  tell . requiresMetadata $ metadata{transactionMetadata = nftsMetadata possibleRoleCurrency <> transactionMetadata metadata}
 
   -- Marlowe script output.
-  (datum, assets) <- sendMarloweOutput roleCurrency threadToken
+  (datum, assets) <- sendMarloweOutput possibleRoleCurrency threadToken
 
-  pure (datum, assets, roleCurrency)
+  pure (datum, assets, possibleRoleCurrency)
   where
-    nftsMetadata (RolesPolicyId (PolicyId policyId)) = case roles of
+    nftsMetadata Nothing = mempty
+    nftsMetadata (Just (RolesPolicyId (PolicyId policyId))) = case roles of
       RoleTokensMint (unMint -> minting) -> do
         let tokensMetadata = flip NEMap.foldMapWithKey minting \tokenName MintRole{..} ->
               flip foldMap roleMetadata \roleTokenMetadata -> do
@@ -278,7 +279,7 @@ buildInitConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName ro
       pure (datum, assets)
 
     -- Role token distribution constraints
-    buildRoleTokenConstraints :: TxConstraintsBuilderM InitError era 'V1 m (RolesPolicyId, Maybe ThreadTokenAssetId)
+    buildRoleTokenConstraints :: TxConstraintsBuilderM InitError era 'V1 m (Maybe RolesPolicyId, Maybe ThreadTokenAssetId)
     buildRoleTokenConstraints = case roles of
       RoleTokensUsePolicy policyId distribution -> do
         for_ (Map.toList distribution) \(tokenName, dist') ->
@@ -288,7 +289,7 @@ buildInitConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName ro
                   ToAddress addr -> Left addr
             tell $ mustDistributeRoleToken (AssetId policyId tokenName) destination' quantity
         pure
-          ( RolesPolicyId policyId
+          ( Just (RolesPolicyId policyId)
           , ThreadTokenAssetId (AssetId policyId threadTokenName) <$ guard (any (Map.member (ToScript OpenRoleScript)) distribution)
           )
       RoleTokensMint mint -> do
@@ -350,12 +351,9 @@ buildInitConstraintsV1 mkRoleTokenMintingPolicy era walletCtx threadTokenName ro
                   ToScript script' -> Right (AssetId policyId threadTokenName, script')
                   ToAddress addr -> Left addr
             tell $ mustMintRoleToken txOutRef witness (AssetId policyId tokenName) destination' quantity
-        pure (RolesPolicyId policyId, ThreadTokenAssetId . AssetId policyId <$> threadTokenName')
+        pure (Just (RolesPolicyId policyId), ThreadTokenAssetId . AssetId policyId <$> threadTokenName')
       RoleTokensNone -> do
-        let -- We use ADA currency symbol as a placeholder which
-            -- carries really no semantics in this context.
-            uselessRolePolicyId = PolicyId . PV2.fromBuiltin . PV2.unCurrencySymbol $ PV2.adaSymbol
-        pure (RolesPolicyId uselessRolePolicyId, Nothing)
+        pure (Nothing, Nothing)
 
 toMarloweNetwork :: Address -> Maybe V1.Network
 toMarloweNetwork =
@@ -404,7 +402,7 @@ toMarloweAccounts (Accounts accounts) = do
 
 initialMarloweDatum
   :: Contract v
-  -> RolesPolicyId
+  -> Maybe RolesPolicyId
   -> AdjustMinUTxO
   -> Accounts
   -> MarloweVersion v
@@ -417,16 +415,20 @@ initialMarloweDatum contract policyId adjustMinUtxo accounts version threadToken
 
 initialMarloweDatumV1
   :: V1.Contract
-  -> RolesPolicyId
+  -> Maybe RolesPolicyId
   -> AdjustMinUTxO
   -> Accounts
   -> Maybe ThreadTokenAssetId
   -> Lovelace
   -> MinAdaProvider
   -> Either InvalidAddresses (Datum 'V1)
-initialMarloweDatumV1 contract (RolesPolicyId policyId) adjustMinUtxo accounts threadToken minAda minAdaProvider = do
+initialMarloweDatumV1 contract possiblePolicyId adjustMinUtxo accounts threadToken minAda minAdaProvider = do
   state <- initialMarloweStateV1 adjustMinUtxo accounts threadToken minAda minAdaProvider
-  let marloweParams = V1.MarloweParams . toPlutusCurrencySymbol $ policyId
+  let
+    policyIdBytes = case possiblePolicyId of
+      Just (RolesPolicyId policyId) -> policyId
+      Nothing -> ""
+    marloweParams = V1.MarloweParams . toPlutusCurrencySymbol $ policyIdBytes
   pure $ V1.MarloweData marloweParams state contract
 
 initialMarloweState

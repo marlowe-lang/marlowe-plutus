@@ -7,7 +7,7 @@ import * as json from '@konduit/codec/json';
 import { err, ok, type Result } from 'neverthrow';
 import { Json } from '@konduit/codec/json';
 import type { Contract } from '@marlowe-lang/language/v1';
-import { ContractId, PostCreateContractResponse } from '@marlowe-lang/runtime/client';
+import { ContractId, ContractState, PostCreateContractResponse } from '@marlowe-lang/runtime/client';
 import type { JsonError } from '@konduit/codec/json/codecs';
 
 function getMarloweRuntimeClient(repoRoot: Path | null = null): string {
@@ -138,6 +138,18 @@ export const runGetCLI = (
       }
     );
   });
+}
+
+export function runGet(
+  contractId: ContractId,
+  options: {
+    serverHost?: string;
+    serverPort?: PositiveInt;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false
+): Result<ContractState, JsonError | CommandError | string> {
+  return runGetCLI(contractId, options, repoRoot, debug).andThen(json => ContractState.jsonCodec.deserialise(json));
 }
 
 

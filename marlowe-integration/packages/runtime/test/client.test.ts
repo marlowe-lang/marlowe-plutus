@@ -1,52 +1,45 @@
-import { describe, it, expect } from 'vitest';
-import { parse, stringify, type Json } from '../src/json';
-import { json2StringCodec, json2BooleanCodec, json2NullCodec, objectOf, altJsonCodecs, optional, type JsonCodec, arrayOf, tupleOf, json2NumberCodec, json2BigIntCodec } from '../src/json/codecs';
-import * as json from '../src/json';
-import { unwrapOk, unwrapErr } from './assertions';
-import { NonNegativeInt } from '../src/integers/smallish';
+import { describe, it } from 'vitest';
+import { mkParser } from '@konduit/codec/json/codecs';
+import { ContractState } from '../src/client';
 
 describe('Client codecs', () => {
-  describe('contract codecs', () => {
-    // it('should handle null json correctly', () => {
-    //   expect(json.nullJson).toBeNull();
-    //   const encoded = null;
-    //   expect(encoded).toBeNull();
-    //   const decoded = unwrapOk(json2NullCodec.deserialise(encoded));
-    //   expect(decoded).toBeNull();
-    // });
-
-    describe('contract details', () => {
-      type Person = {
-        name: string;
-        nickname: null | string;
-        age: number | undefined;
-      };
-      const json2personCodec: JsonCodec<Person> = objectOf({
-        name: json2StringCodec,
-        nickname: altJsonCodecs(
-          [json2NullCodec, json2StringCodec],
-          (serNull, serString) => (value: null | string) =>
-            value === null ? serNull(null) : serString(value)
-        ),
-        age: optional(json2NumberCodec)
-      });
-
-      // Test with all fields present
-      it('should encode and decode person with all fields', () => {
-        const fullPerson: Person = {
-          name: "Alice",
-          nickname: "Ally",
-          age: 30
-        };
-        const encoded1 = json2personCodec.serialise(fullPerson);
-        const decoded1 = unwrapOk(json2personCodec.deserialise(encoded1));
-        expect(decoded1).toEqual(fullPerson);
+  describe('Contract codecs', () => {
+    describe('Contract state', () => {
+      let contractStateParser = mkParser(ContractState.jsonCodec);
+      describe('On-chain contract state', () => {
+        // Test with all fields present
+        it('Should be decoded correctly', () => {
+          contractStateParser(onChainContractStateJSON).mapErr(
+            (err) => {
+              console.error('Error parsing contract state JSON:', err);
+              throw err;
+            }
+          );
+        });
       });
     })
   });
 });
 
-const onChainContractResponse: string = `
+// data ContractState = ContractState
+//   { assets :: Assets
+//   , block :: Maybe BlockHeader
+//   , contractId :: ContractId
+//   , currentContract :: Maybe Semantics.Contract
+//   , initialContract :: Semantics.Contract
+//   , initialState :: Semantics.State
+//   , metadata :: Map Word64 Metadata
+//   , roleTokenMintingPolicyId :: PolicyId
+//   , state :: Maybe Semantics.State
+//   , status :: TxStatus
+//   , tags :: Map Text Metadata
+//   , txBody :: Maybe TextEnvelope
+//   , unclaimedPayouts :: [Payout]
+//   , utxo :: Maybe TxOutRef
+//   , version :: MarloweVersion
+//   }
+// 
+const onChainContractStateJSON: string = `
   {
     "assets": {
       "lovelace": 1008540,
@@ -122,7 +115,6 @@ const onChainContractResponse: string = `
       "minTime": 0
     },
     "metadata": {},
-    "roleTokenMintingPolicyId": "",
     "state": {
       "accounts": [
         [
@@ -142,12 +134,13 @@ const onChainContractResponse: string = `
       "choices": [],
       "minTime": 0
     },
+    "roleTokenMintingPolicyId": null,
     "status": "confirmed",
     "tags": {},
     "txBody": null,
     "unclaimedPayouts": [],
     "utxo": "6beb89c75519e58ff985de1a9170e90d35f571481bae48e0452b0ca09911c008#1",
-    "version": []
+    "version": "v1"
   }
 `;
 

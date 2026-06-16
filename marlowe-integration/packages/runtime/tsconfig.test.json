@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "lib": ["ES2020", "DOM"],
+    "noEmit": true,
+    "moduleResolution": "bundler",
+    "module": "ES2020",
+    "rootDir": ".",
+    "strict": true
+  },
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*", "test/**/*", "vite-env.d.ts"]
+}

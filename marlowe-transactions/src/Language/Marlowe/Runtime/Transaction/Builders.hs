@@ -13,7 +13,7 @@ import Log (MonadLog)
 import Language.Marlowe.Runtime.Transaction.BuildConstraints (MkRoleTokenMintingPolicy, MinAdaProvider (MinAdaProvider), initialMarloweState, invalidAddressesError, RolesPolicyId (RolesPolicyId), buildInitConstraints, buildApplyInputsConstraints)
 import Language.Marlowe.Runtime.Core.Api (MarloweVersion (MarloweV1), MarloweTransactionMetadata, IsMarloweVersion (Contract), ContractId (ContractId), decodeMarloweTransactionMetadataLenient, Inputs, TransactionScriptOutput (TransactionScriptOutput, datum), TransactionOutput (TransactionOutput, payouts, scriptOutput), Payout (Payout), fromChainPayoutDatum)
 import Language.Marlowe.Runtime.Core.ScriptRegistry (MarloweScripts (MarloweScripts, marloweScript, payoutScript, helperScripts, marloweScriptUTxOs, payoutScriptUTxOs, helperScriptUTxOs), HelperScript (OpenRoleScript), ReferenceScriptUtxo, GetCurrentScripts(GetCurrentScripts))
-import Language.Marlowe.Runtime.Transaction.Constraints (SolveConstraints, WalletContext (changeAddress), HelpersContext, MarloweContext (MarloweContext, scriptOutput, marloweAddress, payoutAddress, marloweScriptUTxO, payoutScriptUTxO, marloweScriptHash, payoutScriptHash))
+import Language.Marlowe.Runtime.Transaction.Constraints (SolveConstraints, WalletContext (changeAddress), HelpersContext (HelpersContext), MarloweContext (MarloweContext, scriptOutput, marloweAddress, payoutAddress, marloweScriptUTxO, payoutScriptUTxO, marloweScriptHash, payoutScriptHash))
 import qualified Language.Marlowe.Runtime.ChainSync.Api as Chain
 import Language.Marlowe.Runtime.Transaction.Api (RoleTokensConfig (RoleTokensNone, RoleTokensMint, RoleTokensUsePolicy), Accounts, InitError(InitEraUnsupported, InitContractNotFound, ProtocolParamNoUTxOCostPerByte, InsufficientMinAdaDeposit, InitLoadMarloweContextFailed, InitToCardanoError, InitLoadHelpersContextFailed, InitSafetyAnalysisError, InitSafetyAnalysisFailed, InitConstraintError, InitTxOutputNotFound), ContractInitialized(ContractInitialized), LoadHelpersContextError, Mint (unMint), Destination (ToScript), MintRole (roleTokenRecipients), LoadMarloweContextError (MarloweScriptNotPublished, PayoutScriptNotPublished), unAccounts, ContractInitializedInEra (ContractInitializedInEra, contractId , rolesCurrency , metadata , txBody , marloweScriptHash , marloweScriptAddress , payoutScriptHash , payoutScriptAddress , version , datum , assets , safetyErrors), ApplyInputsError (ApplyInputsConstraintError, ApplyInputsEraUnsupported, ApplyInputsLoadHelpersContextFailed, ScriptOutputNotFound, ApplyInputsLoadMarloweContextFailed, ApplyInputsContractContinuationNotFound, ApplyInputsSafetyAnalysisError), InputsApplied(InputsApplied), InputsAppliedInEra (InputsAppliedInEra, metadata, inputs, safetyErrors, version, contractId, input, output, invalidBefore, invalidHereafter, txBody))
 
@@ -44,6 +44,8 @@ import Data.Map (Map)
 import qualified Marlowe.Plutus.Semantics.Types as V1
 import Data.Kind (Type)
 import Control.Monad.Trans.Class (lift)
+import PlutusTx.Functor ((<&>))
+import Data.Traversable (for)
 
 type LoadHelpersContext m =
   forall v
@@ -140,7 +142,7 @@ execInit
         minAdaUpperBound eon protocolParameters version dummyState contract' continuations
   let minAda = fromMaybe computedMinAdaDeposit optMinAda
   unless (minAda >= computedMinAdaDeposit) $ throwE $ InsufficientMinAdaDeposit computedMinAdaDeposit
-  ((datum, assets, RolesPolicyId rolesCurrency), constraints) <-
+  ((datum, assets, possibleRolesPolicyId), constraints) <-
     ExceptT $ do
       buildInitConstraints
         mkRoleTokenMintingPolicy
@@ -160,17 +162,23 @@ execInit
       version
       getCurrentScripts
       mStakeCredential
-  helpersContext <-
+  possibleHelpersContext <- for possibleRolesPolicyId \(RolesPolicyId policyId) -> do
     withExceptT InitLoadHelpersContextFailed $
       ExceptT $
         loadHelpersContext version $
-          Left (rolesCurrency, roleTokens)
-  let -- Fast analysis of safety: examines bounds for transactions.
-      contractSafetyErrors = checkContract networkId (Just roleTokens) version datum continuations
+          Left (policyId, roleTokens)
+  let
+    helpersContext = case possibleHelpersContext of
+      Nothing -> HelpersContext mempty (Chain.PolicyId "") mempty
+      Just hc -> hc
+    -- Fast analysis of safety: examines bounds for transactions.
+    contractSafetyErrors = checkContract networkId (Just roleTokens) version datum continuations
 
   transactionSafetyErrors <- do
-    let threadTokenAssetId = ThreadTokenAssetId (Chain.AssetId rolesCurrency threadRole')
-        lockedRolesContext = mockLockedRolesContext threadTokenAssetId adjustMinUtxo helpersContext
+    -- FIXME: Use here "own policy" when we finally achieve the CIP-69 implementation
+    let
+      threadTokenAssetId = ThreadTokenAssetId (Chain.AssetId "" threadRole')
+      lockedRolesContext = mockLockedRolesContext threadTokenAssetId adjustMinUtxo helpersContext
     ExceptT $
       liftIO $
         fmap (first InitSafetyAnalysisError) . limitAnalysisTime analysisTimeout $
@@ -203,7 +211,7 @@ execInit
     ContractInitialized eon $
       ContractInitializedInEra
         { contractId = ContractId contractOutput
-        , rolesCurrency
+        , rolesCurrency = possibleRolesPolicyId <&> \(RolesPolicyId policyId) -> policyId
         , metadata = decodeMarloweTransactionMetadataLenient case txBody of
             C.TxBody C.TxBodyContent{..} -> case txMetadata of
               C.TxMetadataNone -> mempty
