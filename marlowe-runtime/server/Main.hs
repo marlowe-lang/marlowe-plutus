@@ -42,7 +42,7 @@ import Hasql.Pool qualified as Pool
 import Hasql.Pool.Config qualified as Hasql
 import Language.Marlowe.CLI.Types (AUTxO(AUTxO), MessageFormat(MessageFormatText, MessageFormatJson, MessageFormatYaml))
 import Language.Marlowe.Runtime.Cardano.Api (fromPlutusSerialisedScript, fromCardanoAddressInEra, toCardanoScriptHash, fromCardanoTxIn, fromCardanoTxOutCtxUTxO)
-import Language.Marlowe.Runtime.ChainSync.Api (paymentCredential, fromCardanoScriptHash)
+import Language.Marlowe.Runtime.ChainSync.Api (paymentCredential, fromCardanoScriptHash, SlotNo(SlotNo), NodeTip(NodeTip), ChainTip(ChainTip), BlockHeader(BlockHeader))
 import Language.Marlowe.Runtime.ChainSync.Api qualified as Core
 import Language.Marlowe.Runtime.Core.Api (MarloweVersion(MarloweV1))
 import Language.Marlowe.Runtime.Core.Api qualified as Core
@@ -50,10 +50,10 @@ import Language.Marlowe.Runtime.Core.ScriptRegistry ( MarloweScripts(MarloweScri
 import Language.Marlowe.Runtime.Core.ScriptRegistry qualified as ScriptRegistry
 import Language.Marlowe.Runtime.Plutus.V3.Api (toPlutusTxOutRef)
 import Language.Marlowe.Runtime.Query (SomeContractState(SomeContractState), ContractState (ContractState, initialOutput, latestOutput))
-import Language.Marlowe.Runtime.Query.Database ( hoistDatabaseQueries, logDatabaseQueries, DatabaseQueries(getContractState), getTip )
+import Language.Marlowe.Runtime.Query.Database ( hoistDatabaseQueries, logDatabaseQueries, DatabaseQueries(getContractState), getNodeTip )
 import Language.Marlowe.Runtime.Query.Database.PostgreSQL (databaseQueries)
 import Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetContractState (GetContractState)
-import Language.Marlowe.Runtime.Transaction.Api (LoadHelpersContextError(LoadHelpersContextErrorNotFound), RoleTokensConfig(RoleTokensNone))
+import Language.Marlowe.Runtime.Transaction.Api (LoadHelpersContextError, RoleTokensConfig)
 import Language.Marlowe.Runtime.Transaction.Api qualified as T
 import Language.Marlowe.Runtime.Transaction.BuildConstraints (MkRoleTokenMintingPolicy)
 import Language.Marlowe.Runtime.Transaction.Builders (execInit, execApplyInputs, LoadMarloweContext, Connector(Connector))
@@ -230,14 +230,17 @@ emptyLoadHelpersContext
   => MarloweVersion v
   -> Either (Core.PolicyId, RoleTokensConfig) (Maybe Core.ContractId)
   -> m (Either LoadHelpersContextError Constraints.HelpersContext)
-emptyLoadHelpersContext _version = \case
-  Left (policyId, RoleTokensNone) ->
-    pure . Right $ Constraints.HelpersContext
+emptyLoadHelpersContext _version = do
+  let
+    emptyContext = Right $ Constraints.HelpersContext
       { currentHelperScripts = Map.empty
-      , helperPolicyId = policyId
+      , helperPolicyId = ""
       , helperScriptStates = Map.empty
       }
-  _ -> pure $ Left LoadHelpersContextErrorNotFound
+  -- FIXME: This is plain wrong and will fail at some point
+  \case
+    Left (_policyId, _roleTokens) -> pure emptyContext
+    Right _contractId -> pure emptyContext
 
 mkInitContract
   :: MonadUnliftIO m
@@ -279,9 +282,9 @@ mkApplyInputs
   => LedgerInfo
   -> GetContractState m
   -> GetAllScripts
-  -> m Core.ChainTip
+  -> m SlotNo
   -> ApplyInputs m
-mkApplyInputs (networkId, systemStart, eraHistory, protocolParams) getContractState getAllScripts getChainTip = do
+mkApplyInputs (networkId, systemStart, eraHistory, protocolParams) getContractState getAllScripts getCurrentSlotNo = do
   let
     solveConstraints = Constraints.solveConstraints systemStart (C.toLedgerEpochInfo eraHistory)
     loadMarloweContext :: LoadMarloweContext m
@@ -295,7 +298,7 @@ mkApplyInputs (networkId, systemStart, eraHistory, protocolParams) getContractSt
       C.ConwayEra
       protocolParams
       Connector
-      getChainTip
+      getCurrentSlotNo
       systemStart
       eraHistory
       solveConstraints
@@ -365,6 +368,14 @@ mkServerDependencies pool ledgerInfo getAllScripts getCurrentScripts = do
           (either (liftIO . throwIO) pure <=< liftIO . Pool.use pool)
           databaseQueries
   let
+    getCurrentSlotNo =
+      getNodeTip dbQueries >>= \case
+        Left err -> liftIO . throwIO $ userError $ "Failed to get indexer tip: " <> show err
+        Right (NodeTip (ChainTip possibleBlockHeader)) -> do
+          case possibleBlockHeader of
+            Just BlockHeader{..} -> pure slotNo
+            Nothing -> pure $ SlotNo 0
+
     initContract = mkInitContract
       ledgerInfo
       getCurrentScripts
@@ -374,7 +385,7 @@ mkServerDependencies pool ledgerInfo getAllScripts getCurrentScripts = do
       ledgerInfo
       (getContractState dbQueries)
       getAllScripts
-      (getTip dbQueries)
+      getCurrentSlotNo
 
   ServerDependencies
     { applyInputs

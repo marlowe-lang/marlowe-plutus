@@ -64,10 +64,12 @@ library db
   build-depends:
     , aeson
     , base >=4.9 && <5
+    , base16-aeson
     , binary
     , bytestring
     , cardano-api
     , containers
+    , errors
     , hasql
     , hasql-pool
     , hasql-th >=0.5
@@ -78,6 +80,7 @@ library db
     , mtl
     , plutus-ledger-api
     , plutus-tx
+    , profunctors
     , text
     , time
     , transformers
@@ -89,6 +92,8 @@ library db
     Language.Marlowe.Runtime.Indexer.Database
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitBlocks
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitIndexerTip
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitNodeTip
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetMarloweUTxO
@@ -130,6 +135,7 @@ library
     , monad-control
     , nonempty-containers ^>=0.3.5.0
     , plutus-ledger-api
+    , safe
     , stm ^>=2.5.1.0
     , text
     , time

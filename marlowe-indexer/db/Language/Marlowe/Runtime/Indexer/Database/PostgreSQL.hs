@@ -2,14 +2,16 @@ module Language.Marlowe.Runtime.Indexer.Database.PostgreSQL where
 
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Hasql.Pool (Pool)
-import qualified Hasql.Pool as Pool
+import Hasql.Pool qualified as Pool
 import Hasql.Transaction (Transaction)
-import qualified Hasql.Transaction.Sessions as TS
-import qualified Language.Marlowe.Runtime.Indexer.Database as DB
-import qualified Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitBlocks as CommitBlocks
-import qualified Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback as CommitRollback
-import qualified Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints as GetIntersectionPoints
-import qualified Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetMarloweUTxO as GetMarloweUTxO
+import Hasql.Transaction.Sessions qualified as TS
+import Language.Marlowe.Runtime.Indexer.Database qualified as DB
+import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitBlocks qualified as CommitBlocks
+import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitIndexerTip qualified as CommitIndexerTip
+import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitNodeTip qualified as CommitNodeTip
+import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback qualified as CommitRollback
+import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints qualified as GetIntersectionPoints
+import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetMarloweUTxO qualified as GetMarloweUTxO
 import UnliftIO (throwIO)
 
 databaseQueries :: MonadIO m => Pool-> DB.DatabaseQueries m
@@ -17,9 +19,11 @@ databaseQueries pool =
   DB.DatabaseQueries
     { commitRollback = \point -> runTransaction pool $ CommitRollback.commitRollback point
     , commitBlocks = \blocks -> runTransaction pool $ CommitBlocks.commitBlocks blocks
+    , commitIndexerTip = \tip -> runTransaction pool $ CommitIndexerTip.commitIndexerTip tip
+    , commitNodeTip = \tip -> runTransaction pool $ CommitNodeTip.commitNodeTip tip
     , getIntersectionPoints = \securityParameter -> runTransaction pool $ GetIntersectionPoints.getIntersectionPoints securityParameter
-    , getMarloweUTxO = \slotNo -> runTransaction pool $ GetMarloweUTxO.getMarloweUTxO slotNo
     , getLatestMarloweUTxO = runTransaction pool GetMarloweUTxO.getLatestMarloweUTxO
+    , getMarloweUTxO = \slotNo -> runTransaction pool $ GetMarloweUTxO.getMarloweUTxO slotNo
     }
 
 runTransaction :: MonadIO m => Pool -> Transaction a -> m a

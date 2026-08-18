@@ -105,7 +105,7 @@ export type TimeoutError = {
   timeout: Milliseconds;
 };
 
-type WaitForUtxoError = CommandError | string | TimeoutError;
+export type WaitForUtxoError = CommandError | string | TimeoutError;
 
 export const waitForUtxo: (txOutRef: TxOutRefHex, delayMs?: number, timeoutMs?: number) => ResultAsync<TxOut, WaitForUtxoError> = fromSafePromiseResultFn(async (txOutRef, delayMs = 1000, timeoutMs = 200_000,) => {
   const startTime = Date.now();
@@ -149,13 +149,14 @@ export const signTxEnvelope = function (
   skeyFile: string,
   txEnvelope: TxEnvelope,
   tmpDir: Path | null = null, // When null we will use system temp dir
+  debug = true,
 ): Result<TxEnvelope, jsonCodecs.JsonError | CommandError | string> {
   const txTmpDir = tmpDir || `${nodeOs.tmpdir()}`;
   const txEnvelopeJson = jsonCodecs.mkStringifier(TxEnvelope.jsonCodec)(txEnvelope);
   const unsignedTxFile = `${txTmpDir}/unsigned.tx.json`;
   const signedTxFile = `${txTmpDir}/sined.tx.json`;
   nodeFs.writeFileSync(unsignedTxFile, txEnvelopeJson);
-  return runCommand(`cardano-cli conway transaction sign --tx-file ${unsignedTxFile} --signing-key-file ${skeyFile} --out-file ${signedTxFile}`)
+  return runCommand(`cardano-cli conway transaction sign --tx-file ${unsignedTxFile} --signing-key-file ${skeyFile} --out-file ${signedTxFile}`, debug)
     .andThen(() => {
       const signedTxJsonStr = nodeFs.readFileSync(signedTxFile, "utf8");
       return jsonCodecs.mkParser(TxEnvelope.jsonCodec)(signedTxJsonStr);
@@ -201,8 +202,9 @@ export const submitTxFromEnvelopeFile = (
   txFile: Path,
   intervalMs = 1_000,
   timeoutMs = 180_000,
+  debug = true,
 ): ResultAsync<TxIdHex, WaitForUtxoError> => {
-  return toAsync(runCommand(`cardano-cli conway transaction submit --tx-file ${txFile}`))
+  return toAsync(runCommand(`cardano-cli conway transaction submit --tx-file ${txFile}`, debug))
     .andThen(
       () => toAsync(getTxIdFromTxFile(txFile))
     ).andThen(
@@ -233,6 +235,7 @@ export const submitTx = (
   tmpDir: Path | null = null,
   intervalMs = 1_000,
   timeoutMs = 180_000,
+  debug = true,
 ): ResultAsync<TxIdHex, WaitForUtxoError> => {
   return toAsync(getTxId(txHex))
     .andThen((txIdHex) => {
@@ -258,6 +261,6 @@ export const submitTx = (
       };
       const txEnvelopeFile = `${txTmpDir}/tx.json`;
       nodeFs.writeFileSync(txEnvelopeFile, JSON.stringify(txEnvelope));
-      return submitTxFromEnvelopeFile(txEnvelopeFile, intervalMs, timeoutMs);
+      return submitTxFromEnvelopeFile(txEnvelopeFile, intervalMs, timeoutMs, debug);
   });
 }

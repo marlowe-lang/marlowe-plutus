@@ -48,6 +48,7 @@ import Data.Aeson (
   ToJSONKey,
   toJSON,
   (.:),
+  (.=),
  )
 import qualified Data.Aeson as A
 import qualified Data.Aeson as Aeson
@@ -174,8 +175,6 @@ data BlockHeader = BlockHeader
   deriving stock (Show, Eq, Ord, Generic)
   deriving anyclass (Binary, ToJSON, Variations)
 
--- TODO: What is the motivation between type vs a newtype
---       around the ChainPoint?
 newtype ChainTip = ChainTip { blockHeader :: Maybe BlockHeader }
   deriving stock (Show, Eq, Ord, Generic)
   deriving newtype (Binary, ToJSON, Variations)
@@ -187,6 +186,43 @@ chainTipFromChainPoint = \case
 
 genesisChainTip :: ChainTip
 genesisChainTip = ChainTip Nothing
+
+-- Last block from the node which we know about.
+newtype NodeTip = NodeTip ChainTip
+  deriving newtype (Eq, Show, Binary, Variations)
+
+genesisNodeTip :: NodeTip
+genesisNodeTip = NodeTip genesisChainTip
+
+instance ToJSON NodeTip where
+  toJSON (NodeTip tip) = A.object
+    [ "NodeTip" .= toJSON tip
+    ]
+
+-- Last block which contained Marlowe relevant transactions.
+newtype MarloweTip = MarloweTip ChainTip
+  deriving newtype (Eq, Show, Binary, Variations)
+
+genesisLocalMarloweTip :: MarloweTip
+genesisLocalMarloweTip = MarloweTip genesisChainTip
+
+instance ToJSON MarloweTip where
+  toJSON (MarloweTip tip) = A.object
+    [ "MarloweTip" .= toJSON tip
+    ]
+
+-- Last block processed by the indexer.
+newtype IndexerTip = IndexerTip ChainTip
+  deriving newtype (Eq, Show, Binary, Variations)
+
+instance ToJSON IndexerTip where
+  toJSON (IndexerTip tip) = A.object
+    [ "IndexerTip" .= toJSON tip
+    ]
+
+genesisIndexerTip :: IndexerTip
+genesisIndexerTip = IndexerTip genesisChainTip
+
 
 -- instance HasSignature BlockHeader where
 --   signature _ = "BlockHeader"

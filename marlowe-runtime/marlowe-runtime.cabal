@@ -80,6 +80,7 @@ library
     , async-components
     , base
     , base16
+    , base16-aeson
     , binary
     , bytestring
     , cardano-api
@@ -155,15 +156,14 @@ library
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetContractState
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetCreateStep
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetHeaders
+    Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetIndexerTip
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetIntersection
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetIntersectionForContract
-    Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetNextBlocks
-    Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetNextHeaders
-    Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetNextSteps
+    Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetMarloweTip
+    Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetNodeTip
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetPayout
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetPayouts
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetRoleCurrencies
-    Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetTip
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetTipForContract
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetTransaction
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetTransactions
@@ -342,6 +342,7 @@ executable cli
     , case-insensitive
     , containers
     , deepseq
+    , directory
     , errors
     , filepath
     , http-client

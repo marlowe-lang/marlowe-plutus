@@ -24,6 +24,31 @@ export namespace PostCreateContractResponse {
   )
 }
 
+// On the server side:
+// data ApplyInputsTxEnvelope tx = ApplyInputsTxEnvelope
+//   { contractId :: TxOutRef
+//   , transactionId :: TxId
+//   , txEnvelope :: TextEnvelope
+//   , safetyErrors :: [SafetyError]
+//   }
+//   deriving (Show, Eq, Generic)
+
+export type ApplyInputsResponse = {
+  contractId: ContractId;
+  transactionId: string; // FIXME: Use cardano.TxId.jsonCodec when available
+  tx: TxEnvelope;
+  safetyErrors: Json[]; // FIXME: Use SafetyError type if available
+};
+
+export namespace ApplyInputsResponse {
+  export const jsonCodec: jsonCodecs.JsonCodec<ApplyInputsResponse> = jsonCodecs.objectOf({
+    contractId: ContractId.jsonCodec,
+    transactionId: jsonCodecs.json2StringCodec,
+    tx: TxEnvelope.jsonCodec,
+    safetyErrors: jsonCodecs.arrayOf(jsonCodecs.identityCodec),
+  });
+}
+
 // FIXME: Every `Json` below is a placeholder.
 export type ContractState = {
   assets: Json;

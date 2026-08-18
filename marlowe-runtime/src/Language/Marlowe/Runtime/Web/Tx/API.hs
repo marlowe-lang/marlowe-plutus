@@ -237,6 +237,8 @@ data ApplyInputsTxEnvelope tx = ApplyInputsTxEnvelope
   }
   deriving (Show, Eq, Generic)
 
+instance NFData (ApplyInputsTxEnvelope CardanoTx)
+
 instance ToJSON (ApplyInputsTxEnvelope CardanoTx) where
   toJSON ApplyInputsTxEnvelope{..} =
     object

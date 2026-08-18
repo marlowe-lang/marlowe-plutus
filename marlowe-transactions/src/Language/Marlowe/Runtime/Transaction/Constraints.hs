@@ -1058,7 +1058,7 @@ allUtxos era marloweVersion scriptCtx WalletContext{..} HelpersContext{..} inclu
           scriptInAnyLang = toCardanoScriptInAnyLang script
         (,)
           <$> toCardanoTxIn txOutRef
-          <*> toCardanoTxOut' maryEraOnwards txOut (Just $ scriptInAnyLang)
+          <*> toCardanoTxOut' maryEraOnwards txOut (Just scriptInAnyLang)
 
       -- UTxOs for helper scripts.
       helperUTxO HelperScriptState{helperUTxO = Just (helperTxOutRef, helperTransactionOutput)} =
@@ -1158,16 +1158,16 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
           note ToCardanoError $
             C.PReferenceScript
               <$> toCardanoTxIn (txOutRef marloweScriptUTxO)
-        let plutusScriptV2InEra :: C.ScriptLanguageInEra C.PlutusScriptV2 era
-            plutusScriptV2InEra = case era of
-              C.BabbageEraOnwardsBabbage -> C.PlutusScriptV2InBabbage
-              C.BabbageEraOnwardsConway -> C.PlutusScriptV2InConway
-              C.BabbageEraOnwardsDijkstra -> C.PlutusScriptV2InDijkstra
+        (plutusScriptV3InEra :: C.ScriptLanguageInEra C.PlutusScriptV3 era) <- case era of
+            C.BabbageEraOnwardsBabbage -> Left ToCardanoError
+            C.BabbageEraOnwardsConway -> pure C.PlutusScriptV3InConway
+            C.BabbageEraOnwardsDijkstra -> pure C.PlutusScriptV3InDijkstra
+        let
 
             scriptWitness =
               C.PlutusScriptWitness
-                plutusScriptV2InEra
-                C.PlutusScriptV2
+                plutusScriptV3InEra
+                C.PlutusScriptV3
                 plutusScriptOrRefInput
                 (C.ScriptDatumForTxIn $ Just . unsafeHashableScriptData $ toCardanoScriptData $ Core.toChainDatum marloweVersion datum)
                 ( unsafeHashableScriptData $ toCardanoScriptData case marloweVersion of
@@ -1198,16 +1198,16 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
             referenceScriptOutput <-
               note (UnknownPayoutScript scriptHash) $ Map.lookup scriptHash payoutScriptOutputs
             referenceScriptTxIn <- note ToCardanoError $ toCardanoTxIn $ ScriptRegistry.txOutRef referenceScriptOutput
+            (plutusScriptV3InEra :: C.ScriptLanguageInEra C.PlutusScriptV3 era) <- case era of
+                C.BabbageEraOnwardsBabbage -> Left ToCardanoError
+                C.BabbageEraOnwardsConway -> pure C.PlutusScriptV3InConway
+                C.BabbageEraOnwardsDijkstra -> pure C.PlutusScriptV3InDijkstra
+
             let plutusScriptOrRefInput = C.PReferenceScript referenceScriptTxIn
-                plutusScriptV2InEra :: C.ScriptLanguageInEra C.PlutusScriptV2 era
-                plutusScriptV2InEra = case era of
-                  C.BabbageEraOnwardsBabbage -> C.PlutusScriptV2InBabbage
-                  C.BabbageEraOnwardsConway -> C.PlutusScriptV2InConway
-                  C.BabbageEraOnwardsDijkstra -> C.PlutusScriptV2InDijkstra
                 scriptWitness =
                   C.PlutusScriptWitness
-                    plutusScriptV2InEra
-                    C.PlutusScriptV2
+                    plutusScriptV3InEra
+                    C.PlutusScriptV3
                     plutusScriptOrRefInput
                     ( C.ScriptDatumForTxIn
                         $ Just
@@ -1299,16 +1299,15 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
             txIn <- note ToCardanoError $ toCardanoTxIn helperTxOutRef
             helperDatum <- note (InvalidHelperDatum helperTxOutRef datum) $ toCardanoScriptData <$> datum
             referenceScriptTxIn <- note ToCardanoError $ toCardanoTxIn $ ScriptRegistry.txOutRef helperScriptUTxO
+            (plutusScriptV3InEra :: C.ScriptLanguageInEra C.PlutusScriptV3 era) <- case era of
+                C.BabbageEraOnwardsBabbage -> Left ToCardanoError
+                C.BabbageEraOnwardsConway -> pure C.PlutusScriptV3InConway
+                C.BabbageEraOnwardsDijkstra -> pure C.PlutusScriptV3InDijkstra
             let plutusScriptOrRefInput = C.PReferenceScript referenceScriptTxIn
-                plutusScriptV2InEra :: C.ScriptLanguageInEra C.PlutusScriptV2 era
-                plutusScriptV2InEra = case era of
-                  C.BabbageEraOnwardsBabbage -> C.PlutusScriptV2InBabbage
-                  C.BabbageEraOnwardsConway -> C.PlutusScriptV2InConway
-                  C.BabbageEraOnwardsDijkstra -> C.PlutusScriptV2InDijkstra
                 scriptWitness =
                   C.PlutusScriptWitness
-                    plutusScriptV2InEra
-                    C.PlutusScriptV2
+                    plutusScriptV3InEra
+                    C.PlutusScriptV3
                     plutusScriptOrRefInput
                     (C.ScriptDatumForTxIn . Just $ C.unsafeHashableScriptData helperDatum)
                     (C.unsafeHashableScriptData $ C.ScriptDataConstructor 0 []) -- FIXME: In the future, some helpers may require a redeemer, but open roles does not.

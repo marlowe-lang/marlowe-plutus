@@ -2,29 +2,15 @@ module Language.Marlowe.Runtime.Query.Database where
 
 import Data.Aeson (ToJSON)
 import Data.Set (Set)
-import Data.Word (Word8)
 import GHC.Generics (Generic)
-import Language.Marlowe.Runtime.Query (
-  ContractFilter,
-  ContractHeader,
-  Page,
-  PayoutFilter,
-  PayoutHeader,
-  Range,
-  RoleCurrency,
-  RoleCurrencyFilter,
-  SomeContractState,
-  SomePayoutState,
-  SomeTransaction,
-  SomeTransactions,
-  Withdrawal,
-  WithdrawalFilter,
- )
-import Language.Marlowe.Runtime.ChainSync.Api (BlockHeader, ChainPoint, TxId, TxOutRef, ChainTip)
+import Language.Marlowe.Runtime.ChainSync.Api (BlockHeader, ChainPoint, TxId, TxOutRef, IndexerTip, MarloweTip, NodeTip)
 import Language.Marlowe.Runtime.Core.Api (ContractId, SomeMarloweVersion)
-import Language.Marlowe.Runtime.History.Api
-    ( MarloweBlock, SomeCreateStep, SomeContractStep )
+import Language.Marlowe.Runtime.History.Api (SomeCreateStep)
+import Language.Marlowe.Runtime.Query (ContractFilter, ContractHeader, Page, PayoutFilter, PayoutHeader, Range, RoleCurrency, RoleCurrencyFilter, SomeContractState, SomePayoutState, SomeTransaction, SomeTransactions, Withdrawal, WithdrawalFilter,)
 import Log (logTrace, MonadLog)
+import qualified Data.Aeson as A
+import Data.ByteString (ByteString)
+import Data.ByteString.Base16.Aeson (EncodeBase16(EncodeBase16))
 
 data GetPayoutsArguments = GetPayoutsArguments
   { filter :: PayoutFilter
@@ -68,21 +54,10 @@ data GetIntersectionForContractResult = GetIntersectionForContractResult
   deriving stock (Generic)
   deriving anyclass (ToJSON)
 
-data GetNextStepsArguments v = GetNextStepsArguments
-  { contractId :: ContractId
-  , fromPoint :: ChainPoint
-  }
-  deriving stock (Generic)
-  deriving anyclass (ToJSON)
-
 logDatabaseQueries :: MonadLog m => DatabaseQueries m -> DatabaseQueries m
 logDatabaseQueries DatabaseQueries{..} =
   DatabaseQueries
-    { getTip = do
-        result <- getTip
-        logTrace "GetTip" result
-        pure result
-    , getTipForContract = \contractId -> do
+    { getTipForContract = \contractId -> do
         let
           ev = "GetTipForContract"
         logTrace ev contractId
@@ -95,6 +70,10 @@ logDatabaseQueries DatabaseQueries{..} =
         logTrace ev contractId
         result <- getCreateStep contractId
         logTrace ev result
+        pure result
+    , getIndexerTip = do
+        result <- getIndexerTip
+        logTrace "GetIndexerTip" result
         pure result
     , getIntersection = \points -> do
         let
@@ -110,27 +89,6 @@ logDatabaseQueries DatabaseQueries{..} =
         result <- getIntersectionForContract contractId points
         logTrace ev result
         pure result
-    , getNextHeaders = \fromPoint -> do
-        let
-          ev = "GetNextHeaders"
-        logTrace ev fromPoint
-        result <- getNextHeaders fromPoint
-        logTrace ev result
-        pure result
-    , getNextBlocks = \batchSize fromPoint -> do
-        let
-          ev = "GetNextBlocks"
-        logTrace ev (batchSize, fromPoint)
-        result <- getNextBlocks batchSize fromPoint
-        logTrace ev result
-        pure result
-    , getNextSteps = \contractId fromPoint -> do
-        let
-          ev = "GetNextSteps"
-        logTrace ev GetNextStepsArguments{..}
-        result <- getNextSteps contractId fromPoint
-        logTrace ev result
-        pure result
     , getHeaders = \cFilter range -> do
         let
           ev = "GetHeaders"
@@ -144,6 +102,14 @@ logDatabaseQueries DatabaseQueries{..} =
         logTrace ev contractId
         result <- getContractState contractId
         logTrace ev result
+        pure result
+    , getMarloweTip = do
+        result <- getMarloweTip
+        logTrace "GetMarloweTip" result
+        pure result
+    , getNodeTip = do
+        result <- getNodeTip
+        logTrace "GetNodeTip" result
         pure result
     , getTransaction = \txId -> do
         let
@@ -199,16 +165,15 @@ logDatabaseQueries DatabaseQueries{..} =
 hoistDatabaseQueries :: (forall x. m x -> n x) -> DatabaseQueries m -> DatabaseQueries n
 hoistDatabaseQueries f DatabaseQueries{..} =
   DatabaseQueries
-    { getTip = f getTip
-    , getTipForContract = f . getTipForContract
+    { getTipForContract = f . getTipForContract
     , getCreateStep = f . getCreateStep
+    , getIndexerTip = f getIndexerTip
     , getIntersectionForContract = fmap f . getIntersectionForContract
     , getIntersection = f . getIntersection
-    , getNextHeaders = f . getNextHeaders
-    , getNextBlocks = fmap f . getNextBlocks
-    , getNextSteps = fmap f . getNextSteps
     , getHeaders = fmap f . getHeaders
     , getContractState = f . getContractState
+    , getMarloweTip = f getMarloweTip
+    , getNodeTip = f getNodeTip
     , getTransaction = f . getTransaction
     , getTransactions = f . getTransactions
     , getWithdrawal = f . getWithdrawal
@@ -218,17 +183,43 @@ hoistDatabaseQueries f DatabaseQueries{..} =
     , getRoleCurrencies = f . getRoleCurrencies
     }
 
+data GetIndexerTipError
+  = MissingIndexerTip
+  | InvalidIndexerTip ByteString
+  deriving (Show)
+
+instance A.ToJSON GetIndexerTipError where
+  toJSON = \case
+    MissingIndexerTip -> A.object [ "type" A..= ("MissingIndexerTip" :: String) ]
+    InvalidIndexerTip tipBytes -> A.object
+      [ "type" A..= ("InvalidIndexerTip" :: String)
+      , "tipBytes" A..= EncodeBase16 tipBytes
+      ]
+
+data GetNodeTipError
+  = MissingNodeTip
+  | InvalidNodeTip ByteString
+  deriving (Show)
+
+instance A.ToJSON GetNodeTipError where
+  toJSON = \case
+    MissingNodeTip -> A.object [ "type" A..= ("MissingNodeTip" :: String) ]
+    InvalidNodeTip tipBytes -> A.object
+      [ "type" A..= ("InvalidNodeTip" :: String)
+      , "tipBytes" A..= EncodeBase16 tipBytes
+      ]
+
+
 data DatabaseQueries m = DatabaseQueries
-  { getTip :: m ChainTip
-  , getTipForContract :: ContractId -> m ChainPoint
+  { getTipForContract :: ContractId -> m ChainPoint
   , getCreateStep :: ContractId -> m (Maybe (BlockHeader, SomeCreateStep))
+  , getIndexerTip :: m (Either GetIndexerTipError IndexerTip)
   , getIntersection :: [BlockHeader] -> m (Maybe BlockHeader)
   , getIntersectionForContract :: ContractId -> [BlockHeader] -> m (Maybe (BlockHeader, SomeMarloweVersion))
-  , getNextHeaders :: ChainPoint -> m (Next ContractHeader)
-  , getNextBlocks :: Word8 -> ChainPoint -> m (Next MarloweBlock)
-  , getNextSteps :: ContractId -> ChainPoint -> m (Next SomeContractStep)
   , getHeaders :: ContractFilter -> Range ContractId -> m (Maybe (Page ContractId ContractHeader))
   , getContractState :: ContractId -> m (Maybe SomeContractState)
+  , getMarloweTip :: m (Maybe MarloweTip)
+  , getNodeTip :: m (Either GetNodeTipError NodeTip)
   , getTransaction :: TxId -> m (Maybe SomeTransaction)
   , getTransactions :: ContractId -> m (Maybe SomeTransactions)
   , getWithdrawal :: TxId -> m (Maybe Withdrawal)

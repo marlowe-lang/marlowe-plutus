@@ -1,6 +1,6 @@
 module Commands.GetContract where
 
-import Commands.Options.ContractId (contractParser)
+import Commands.Options.ContractId (contractIdParser)
 import Commands.Options.MessageFormat (MessageFormat, messageFormatParser, emitJSONError, emitResponse)
 import Language.Marlowe.Runtime.Web.Contract.API (ContractId, ContractState)
 import Language.Marlowe.Runtime.Web.Client (getContract)
@@ -22,7 +22,7 @@ mkGetContractCommandParser = do
     desc = progDesc "Get the current state of a Marlowe contract from the web server."
     prs =
       GetContractCommand
-        <$> contractParser
+        <$> contractIdParser
         <*> messageFormatParser
         <*> servantClientRunnerParser
     opt = info prs desc

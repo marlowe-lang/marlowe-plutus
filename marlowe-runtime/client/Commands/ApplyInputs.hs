@@ -2,32 +2,32 @@ module Commands.ApplyInputs where
 
 import Cardano.Api qualified as C
 import Commands.Formatters.Servant (clientErrorToJSON)
+import Commands.Options.ContractId (contractIdParser)
+import Commands.Options.CardanoNode (mkNetworkIdParser, mkNodeSocketParser)
 import Commands.Options.MessageFormat (MessageFormat (MessageFormatText), messageFormatParser, emitError, emitJSONError, emitResponseWith)
 import Commands.Options.ServantClientRunner (mkServantClientRunnerParser, ServantClientRunner (ServantClientRunner))
-import Control.Monad (when)
+import Control.Monad (when, unless)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Aeson qualified as A
 import Data.Aeson.Encode.Pretty qualified as A
-import Data.Bifunctor (first)
 import Data.ByteString.Lazy qualified as LBS
 import Data.ByteString.Lazy.Char8 qualified as LBS8
-import Data.Foldable (Foldable(fold))
 import Data.Set qualified as Set
-import Data.String (IsString(fromString))
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Yaml qualified as Yaml
-import Language.Marlowe.Runtime.Web.Client (postContract)
-import Language.Marlowe.Runtime.Web.Contract.API (PostContractsRequest(PostContractsRequest, accounts, contract, metadata, minUTxODeposit, roles, tags, threadTokenName, version), ContractOrSourceId(ContractOrSourceId))
+import Language.Marlowe.Runtime.Web.Client (postTransaction)
+import Language.Marlowe.Runtime.Web.Contract.API ( ContractId )
+import Language.Marlowe.Runtime.Web.Contract.Transaction.API (PostTransactionsRequest(PostTransactionsRequest, inputs, invalidBefore, invalidHereafter, metadata, tags, version))
 import Language.Marlowe.Runtime.Web.Core.Address qualified as Web
 import Language.Marlowe.Runtime.Web.Core.MarloweVersion (MarloweVersion (V1))
 import Language.Marlowe.Runtime.Web.Core.Tx qualified as Web
-import Language.Marlowe.Runtime.Web.Tx.API (CreateTxEnvelope, CardanoTx)
-import Options.Applicative ( Parser, ParserInfo, ReadM, eitherReader, help, info, long, metavar, option, progDesc, short, showDefault, strOption, switch, value, flag', Alternative ((<|>)), auto,)
+import Language.Marlowe.Runtime.Web.Tx.API (CardanoTx, ApplyInputsTxEnvelope)
+import Options.Applicative ( Parser, ParserInfo, help, info, long, metavar, progDesc, short, showDefault, strOption, value,)
 import Servant.Client (ClientError)
-import System.Environment.Blank (getEnv)
 import System.FilePath ((</>))
-import Text.Read qualified as T
+import System.Directory (doesDirectoryExist)
+import qualified Commands.Options.Address as Addr
 
 walletAddressParser :: Parser (C.Address C.ShelleyAddr)
 walletAddressParser = Addr.mkAddressParser $ Addr.AddressParserConfig
@@ -38,6 +38,7 @@ walletAddressParser = Addr.mkAddressParser $ Addr.AddressParserConfig
 
 data ApplyInputsCommand = ApplyInputsCommand
   { inputFile :: FilePath
+  , contractId :: ContractId
   , messageFormat :: MessageFormat
   , networkId :: C.NetworkId
   , nodeSocketPath :: FilePath
@@ -68,6 +69,7 @@ mkApplyInputsCommandParser = do
           <> long "marlowe-inputs-file"
           <> metavar "MARLOWE_INPUTS_FILE"
           <> help "JSON file which contains a list of Marlowe contract inputs which should be applied."
+      <*> contractIdParser
       <*> messageFormatParser
       <*> networkIdParser
       <*> socketPathParser
@@ -104,7 +106,7 @@ runApplyInputsCommand cmd = do
   walletUtxos <- case rawQueryResult of
     Right (Right (Right walletUtxos@(C.UTxO walletUtxosMap))) -> do
       when (null walletUtxosMap) $
-        emitError cmd.messageFormat $ "The funding address " <> show cmd.fundingAddress <> " has no UTXOs. Please provide an address with at least one UTXO."
+        emitError cmd.messageFormat $ "The funding address " <> show cmd.walletAddress <> " has no UTXOs. Please provide an address with at least one UTXO."
       pure walletUtxos
     _ -> do
       emitError cmd.messageFormat ("Failed to query the cardano-node for necessary information." :: String)
@@ -112,36 +114,29 @@ runApplyInputsCommand cmd = do
   marloweInputs <- decodeFileStrict cmd.messageFormat cmd.inputFile
   let
     ServantClientRunner runWebClient = cmd.servantClientRunner
-    stakeCredential = Nothing
-    -- data PostTransactionsRequest = PostTransactionsRequest
-    --   { version :: MarloweVersion
-    --   , tags :: Map Text Metadata
-    --   , metadata :: Map Word64 Metadata
-    --   , invalidBefore :: Maybe UTCTime
-    --   , invalidHereafter :: Maybe UTCTime
-    --   , inputs :: [Semantics.Input]
-    --   }
     request = PostTransactionsRequest
       { inputs = marloweInputs
       , invalidBefore = Nothing
       , invalidHereafter = Nothing
       , metadata = mempty
-      , roles = Nothing
       , tags = mempty
       , version = V1
       }
     changeAddress = Web.Address $ C.serialiseToBech32 cmd.walletAddress
     availableUTxOs = Web.fromCardanoUTxO walletUtxos
-  (result :: Either ClientError (ApplyInputsTxEnvelope CardanoTx)) <- runWebClient $ postTransaction changeAddress availableUTxOs request
+    outputFile = cmd.outputDir </> "apply-inputs.tx.json"
+  outputDirExists <- liftIO $ doesDirectoryExist cmd.outputDir
+  unless outputDirExists do
+    emitError cmd.messageFormat $ "The output directory " <> show cmd.outputDir <> " does not exist. Please create it before running this command."
+
+  (result :: Either ClientError (ApplyInputsTxEnvelope CardanoTx)) <- runWebClient $ postTransaction changeAddress availableUTxOs cmd.contractId request
   case result of
     Left err -> emitJSONError cmd.messageFormat (clientErrorToJSON err)
     Right applyInputsTxEnvelope -> do
-      let
-        outputFile = cmd.outputDir </> "apply-inputs.tx.json"
       LBS8.writeFile outputFile (A.encodePretty $ A.toJSON applyInputsTxEnvelope)
       emitResponseWith
         cmd.messageFormat
-        createTxEnvelope
+        applyInputsTxEnvelope
         \_ -> do
           let
             outputFile' = LBS.fromStrict . T.encodeUtf8 . T.pack $ outputFile

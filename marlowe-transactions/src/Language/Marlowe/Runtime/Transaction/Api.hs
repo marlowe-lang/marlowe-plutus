@@ -1581,6 +1581,7 @@ data ApplyInputsError
     -- due to a timeout or any other reasons, such as missing merkleization data.
     ApplyInputsSafetyAnalysisError String
   | SlotConversionFailed String
+  | ApplyInputsNodeTipInfoMissing
   | TipAtGenesis
   | ValidityLowerBoundTooHigh SlotNo SlotNo
   deriving (Generic)

@@ -266,9 +266,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@konduit/bln@portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/bln::locator=marlowe-lang%40workspace%3A.":
+"@konduit/bln@portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/bln::locator=marlowe-lang%40workspace%3A.":
   version: 0.0.0-use.local
-  resolution: "@konduit/bln@portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/bln::locator=marlowe-lang%40workspace%3A."
+  resolution: "@konduit/bln@portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/bln::locator=marlowe-lang%40workspace%3A."
   dependencies:
     "@noble/hashes": "npm:^2.0.1"
     "@noble/secp256k1": "npm:^3.0.0"
@@ -279,9 +279,9 @@ __metadata:
   languageName: node
   linkType: soft
 
-"@konduit/cardano-keys@portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/cardano-keys::locator=marlowe-lang%40workspace%3A.":
+"@konduit/cardano-keys@portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/cardano-keys::locator=marlowe-lang%40workspace%3A.":
   version: 0.0.0-use.local
-  resolution: "@konduit/cardano-keys@portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/cardano-keys::locator=marlowe-lang%40workspace%3A."
+  resolution: "@konduit/cardano-keys@portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/cardano-keys::locator=marlowe-lang%40workspace%3A."
   dependencies:
     "@noble/ciphers": "npm:^2.1.1"
     "@noble/hashes": "npm:^2.0.1"
@@ -292,9 +292,9 @@ __metadata:
   languageName: node
   linkType: soft
 
-"@konduit/codec@portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/codec::locator=marlowe-lang%40workspace%3A.":
+"@konduit/codec@portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/codec::locator=marlowe-lang%40workspace%3A.":
   version: 0.0.0-use.local
-  resolution: "@konduit/codec@portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/codec::locator=marlowe-lang%40workspace%3A."
+  resolution: "@konduit/codec@portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/codec::locator=marlowe-lang%40workspace%3A."
   dependencies:
     decimal.js: "npm:^10.6.0"
     decimal.js-i18n: "npm:^0.3.1"
@@ -304,9 +304,9 @@ __metadata:
   languageName: node
   linkType: soft
 
-"@konduit/konduit-consumer@portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/konduit-consumer::locator=marlowe-lang%40workspace%3A.":
+"@konduit/konduit-consumer@portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/konduit-consumer::locator=marlowe-lang%40workspace%3A.":
   version: 0.0.0-use.local
-  resolution: "@konduit/konduit-consumer@portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/konduit-consumer::locator=marlowe-lang%40workspace%3A."
+  resolution: "@konduit/konduit-consumer@portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/konduit-consumer::locator=marlowe-lang%40workspace%3A."
   dependencies:
     "@konduit/bln": "workspace:^"
     "@konduit/cardano-keys": "workspace:^"

@@ -24,8 +24,8 @@ contractIdReader = eitherReader $ \arg -> case break (== '#') arg of
       else Left $ "Invalid txId length: " <> arg <> ". Expected 64 hex characters (32 bytes)."
   _ -> Left $ "Invalid contract id format: " <> arg <> ". Expected format: <txId>#<txIx>."
 
-contractParser :: Parser ContractId
-contractParser = option contractIdReader
+contractIdParser :: Parser ContractId
+contractIdParser = option contractIdReader
   ( long "contract-id"
     <> metavar "CONTRACT_ID"
     <> help "The id of the Marlowe contract to query, in the format <txId>#<txIx>."

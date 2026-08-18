@@ -22,9 +22,9 @@
     "vue-tsc": "^3.3.4"
   },
   "resolutions": {
-    "@konduit/bln@workspace:^": "portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/bln",
-    "@konduit/cardano-keys@workspace:^": "portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/cardano-keys",
-    "@konduit/codec@workspace:^": "portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/codec",
-    "@konduit/konduit-consumer@workspace:^": "portal:/home/paluh/projects/cardano-lightning/konduit-js/paluh/migrate-the-app/packages/konduit-consumer"
+    "@konduit/bln@workspace:^": "portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/bln",
+    "@konduit/cardano-keys@workspace:^": "portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/cardano-keys",
+    "@konduit/codec@workspace:^": "portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/codec",
+    "@konduit/konduit-consumer@workspace:^": "portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/konduit-consumer"
   }
 }

@@ -20,6 +20,7 @@ export const waitForPromise = <T>(
   return ResultAsync.fromPromise(promise, () => null);
 }
 
+// Await for the result but fail on the first error.
 export const waitForResultAsync = <T, E>(
   fn: () => ResultAsync<T, E>,
   pred: (v: T) => boolean,
@@ -44,6 +45,8 @@ export const waitForResultAsync = <T, E>(
   return new ResultAsync(promise);
 }
 
+// Await for the result ignoring errors until the timeout is reached.
+// If the timeout is reached, return the last error.
 export const waitPatientlyForResultAsync = <T, E>(
   fn: () => ResultAsync<T, E>,
   pred: (v: T) => boolean,

@@ -282,7 +282,7 @@ extractMarloweTransactionErrorDetails = \case
       "InvalidPayoutDatum"
       ["txOutRef" .= toJSON (toDTO txOutRef)]
   H.InvalidValidityRange -> tagged "InvalidValidityRange" []
-  H.SlotConversionFailed -> tagged "SlotConversionFailed" []
+  H.SlotConversionFailed -> tagged "H.SlotConversionFailed" []
   H.MultipleContractInputs txOutRefs ->
     tagged
       "MultipleContractInputs"
@@ -433,13 +433,17 @@ instance ToDTO ApplyInputsError where
     ApplyInputsLoadMarloweContextFailed err -> loadMarloweContextErrorToApiError err
     ApplyInputsConstraintsBuildupFailed err -> applyInputsConstraintsBuildupErrorToApiError err
     ApplyInputsContractContinuationNotFound -> ApiError "Contract continuation not found" "ContractContinuationNotFound" Null 404
+    ApplyInputsNodeTipInfoMissing -> ApiError "Node tip info missing" "NodeTipInfoMissing" Null 500
     ApplyInputsSafetyAnalysisError safetyAnalysisError -> do
       let details =
             object
               ["safetyAnalysisProcessFailed" .= safetyAnalysisError]
       ApiError "Safety analysis failed" "SafetyAnalysisFailed" details 400
     ScriptOutputNotFound -> ApiError "Script output not found" "ScriptOutputNotFound" Null 400
-    SlotConversionFailed _ -> ApiError "Slot conversion failed" "SlotConversionFailed" Null 400
+    SlotConversionFailed reason ->
+      ApiError ("Slot conversion failed: " <> reason) "SlotConversionFailed"
+        (tagged "SlotConversionFailed" ["reason" .= reason])
+        400
     TipAtGenesis -> ApiError "Internal error" "TipAtGenesis" Null 500
     ValidityLowerBoundTooHigh _ _ -> ApiError "Validity lower bound too high" "ValidityLowerBoundTooHigh" Null 400
     ApplyInputsLoadHelpersContextFailed err -> ApiError ("Failed to load helper-script context: " <> show err) "ApplyInputsLoadHelperContextFailed" Null 503

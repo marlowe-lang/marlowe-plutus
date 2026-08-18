@@ -2,14 +2,14 @@ module Marlowe.Indexer.NodeFollower (
   Changes (..),
   MemoryCostConfig (..),
   ChangesMemoryCostModel (..),
-  LocalTip (..),
+  IndexerTip (..),
   NodeTip (..),
   NodeFollower (..),
   NodeFollowerDependencies (..),
   RollbackToBlock (..),
   areChangesEmpty,
   blockHeaderToPoint,
-  mkLocalTipFromBlockHeader,
+  mkIndexerTipFromBlockHeader,
   mkNodeFollower,
   toEmptyChanges,
 ) where
@@ -29,11 +29,12 @@ import Cardano.Api (
 import Network.TypedProtocol (N(..), pattern Succ, Nat (..))
 import Control.Arrow ((&&&))
 import Control.Concurrent.Component (Component, mkComponent)
-import Control.Concurrent.STM (STM, TVar, modifyTVar, newTVar, readTVar, writeTVar, retry)
+import Control.Concurrent.STM (STM, TVar, modifyTVar, newTVar, readTVar, writeTVar)
 import Control.Monad (guard, when)
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString.Base16 (encodeBase16)
 import Data.IORef (IORef)
+-- FIXME: Why we use a lazy map here?
 import Data.IntMap.Lazy (IntMap)
 import qualified Data.IntMap.Lazy as IntMap
 import Data.List (sortOn)
@@ -81,16 +82,16 @@ memoryCost :: ChangesMemoryCostModel -> Changes -> Int
 memoryCost ChangesMemoryCostModel{..} Changes{..} =
   changesBlockCount * blockMemoryCost + changesTxCount * txMemoryCost
 
-newtype LocalTip = LocalTip ChainTip
+newtype IndexerTip = IndexerTip ChainTip
   deriving newtype (Eq, Show)
 
-mkLocalTipFromBlockHeader :: BlockHeader -> LocalTip
-mkLocalTipFromBlockHeader (BlockHeader slot hash blockNo) =
-  LocalTip $ ChainTip slot hash blockNo
+mkIndexerTipFromBlockHeader :: BlockHeader -> IndexerTip
+mkIndexerTipFromBlockHeader (BlockHeader slot hash blockNo) =
+  IndexerTip $ ChainTip slot hash blockNo
 
-instance ToJSON LocalTip where
-  toJSON (LocalTip tip) = A.object
-    [ "LocalTip" .= toJSON tip
+instance ToJSON IndexerTip where
+  toJSON (IndexerTip tip) = A.object
+    [ "IndexerTip" .= toJSON tip
     ]
 
 newtype NodeTip = NodeTip ChainTip
@@ -120,7 +121,7 @@ data Changes = Changes
   -- ^ New blocks to write.
   , changesTip :: !NodeTip
   -- ^ Most recently observed tip of the local node.
-  , changesLocalTip :: !LocalTip
+  , changesIndexerTip :: !IndexerTip
   -- ^ Chain tip the changes will advance the local state to.
   , changesBlockCount :: !Int
   -- ^ Number of blocks in the change set.
@@ -130,7 +131,7 @@ data Changes = Changes
 
 -- | An empty Changes collection.
 emptyChanges :: Changes
-emptyChanges = Changes Nothing [] (NodeTip ChainTipAtGenesis) (LocalTip ChainTipAtGenesis) 0 0
+emptyChanges = Changes Nothing [] (NodeTip ChainTipAtGenesis) (IndexerTip ChainTipAtGenesis) 0 0
 
 -- | Make a set of changes into an empty set (preserves the tip and point fields).
 toEmptyChanges :: Changes -> Changes
@@ -188,7 +189,6 @@ mkNodeFollower NodeFollowerDependencies{..}  = mkComponent "indexer-node-client"
       changes = do
         -- Read the changes and reset the state
         currentChanges <- readTVar changesVar
-        when (areChangesEmpty currentChanges) retry
         modifyTVar changesVar toEmptyChanges
         pure currentChanges
 
@@ -301,14 +301,16 @@ mkPipelinedClient changesVar getIntersectionPoints =
         ClientPipelinedStIntersect
           { recvMsgIntersectFound = \point tip -> do
               logInfo_ "Intersected with node chain"
-              let getSlotAndBlock = case point of
+              let
+                getSlotAndBlock :: WithOrigin BlockHeader -> Maybe (Int, BlockNo)
+                getSlotAndBlock = case point of
                     ChainPointAtGenesis -> const Nothing
                     ChainPoint pointSlot _ -> \case
                       Origin -> Nothing
                       At (BlockHeader (SlotNo s) _ b)
                         | SlotNo s <= pointSlot -> Just (fromIntegral s, b)
                         | otherwise -> Nothing
-                  slotNoToBlockNo = IntMap.fromList $ mapMaybe getSlotAndBlock headers
+                slotNoToBlockNo = IntMap.fromList $ mapMaybe getSlotAndBlock headers
               clientStIdle slotNoToBlockNo point tip
           , recvMsgIntersectNotFound = \tip -> do
               logInfo_ "No intersection with node chain"
@@ -415,7 +417,7 @@ mkClientStNext lastLog changesVar slotNoToBlockNo pipelineDecision n =
                 changes
                   { changesBlocks = blockInMode : changesBlocks changes
                   , changesTip = (NodeTip . snd) tip
-                  , changesLocalTip = mkLocalTipFromBlockHeader header
+                  , changesIndexerTip = mkIndexerTipFromBlockHeader header
                   , changesBlockCount = changesBlockCount changes + 1
                   , changesTxCount = changesTxCount changes + Block.txCount blockInMode
                   }
@@ -424,6 +426,8 @@ mkClientStNext lastLog changesVar slotNoToBlockNo pipelineDecision n =
           writeTVar changesVar nextChanges
         let clientTip = At blockNo
         let slotNoToInt (SlotNo s) = fromIntegral s
+        -- FIXME: Can we leak memory here? I can not find any garbage collection for this map which should be
+        -- done for non volatile blocks I believe (based on my intuition that it is used only during rollbacks).
         let slotNoToBlockNo' = IntMap.insert (slotNoToInt slotNo) blockNo slotNoToBlockNo
         pure $ mkClientStIdle lastLog changesVar slotNoToBlockNo' pipelineDecision n clientTip tip
     , recvMsgRollBackward = \point tip -> do
@@ -477,10 +481,10 @@ mkClientStNext lastLog changesVar slotNoToBlockNo pipelineDecision n =
                       -- earlier point: the previous one, or this new one.
                       Just prevRollback -> Just $ minRollbackPoint rollback prevRollback
                   , changesTip = NodeTip . snd $ tip
-                  , changesLocalTip = case (point, clientTip) of
-                      (ChainPointAtGenesis, _) -> LocalTip ChainTipAtGenesis
-                      (_, Origin) -> LocalTip ChainTipAtGenesis
-                      (ChainPoint slotNo hash, At (_, blockNo)) -> LocalTip $ ChainTip slotNo hash blockNo
+                  , changesIndexerTip = case (point, clientTip) of
+                      (ChainPointAtGenesis, _) -> IndexerTip ChainTipAtGenesis
+                      (_, Origin) -> IndexerTip ChainTipAtGenesis
+                      (ChainPoint slotNo hash, At (_, blockNo)) -> IndexerTip $ ChainTip slotNo hash blockNo
                   , changesBlockCount = length changesBlocks'
                   , changesTxCount = sum $ Block.txCount <$> changesBlocks
                   }

@@ -7,8 +7,8 @@ const integrationCommand: CommandModule = {
   handler: async () => {
     console.log('🧪 Running integration tests...')
 
-    await startVitest('test', [], {
-      include: ['tests/integration/**/*.test.ts'],
+    await startVitest('test', ['--tags=lifecycle'], {
+      include: ['tests/e2e/**/*.test.ts'],
       watch: false,
       reporters: ['default']
     })

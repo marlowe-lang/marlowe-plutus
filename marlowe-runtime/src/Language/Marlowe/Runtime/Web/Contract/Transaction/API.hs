@@ -34,9 +34,7 @@ import Language.Marlowe.Runtime.Web.Tx.API (
   TxHeader,
   TxJSON,
  )
-import Language.Marlowe.Runtime.Web.Withdrawal.API (
-  PostTransactionsRequest(PostTransactionsRequest),
- )
+import Language.Marlowe.Runtime.Web.Withdrawal.API (PostTransactionsRequest(PostTransactionsRequest, inputs, invalidBefore, invalidHereafter, metadata, tags, version))
 import Servant (
   Capture,
   Description,

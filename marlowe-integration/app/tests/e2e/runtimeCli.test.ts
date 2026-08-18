@@ -74,5 +74,5 @@ afterAll(async () => {
 })
 
 test('Deposit lifecycle using marloweRuntimeCli', { tags: ['lifecycle', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
-  await deposit.init(ctx.env.faucetAddr, ctx.env.faucetSkeyFile);
+  await deposit.run(ctx.env.faucetAddr, ctx.env.faucetSkeyFile);
 })

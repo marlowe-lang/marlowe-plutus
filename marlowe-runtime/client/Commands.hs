@@ -8,6 +8,7 @@ import Options.Applicative (
   info,
   progDesc,
  )
+import Commands.ApplyInputs (mkApplyInputsCommandParser, runApplyInputsCommand)
 import Commands.Init (mkInitCommandParser, runInitCommand)
 import Commands.GetContract (mkGetContractCommandParser, runGetContractCommand)
 
@@ -22,7 +23,9 @@ mkContractCommandParser :: IO (Parser (IO ()))
 mkContractCommandParser = do
   initCommandParser <- mkInitCommandParser
   getContractParser <- mkGetContractCommandParser
+  applyInputsCommandParser <- mkApplyInputsCommandParser
   pure . hsubparser . fold $
     [ command "init" $ runInitCommand <$> initCommandParser
     , command "get" $ runGetContractCommand <$> getContractParser
+    , command "apply-inputs" $ runApplyInputsCommand <$> applyInputsCommandParser
     ]

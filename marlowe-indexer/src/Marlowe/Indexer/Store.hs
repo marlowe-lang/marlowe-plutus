@@ -4,26 +4,24 @@ module Marlowe.Indexer.Store where
 
 import Control.Concurrent.Component (Component, mkComponent, mkComponent_)
 import Control.Concurrent.STM (STM, modifyTVar, newTVar, readTVar, writeTVar)
-import Control.Monad (forever, guard, unless)
+import Control.Monad (forever, unless, guard)
 import Data.Aeson (ToJSON, (.=))
 import Data.Aeson qualified as A
 import Data.Foldable (for_)
 import Data.Function (on)
 import Data.List (partition)
 import Data.Map (Map)
-import qualified Data.Map as Map
-import Data.Maybe (listToMaybe, fromMaybe)
+import Data.Map qualified as Map
 import Data.Semigroup (Last (..))
 import GHC.Generics (Generic)
-import Language.Marlowe.Runtime.ChainSync.Api
-    ( ChainPoint, TxId, WithGenesis(..), ChainTip(..), chainTipFromChainPoint )
+import Language.Marlowe.Runtime.ChainSync.Api (ChainPoint, WithGenesis(..), IndexerTip(..), NodeTip, genesisIndexerTip, genesisNodeTip, ChainPoint, TxId, WithGenesis(..), chainTipFromChainPoint )
 import Language.Marlowe.Runtime.Core.Api (ContractId)
 import Language.Marlowe.Runtime.History.Api (ExtractCreationError, ExtractMarloweTransactionError)
 import Language.Marlowe.Runtime.Indexer.Database (DatabaseQueries (..))
 import Language.Marlowe.Runtime.Indexer.MarloweBlock (MarloweBlock (..), MarloweTransaction (..))
-import Marlowe.Indexer.MarloweChainFollower (ChainEvent (..), LocalTip(..), NodeTip (..), genesisLocalTip)
-import UnliftIO (MonadUnliftIO, atomically)
 import Log (MonadLog, logInfo)
+import Marlowe.Indexer.MarloweChainFollower (ChainEvent (..))
+import UnliftIO (MonadUnliftIO, atomically)
 
 data StoreDependencies m = StoreDependencies
   { databaseQueries :: DatabaseQueries m
@@ -86,8 +84,8 @@ data Changes = Changes
   { rollbackTo :: Maybe ChainPoint
   , blocks :: [MarloweBlock]
   , statistics :: ChangesStatistics
-  , localTip :: LocalTip
-  , remoteTip :: NodeTip
+  , indexerTip :: IndexerTip
+  , nodeTip :: NodeTip
   , invalidCreateTxs :: Map ContractId ExtractCreationError
   , invalidApplyInputsTxs :: Map TxId ExtractMarloweTransactionError
   }
@@ -100,14 +98,14 @@ instance Semigroup Changes where
           { rollbackTo = rollbackTo a'
           , blocks = on (<>) blocks a' b
           , statistics = on (<>) statistics a' b
-          , localTip = getLast $ on (<>) (Last . localTip) a b
-          , remoteTip = getLast $ on (<>) (Last . remoteTip) a b
+          , indexerTip = getLast $ on (<>) (Last . indexerTip) a b
+          , nodeTip = getLast $ on (<>) (Last . nodeTip) a b
           , invalidCreateTxs = on (<>) invalidCreateTxs a b
           , invalidApplyInputsTxs = on (<>) invalidApplyInputsTxs a b
           }
 
 instance Monoid Changes where
-  mempty = Changes Nothing mempty mempty (LocalTip (ChainTip Nothing)) (NodeTip (ChainTip Nothing)) mempty mempty
+  mempty = Changes Nothing mempty mempty genesisIndexerTip genesisNodeTip mempty mempty
 
 applyRollback :: ChainPoint -> Changes -> Changes
 applyRollback Genesis _ = mempty{rollbackTo = Just Genesis}
@@ -124,6 +122,11 @@ applyRollback (At block) Changes{..} =
     isRolledBack MarloweBlock{..} = blockHeader > block
 
 
+-- | TODO: Drop the aggregator component - it makes no sens really to optimize
+-- | a blockchain pipeline around a database *and* we actually added
+-- | node tip and indexer tip update here which should be pushed to the storage
+-- | ASAP.
+-- |
 -- | The aggregator component pulls chain events and accumulates a batch of
 -- changes to persist.
 mkAggregator
@@ -140,10 +143,7 @@ mkAggregator pullEvent = mkComponent "indexer-store-aggregator" do
         -- Read the current changes
         changes <- readTVar changesVar
         -- Retry the STM transaction if the changes are empty
-        guard case changes of
-          Changes Nothing [] _ _ _ invalidCreateTxs invalidApplyInputsTxs ->
-            not $ Map.null invalidCreateTxs && Map.null invalidApplyInputsTxs
-          _ -> True
+        guard (changes /= mempty)
         -- Empty the changes variable
         writeTVar changesVar mempty
         -- Return the changes
@@ -156,14 +156,14 @@ mkAggregator pullEvent = mkComponent "indexer-store-aggregator" do
 
         let -- Compute the changes for the pulled event.
             changes = case event of
-              RollForward blocks tip ->
+              RollForward blocks indexerTip nodeTip ->
                 mempty
                   { blocks = snd <$> blocks
                   , statistics = foldMap (computeStats . snd) blocks
-                  , localTip = fromMaybe genesisLocalTip do
-                      (_, MarloweBlock { blockHeader }) <- listToMaybe (reverse blocks)
-                      pure . LocalTip . ChainTip . Just $ blockHeader
-                  , remoteTip = tip
+                  -- I'm not sure if falling back to the genesis tip here is
+                  -- the right thing to do.
+                  , indexerTip
+                  , nodeTip
                   , invalidCreateTxs = flip foldMap blocks \(_, block) -> flip foldMap (transactions block) \case
                       InvalidCreateTransaction contractId err -> Map.singleton contractId err
                       _ -> mempty
@@ -171,11 +171,12 @@ mkAggregator pullEvent = mkComponent "indexer-store-aggregator" do
                       InvalidApplyInputsTransaction txId _ err -> Map.singleton txId err
                       _ -> mempty
                   }
+
               RollBackward point tip -> do
                 mempty
                   { rollbackTo = Just point
-                  , localTip = LocalTip $ chainTipFromChainPoint point
-                  , remoteTip = tip
+                  , indexerTip = IndexerTip $ chainTipFromChainPoint point
+                  , nodeTip = tip
                   }
 
         -- Append the new changes to the existing changes.
@@ -198,8 +199,8 @@ mkPersister PersisterDependencies{..} = mkComponent_ "indexer-store-persister" $
   Changes{..} <- atomically readChanges
 
   logInfo "Saving changes to the database" $ A.object
-    [ "localTip" .= localTip
-    , "remoteTip" .= remoteTip
+    [ "indexerTip" .= indexerTip
+    , "nodeTip" .= nodeTip
     , "statistics" .= statistics
     , "invalidCreateTxs" .= invalidCreateTxs
     , "invalidApplyInputsTxs" .= invalidApplyInputsTxs
@@ -209,6 +210,9 @@ mkPersister PersisterDependencies{..} = mkComponent_ "indexer-store-persister" $
   for_ rollbackTo \point -> do
     logInfo "Rollback point" point
     commitRollback databaseQueries point
+
+  commitNodeTip databaseQueries nodeTip
+  commitIndexerTip databaseQueries indexerTip
 
   -- If there are blocks to save, save them.
   unless (null blocks) $ commitBlocks databaseQueries blocks

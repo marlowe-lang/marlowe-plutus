@@ -36,7 +36,7 @@ import qualified Control.Exception.Base as Exception
 import qualified Control.DeepSeq as DeepSeq
 import Control.Concurrent.Async (race)
 import Control.Concurrent (threadDelay)
-import Language.Marlowe.Runtime.ChainSync.Api (fromCardanoTxMetadata, mkTxOutAssets, DatumHash, ChainTip (ChainTip), SlotNo (SlotNo))
+import Language.Marlowe.Runtime.ChainSync.Api (fromCardanoTxMetadata, mkTxOutAssets, DatumHash, SlotNo)
 import qualified Data.List as List
 import qualified Cardano.Ledger.Core as Ledger
 import qualified Marlowe.Plutus.Semantics as V1
@@ -384,7 +384,7 @@ execApplyInputs
   => C.CardanoEra era
   -> Ledger.PParams (C.ShelleyLedgerEra era)
   -> Connector (QueryClient ContractRequest) m
-  -> m ChainTip
+  -> m SlotNo
   -> C.SystemStart
   -> C.EraHistory
   -> SolveConstraints era v
@@ -405,7 +405,7 @@ execApplyInputs
   era
   protocolParameters
   contractQueryConnector
-  loadChainTip
+  getCurrentSlotNo
   systemStart
   eraHistory
   solveConstraints
@@ -428,18 +428,13 @@ execApplyInputs
       withExceptT ApplyInputsLoadMarloweContextFailed $
         ExceptT $
           loadMarloweContext version contractId
-    tipSlot <- lift do
-      ChainTip possibleBlockHeader <- loadChainTip
-      case possibleBlockHeader of
-        Just Chain.BlockHeader{..} -> pure slotNo
-        Nothing -> pure $ SlotNo 0
+    tipSlot <- lift getCurrentSlotNo
     scriptOutput'@TransactionScriptOutput{datum = inputDatum} <-
       except $ maybe (Left ScriptOutputNotFound) Right scriptOutput
     let (contract, state) = case version of
           MarloweV1 -> case inputDatum of
             V1.MarloweData{..} -> do
               (marloweContract, marloweState)
-
         -- => (TransactionInput -> m (Maybe TransactionInput))
         -- merkleizeInputs' = fmap hush . runConnector contractQueryConnector . merkleizeInputs contract state
         merkleizeInputsStub = const $ pure Nothing
