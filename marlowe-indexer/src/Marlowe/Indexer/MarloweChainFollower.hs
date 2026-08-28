@@ -62,9 +62,9 @@ fromCardanoIndexerTip (NodeFollower.IndexerTip chainTip) = IndexerTip $ fromCard
 data ChainEvent
   = -- | A change in which a new block of Marlowe transactions is added to the chain.
     -- | Local tip is provided separately.
-    RollForward [(ChainPoint, MarloweBlock)] IndexerTip NodeTip
+    RollForward [(ChainPoint, MarloweBlock)] IndexerTip NodeTip C.EraHistory
   | -- | A change in which the chain is reverted to a previous point, discarding later blocks.
-    RollBackward ChainPoint NodeTip
+    RollBackward ChainPoint NodeTip C.EraHistory
 
 newtype MarloweChainFollower = MarloweChainFollower
   { events :: STM ChainEvent
@@ -155,14 +155,14 @@ mkFollowerThread emit possibleSystemStart prevNodeTip = do
         writeTVar prevNodeTip (Just ch.changesTip)
         pure ch
   systemStart <- getSystemStart nodeQuerier possibleSystemStart
+  (eraHistory :: C.EraHistory) <- runQuery nodeQuerier QueryHistory
   logTrace_ "Fetching changes from node follower"
   for_ changesRollback $ \rollbackTo -> do
     let
       rollbackPoint = chainPointFromCardanoRollback rollbackTo
     logInfo "Rolling back to" rollbackPoint
-    emit $ RollBackward rollbackPoint (fromCardanoNodeTip changesTip)
+    emit $ RollBackward rollbackPoint (fromCardanoNodeTip changesTip) eraHistory
 
-  (eraHistory :: C.EraHistory) <- runQuery nodeQuerier QueryHistory
   marloweUTxO <- getLatestMarloweUTxO
   blocks' <- for (reverse changesBlocks) \(C.BlockInMode _ block) -> do
     let
@@ -197,6 +197,7 @@ mkFollowerThread emit possibleSystemStart prevNodeTip = do
     marloweBlocks
     (fromCardanoIndexerTip changesIndexerTip)
     (fromCardanoNodeTip changesTip)
+    eraHistory
 
   mkFollowerThread emit (Just systemStart) prevNodeTip
 

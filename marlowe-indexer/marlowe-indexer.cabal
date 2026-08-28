@@ -92,6 +92,7 @@ library db
     Language.Marlowe.Runtime.Indexer.Database
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitBlocks
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitEraHistory
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitIndexerTip
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitNodeTip
     Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback

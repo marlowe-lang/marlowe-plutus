@@ -50,10 +50,10 @@ import Language.Marlowe.Runtime.Core.ScriptRegistry ( MarloweScripts(MarloweScri
 import Language.Marlowe.Runtime.Core.ScriptRegistry qualified as ScriptRegistry
 import Language.Marlowe.Runtime.Plutus.V3.Api (toPlutusTxOutRef)
 import Language.Marlowe.Runtime.Query (SomeContractState(SomeContractState), ContractState (ContractState, initialOutput, latestOutput))
-import Language.Marlowe.Runtime.Query.Database ( hoistDatabaseQueries, logDatabaseQueries, DatabaseQueries(getContractState), getNodeTip )
+import Language.Marlowe.Runtime.Query.Database ( hoistDatabaseQueries, logDatabaseQueries, DatabaseQueries(getContractState, getEraHistory), getNodeTip, GetEraHistoryError )
 import Language.Marlowe.Runtime.Query.Database.PostgreSQL (databaseQueries)
 import Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetContractState (GetContractState)
-import Language.Marlowe.Runtime.Transaction.Api (LoadHelpersContextError, RoleTokensConfig)
+import Language.Marlowe.Runtime.Transaction.Api (LoadHelpersContextError, RoleTokensConfig, InitError(InitEraHistoryNotInitialized), ApplyInputsError(ApplyInputsEraHistoryNotInitialized))
 import Language.Marlowe.Runtime.Transaction.Api qualified as T
 import Language.Marlowe.Runtime.Transaction.BuildConstraints (MkRoleTokenMintingPolicy)
 import Language.Marlowe.Runtime.Transaction.Builders (execInit, execApplyInputs, LoadMarloweContext, Connector(Connector))
@@ -246,86 +246,100 @@ mkInitContract
   :: MonadUnliftIO m
   => MonadLog m
   => LedgerInfo
+  -> m (Either GetEraHistoryError C.EraHistory)
+  -- ^ Fetch a fresh era history for each request. Failing this fetch is a
+  -- hard error: we refuse to fall back to a stale value because that would
+  -- silently mask configuration drift between the indexer and the runtime.
   -> GetCurrentScripts
   -> UseRoleTokenDevelScript
   -> InitContract m
-mkInitContract (networkId, systemStart, eraHistory, protocolParams) getCurrentScripts useRoleTokenDevelScript = do
-  let
-    solveConstraints = Constraints.solveConstraints systemStart (C.toLedgerEpochInfo eraHistory)
-
-    analysisTimeout = 60
+mkInitContract (networkId, systemStart, protocolParams) fetchEraHistory getCurrentScripts useRoleTokenDevelScript =
   \stakeCredential walletContext threadTokenName roleTokensConfig transactionMetadata optMinAda accounts contract -> do
-    execInit
-      (mkRoleTokensPolicy useRoleTokenDevelScript)
-      C.ConwayEra
-      Connector
-      getCurrentScripts
-      solveConstraints
-      protocolParams
-      walletContext
-      emptyLoadHelpersContext
-      networkId
-      stakeCredential
-      MarloweV1
-      threadTokenName
-      roleTokensConfig
-      transactionMetadata
-      optMinAda
-      accounts
-      contract
-      analysisTimeout
+    eraHistory <- fetchEraHistory
+    case eraHistory of
+      Left _ -> pure $ Left InitEraHistoryNotInitialized
+      Right eh -> do
+        let
+          solveConstraints = Constraints.solveConstraints systemStart (C.toLedgerEpochInfo eh)
+          analysisTimeout = 60
+        execInit
+          (mkRoleTokensPolicy useRoleTokenDevelScript)
+          C.ConwayEra
+          Connector
+          getCurrentScripts
+          solveConstraints
+          protocolParams
+          walletContext
+          emptyLoadHelpersContext
+          networkId
+          stakeCredential
+          MarloweV1
+          threadTokenName
+          roleTokensConfig
+          transactionMetadata
+          optMinAda
+          accounts
+          contract
+          analysisTimeout
 
 mkApplyInputs
   :: forall m
    . MonadUnliftIO m
   => MonadLog m
   => LedgerInfo
+  -> m (Either GetEraHistoryError C.EraHistory)
+  -- ^ Fetch a fresh era history for each request. Failing this fetch is a
+  -- hard error: we refuse to fall back to a stale value because that would
+  -- silently mask configuration drift between the indexer and the runtime.
   -> GetContractState m
   -> GetAllScripts
   -> m SlotNo
   -> ApplyInputs m
-mkApplyInputs (networkId, systemStart, eraHistory, protocolParams) getContractState getAllScripts getCurrentSlotNo = do
-  let
-    solveConstraints = Constraints.solveConstraints systemStart (C.toLedgerEpochInfo eraHistory)
-    loadMarloweContext :: LoadMarloweContext m
-    loadMarloweContext = mkLoadMarloweContext
-      networkId
-      getContractState
-      getAllScripts
-    analysisTimeout = 60
+mkApplyInputs (networkId, systemStart, protocolParams) fetchEraHistory getContractState getAllScripts getCurrentSlotNo =
   \walletContext contractId transactionMetadata invalidBefore invalidHereafter inputs -> do
-    execApplyInputs
-      C.ConwayEra
-      protocolParams
-      Connector
-      getCurrentSlotNo
-      systemStart
-      eraHistory
-      solveConstraints
-      walletContext
-      loadMarloweContext
-      emptyLoadHelpersContext
-      networkId
-      MarloweV1
-      contractId
-      transactionMetadata
-      invalidBefore
-      invalidHereafter
-      inputs
-      analysisTimeout
+    eraHistory <- fetchEraHistory
+    case eraHistory of
+      Left _ -> pure $ Left ApplyInputsEraHistoryNotInitialized
+      Right eh -> do
+        let
+          solveConstraints = Constraints.solveConstraints systemStart (C.toLedgerEpochInfo eh)
+          loadMarloweContext :: LoadMarloweContext m
+          loadMarloweContext = mkLoadMarloweContext
+            networkId
+            getContractState
+            getAllScripts
+          analysisTimeout = 60
+        execApplyInputs
+          C.ConwayEra
+          protocolParams
+          Connector
+          getCurrentSlotNo
+          systemStart
+          eh
+          solveConstraints
+          walletContext
+          loadMarloweContext
+          emptyLoadHelpersContext
+          networkId
+          MarloweV1
+          contractId
+          transactionMetadata
+          invalidBefore
+          invalidHereafter
+          inputs
+          analysisTimeout
 
-type LedgerInfo = (C.NetworkId, C.SystemStart, C.EraHistory, L.PParams (C.ShelleyLedgerEra C.ConwayEra))
+type LedgerInfo = (C.NetworkId, C.SystemStart, L.PParams (C.ShelleyLedgerEra C.ConwayEra))
 
 queryLedgerInfo :: C.NetworkId -> C.LocalNodeConnectInfo -> IO LedgerInfo
 queryLedgerInfo networkId connectInfo = do
   rawQueryResult <- C.executeLocalStateQueryExpr connectInfo C.VolatileTip $
-    (,,)
+    (,)
       <$> C.querySystemStart
-      <*> C.queryEraHistory
       <*> C.queryProtocolParameters C.ShelleyBasedEraConway
   case rawQueryResult of
-    Right (Right systemStart, Right eraHistory, Right (Right protocolParams)) -> do
-      pure (networkId, systemStart, eraHistory, protocolParams)
+    Right (Right systemStart, Right (Right protocolParams)) -> do
+      pure (networkId, systemStart, protocolParams)
     _ -> liftIO . die $ "Failed to query the cardano-node for necessary information."
 
 mkGetAllScripts
@@ -367,7 +381,7 @@ mkServerDependencies pool ledgerInfo getAllScripts getCurrentScripts = do
         hoistDatabaseQueries
           (either (liftIO . throwIO) pure <=< liftIO . Pool.use pool)
           databaseQueries
-  let
+    fetchEraHistory = getEraHistory dbQueries
     getCurrentSlotNo =
       getNodeTip dbQueries >>= \case
         Left err -> liftIO . throwIO $ userError $ "Failed to get indexer tip: " <> show err
@@ -378,11 +392,13 @@ mkServerDependencies pool ledgerInfo getAllScripts getCurrentScripts = do
 
     initContract = mkInitContract
       ledgerInfo
+      fetchEraHistory
       getCurrentScripts
       (UseRoleTokenDevelScript True)
 
     applyInputs = mkApplyInputs
       ledgerInfo
+      fetchEraHistory
       (getContractState dbQueries)
       getAllScripts
       getCurrentSlotNo

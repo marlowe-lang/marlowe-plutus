@@ -5,6 +5,7 @@ import qualified Hasql.Transaction.Sessions as T
 import Language.Marlowe.Runtime.Query.Database (DatabaseQueries (DatabaseQueries))
 import Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetContractState (getContractState)
 import Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetCreateStep (getCreateStep)
+import Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetEraHistory (getEraHistory)
 import Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetHeaders (getHeaders)
 import Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetIndexerTip (getIndexerTip)
 import Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetIntersection (getIntersection)
@@ -39,3 +40,4 @@ databaseQueries =
     (fmap (T.transaction T.Serializable T.Read) . getPayouts)
     (T.transaction T.Serializable T.Read . getPayout)
     (T.transaction T.Serializable T.Read . getRoleCurrencies)
+    (T.transaction T.Serializable T.Read getEraHistory)

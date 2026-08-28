@@ -410,6 +410,12 @@ instance ToDTO InitError where
     InsufficientMinAdaDeposit required ->
       ApiError "Min Ada deposit insufficient." "InsufficientMinAdaDeposit" (object ["minimumRequiredDeposit" .= required]) 400
     InitLoadHelpersContextFailed err -> ApiError ("Failed to load helper-script context: " <> show err) "InitLoadHelperContextFailed" Null 503
+    InitEraHistoryNotInitialized ->
+      ApiError
+        "Indexer has not initialized era history. The marlowe-indexer must be running and have written at least one batch before this runtime can serve transactions."
+        "InitEraHistoryNotInitialized"
+        Null
+        503
 
 applyInputsConstraintsBuildupErrorToApiError :: ApplyInputsConstraintsBuildupError -> ApiError
 applyInputsConstraintsBuildupErrorToApiError err = ApiError (show err) errorCode details statusCode
@@ -456,6 +462,12 @@ instance ToDTO ApplyInputsError where
     TipAtGenesis -> ApiError "Internal error" "TipAtGenesis" Null 500
     ValidityLowerBoundTooHigh _ _ -> ApiError "Validity lower bound too high" "ValidityLowerBoundTooHigh" Null 400
     ApplyInputsLoadHelpersContextFailed err -> ApiError ("Failed to load helper-script context: " <> show err) "ApplyInputsLoadHelperContextFailed" Null 503
+    ApplyInputsEraHistoryNotInitialized ->
+      ApiError
+        "Indexer has not initialized era history. The marlowe-indexer must be running and have written at least one batch before this runtime can serve transactions."
+        "ApplyInputsEraHistoryNotInitialized"
+        Null
+        503
 
 statusCodeLoadMarloweContextError :: LoadMarloweContextError -> Int
 statusCodeLoadMarloweContextError = \case

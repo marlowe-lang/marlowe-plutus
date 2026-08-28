@@ -1556,6 +1556,11 @@ data InitError
   | InitContractNotFound String
   | ProtocolParamNoUTxOCostPerByte
   | InsufficientMinAdaDeposit Lovelace
+  | -- | The indexer has not (yet) initialized era history in the database, so
+    -- we cannot build a transaction safely. We refuse to fall back to a stale
+    -- value because that would silently mask configuration drift between the
+    -- indexer and the runtime.
+    InitEraHistoryNotInitialized
   deriving (Generic)
 
 deriving instance Eq InitError
@@ -1587,6 +1592,11 @@ data ApplyInputsError
   | ApplyInputsNodeTipInfoMissing
   | TipAtGenesis
   | ValidityLowerBoundTooHigh SlotNo SlotNo
+  | -- | The indexer has not (yet) initialized era history in the database, so
+    -- we cannot build a transaction safely. We refuse to fall back to a stale
+    -- value because that would silently mask configuration drift between the
+    -- indexer and the runtime.
+    ApplyInputsEraHistoryNotInitialized
   deriving (Generic)
 
 deriving instance Eq ApplyInputsError

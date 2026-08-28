@@ -155,6 +155,7 @@ library
     Language.Marlowe.Runtime.Query.Database.PostgreSQL
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetContractState
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetCreateStep
+    Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetEraHistory
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetHeaders
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetIndexerTip
     Language.Marlowe.Runtime.Query.Database.PostgreSQL.GetIntersection

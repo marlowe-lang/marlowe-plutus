@@ -2,6 +2,7 @@
 
 module Marlowe.Indexer.Store where
 
+import qualified Cardano.Api as C
 import Control.Concurrent.Component (Component, mkComponent, mkComponent_)
 import Control.Concurrent.STM (STM, modifyTVar, newTVar, readTVar, writeTVar)
 import Control.Monad (forever, unless, guard)
@@ -86,10 +87,31 @@ data Changes = Changes
   , statistics :: ChangesStatistics
   , indexerTip :: IndexerTip
   , nodeTip :: NodeTip
+  , eraHistory :: Maybe C.EraHistory
   , invalidCreateTxs :: Map ContractId ExtractCreationError
   , invalidApplyInputsTxs :: Map TxId ExtractMarloweTransactionError
   }
-  deriving (Show, Eq, Generic)
+  deriving (Generic)
+
+-- | 'EraHistory' has no 'Eq' instance, so we compare by their CBOR encoding.
+-- In practice, one side is usually 'Nothing' (the aggregator's 'mempty'), so
+-- the expensive comparison is rarely hit.
+instance Eq Changes where
+  a == b =
+    rollbackTo a == rollbackTo b
+      && blocks a == blocks b
+      && statistics a == statistics b
+      && indexerTip a == indexerTip b
+      && nodeTip a == nodeTip b
+      && compareEraHistory (eraHistory a) (eraHistory b)
+      && invalidCreateTxs a == invalidCreateTxs b
+      && invalidApplyInputsTxs a == invalidApplyInputsTxs b
+    where
+      compareEraHistory :: Maybe C.EraHistory -> Maybe C.EraHistory -> Bool
+      compareEraHistory Nothing Nothing = True
+      compareEraHistory (Just _) Nothing = False
+      compareEraHistory Nothing (Just _) = False
+      compareEraHistory (Just a') (Just b') = C.serialiseToCBOR a' == C.serialiseToCBOR b'
 
 instance Semigroup Changes where
   a <> b =
@@ -100,12 +122,13 @@ instance Semigroup Changes where
           , statistics = on (<>) statistics a' b
           , indexerTip = getLast $ on (<>) (Last . indexerTip) a b
           , nodeTip = getLast $ on (<>) (Last . nodeTip) a b
+          , eraHistory = getLast $ on (<>) (Last . eraHistory) a b
           , invalidCreateTxs = on (<>) invalidCreateTxs a b
           , invalidApplyInputsTxs = on (<>) invalidApplyInputsTxs a b
           }
 
 instance Monoid Changes where
-  mempty = Changes Nothing mempty mempty genesisIndexerTip genesisNodeTip mempty mempty
+  mempty = Changes Nothing mempty mempty genesisIndexerTip genesisNodeTip Nothing mempty mempty
 
 applyRollback :: ChainPoint -> Changes -> Changes
 applyRollback Genesis _ = mempty{rollbackTo = Just Genesis}
@@ -156,7 +179,7 @@ mkAggregator pullEvent = mkComponent "indexer-store-aggregator" do
 
         let -- Compute the changes for the pulled event.
             changes = case event of
-              RollForward blocks indexerTip nodeTip ->
+              RollForward blocks indexerTip nodeTip eraHistory ->
                 mempty
                   { blocks = snd <$> blocks
                   , statistics = foldMap (computeStats . snd) blocks
@@ -164,6 +187,7 @@ mkAggregator pullEvent = mkComponent "indexer-store-aggregator" do
                   -- the right thing to do.
                   , indexerTip
                   , nodeTip
+                  , eraHistory = Just eraHistory
                   , invalidCreateTxs = flip foldMap blocks \(_, block) -> flip foldMap (transactions block) \case
                       InvalidCreateTransaction contractId err -> Map.singleton contractId err
                       _ -> mempty
@@ -172,11 +196,12 @@ mkAggregator pullEvent = mkComponent "indexer-store-aggregator" do
                       _ -> mempty
                   }
 
-              RollBackward point tip -> do
+              RollBackward point tip eraHistory -> do
                 mempty
                   { rollbackTo = Just point
                   , indexerTip = IndexerTip $ chainTipFromChainPoint point
                   , nodeTip = tip
+                  , eraHistory = Just eraHistory
                   }
 
         -- Append the new changes to the existing changes.
@@ -213,6 +238,7 @@ mkPersister PersisterDependencies{..} = mkComponent_ "indexer-store-persister" $
 
   commitNodeTip databaseQueries nodeTip
   commitIndexerTip databaseQueries indexerTip
+  for_ eraHistory $ commitEraHistory databaseQueries
 
   -- If there are blocks to save, save them.
   unless (null blocks) $ commitBlocks databaseQueries blocks

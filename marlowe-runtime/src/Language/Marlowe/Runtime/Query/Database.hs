@@ -1,5 +1,6 @@
 module Language.Marlowe.Runtime.Query.Database where
 
+import qualified Cardano.Api as C
 import Data.Aeson (ToJSON)
 import Data.Set (Set)
 import GHC.Generics (Generic)
@@ -160,6 +161,13 @@ logDatabaseQueries DatabaseQueries{..} =
         result <- getRoleCurrencies cFilter
         logTrace ev result
         pure result
+    , getEraHistory = do
+        result <- getEraHistory
+        logTrace "GetEraHistory" $ A.object
+          [ "found" A..= either (const False) (const True) result
+          , "error" A..= either Just (const Nothing) result
+          ]
+        pure result
     }
 
 hoistDatabaseQueries :: (forall x. m x -> n x) -> DatabaseQueries m -> DatabaseQueries n
@@ -181,6 +189,7 @@ hoistDatabaseQueries f DatabaseQueries{..} =
     , getPayouts = fmap f . getPayouts
     , getPayout = f . getPayout
     , getRoleCurrencies = f . getRoleCurrencies
+    , getEraHistory = f getEraHistory
     }
 
 data GetIndexerTipError
@@ -209,6 +218,19 @@ instance A.ToJSON GetNodeTipError where
       , "tipBytes" A..= EncodeBase16 tipBytes
       ]
 
+data GetEraHistoryError
+  = MissingEraHistory
+  | InvalidEraHistory ByteString
+  deriving (Show)
+
+instance A.ToJSON GetEraHistoryError where
+  toJSON = \case
+    MissingEraHistory -> A.object [ "type" A..= ("MissingEraHistory" :: String) ]
+    InvalidEraHistory bytes -> A.object
+      [ "type" A..= ("InvalidEraHistory" :: String)
+      , "bytes" A..= EncodeBase16 bytes
+      ]
+
 
 data DatabaseQueries m = DatabaseQueries
   { getTipForContract :: ContractId -> m ChainPoint
@@ -227,6 +249,7 @@ data DatabaseQueries m = DatabaseQueries
   , getPayouts :: PayoutFilter -> Range TxOutRef -> m (Maybe (Page TxOutRef PayoutHeader))
   , getPayout :: TxOutRef -> m (Maybe SomePayoutState)
   , getRoleCurrencies :: RoleCurrencyFilter -> m (Set RoleCurrency)
+  , getEraHistory :: m (Either GetEraHistoryError C.EraHistory)
   }
 
 data Next a

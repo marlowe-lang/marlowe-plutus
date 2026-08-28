@@ -7,6 +7,7 @@ import Hasql.Transaction (Transaction)
 import Hasql.Transaction.Sessions qualified as TS
 import Language.Marlowe.Runtime.Indexer.Database qualified as DB
 import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitBlocks qualified as CommitBlocks
+import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitEraHistory qualified as CommitEraHistory
 import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitIndexerTip qualified as CommitIndexerTip
 import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitNodeTip qualified as CommitNodeTip
 import Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback qualified as CommitRollback
@@ -19,6 +20,7 @@ databaseQueries pool =
   DB.DatabaseQueries
     { commitRollback = \point -> runTransaction pool $ CommitRollback.commitRollback point
     , commitBlocks = \blocks -> runTransaction pool $ CommitBlocks.commitBlocks blocks
+    , commitEraHistory = \eraHistory -> runTransaction pool $ CommitEraHistory.commitEraHistory eraHistory
     , commitIndexerTip = \tip -> runTransaction pool $ CommitIndexerTip.commitIndexerTip tip
     , commitNodeTip = \tip -> runTransaction pool $ CommitNodeTip.commitNodeTip tip
     , getIntersectionPoints = \securityParameter -> runTransaction pool $ GetIntersectionPoints.getIntersectionPoints securityParameter
