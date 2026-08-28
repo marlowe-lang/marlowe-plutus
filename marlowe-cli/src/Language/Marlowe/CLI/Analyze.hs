@@ -132,7 +132,7 @@ import Plutus.V1.Ledger.SlotConfig qualified as P (SlotConfig, posixTimeToEnclos
 import PlutusLedgerApi.V2 (deserialiseScript)
 import PlutusLedgerApi.V2 qualified as PV2 hiding (evaluateScriptCounting)
 import PlutusTx (toBuiltinData)
-import Marlowe.Plutus.AssocMap qualified as AM
+import PlutusTx.AssocMap qualified as AM
 import PlutusTx.Prelude qualified as P
 
 -- | Analyze a Marlowe contract for protocol-limit or other violations.

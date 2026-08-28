@@ -28,25 +28,20 @@ module Marlowe.Plutus.Scripts (
   -- * Validation
   mkRolePayoutValidator,
   mkMarloweValidator,
+  mkThreadTokenName,
   MarloweInput,
   MarloweTxInput (..),
+  MintingRedeemer (..),
 ) where
 
 import Marlowe.Plutus.Contrib.PlutusTx.Debugging.Trace (
   traceError,
   traceIfFalse,
   )
-
--- import Marlowe.Plutus.Contrib.PlutusTx.Debugging.Trace (
---     showDebug, traceVerbose
---   )
--- import PlutusTx.Builtins (appendString)
--- Example:
--- traceVerbose (appendString "COMPUTED:" (showDebug computedTxOutContract)) "o" $ checkOwnOutputConstraint marloweData finalBalance
 import Marlowe.Plutus.Scripts.Types (MarloweInput, MarloweTxInput (..))
 import Marlowe.Plutus.Semantics as Semantics (
   MarloweData (..),
-  MarloweParams (MarloweParams, rolesCurrency),
+    MarloweParams (MarloweParams, rolesCurrency),
   Payment (..),
   TransactionError (
     TEAmbiguousTimeIntervalError,
@@ -77,10 +72,11 @@ import Marlowe.Plutus.Semantics.Types as Semantics (
   Payee (Account, Party),
   State (..),
   Token (Token),
-  getInputContent,
+  getInputContent, Accounts,
  )
 import PlutusLedgerApi.V3 (
   Credential (..),
+  CurrencySymbol(..),
   Datum (Datum),
   DatumHash (DatumHash),
   Extended (..),
@@ -90,12 +86,12 @@ import PlutusLedgerApi.V3 (
   POSIXTimeRange,
   ScriptContext (ScriptContext, scriptContextScriptInfo, scriptContextRedeemer, scriptContextTxInfo),
   ScriptHash (..),
-  ScriptInfo (SpendingScript),
+  ScriptInfo (SpendingScript, MintingScript),
   TxInInfo (TxInInfo, txInInfoOutRef, txInInfoResolved),
-  TxInfo (TxInfo, txInfoInputs, txInfoOutputs, txInfoValidRange),
+  TxInfo (TxInfo, txInfoInputs, txInfoOutputs, txInfoValidRange, txInfoMint),
   UnsafeFromData (..),
   UpperBound (..),
-  ToData (toBuiltinData)
+  ToData (toBuiltinData), BuiltinData, mintValueToMap, TxOutRef (TxOutRef), TxId (TxId), MintValue
  )
 import PlutusLedgerApi.V3.Contexts (findDatum, findDatumHash, txSignedBy, valueSpent)
 import PlutusLedgerApi.V2.Tx (OutputDatum (OutputDatumHash), TxOut (TxOut, txOutAddress, txOutDatum, txOutValue))
@@ -103,39 +99,41 @@ import PlutusLedgerApi.V2.Tx (OutputDatum (OutputDatumHash), TxOut (TxOut, txOut
 import PlutusLedgerApi.V1.Address as Address (scriptHashAddress)
 import PlutusTx.Prelude as PlutusTxPrelude (
   AdditiveGroup ((-)),
-  AdditiveMonoid (zero),
   AdditiveSemigroup ((+)),
   Bool (..),
-  Enum (fromEnum),
   Eq (..),
   Functor (fmap),
+  Integer,
   Maybe (..),
-  Ord ((>)),
+  Ordering(EQ, LT),
+  Ord ((>), compare),
   otherwise,
-  snd,
   ($),
   (&&),
+  (+),
   (.),
   (>=),
   (/=),
-  (||),
+  (||), (<>), not, BuiltinByteString, integerToByteString, sha2_256, isJust, trace,
  )
 
 import qualified PlutusTx.List as List
 
 import qualified PlutusLedgerApi.V1.Value as Val
 import qualified PlutusLedgerApi.V2 as Ledger (Address (Address))
-import qualified Marlowe.Plutus.AssocMap as AssocMap
+import qualified PlutusTx.AssocMap as AssocMap
 import Prelude qualified as H
 import PlutusLedgerApi.V2 (Redeemer(Redeemer))
+import PlutusTx.Builtins (equalsData, ByteOrder (BigEndian), mkB)
+import qualified PlutusLedgerApi.V3 as P
 
 {-# INLINEABLE closeInterval #-}
 -- | Convert a Plutus POSIX time range into the closed interval needed by Marlowe semantics.
 closeInterval :: POSIXTimeRange -> Maybe (POSIXTime, POSIXTime)
 closeInterval (Interval (LowerBound (Finite (POSIXTime l)) lc) (UpperBound (Finite (POSIXTime h)) hc)) =
   Just
-    ( POSIXTime $ l + 1 - fromEnum lc -- Add one millisecond if the interval was open.
-    , POSIXTime $ h - 1 + fromEnum hc -- Subtract one millisecond if the interval was open.
+    ( POSIXTime $ if lc then l else l + 1 -- Add one millisecond if the interval was open.
+    , POSIXTime $ if hc then h else h - 1-- Subtract one millisecond if the interval was open.
     )
 closeInterval _ = Nothing
 
@@ -156,6 +154,103 @@ mkRolePayoutValidator ScriptContext{scriptContextTxInfo, scriptContextScriptInfo
     -- [Marlowe-Cardano Specification: "17. Payment authorized".]
     Val.singleton currency role 1 `Val.leq` valueSpent scriptContextTxInfo
 
+type Seed = TxOutRef
+
+data MintingRedeemer = Minting Seed | Burning
+
+emptyBuiltinByteString :: BuiltinData
+emptyBuiltinByteString = mkB ("" :: BuiltinByteString)
+
+instance ToData MintingRedeemer where
+  toBuiltinData (Minting seed) = toBuiltinData seed
+  toBuiltinData Burning = emptyBuiltinByteString
+
+instance UnsafeFromData MintingRedeemer where
+  unsafeFromBuiltinData d = if equalsData d emptyBuiltinByteString
+    then Burning
+    else Minting (unsafeFromBuiltinData d)
+
+-- In order to avoid validating other outputs values
+-- for the thread token absence we count the number of
+-- own outputs and use that to validate the minting value.
+-- Please note that we reject own inputs which
+-- is compatible with [Marlowe Cardano Specification: Constraint 4. No output to script on close].
+type MarloweOutputsNumber = Integer
+
+type MarloweOutputIndex = Integer
+
+type SeedConsumed = Bool
+
+type TxOutIdx = Integer
+
+{-# INLINEABLE txOutIdxToByteString #-}
+-- We use constant length output index encoding
+-- to avoid any overlaps between parts of the
+-- thread token preimage parts.
+-- We restrict the output indices which can be
+-- used as parts of the seed to be lower than 256.
+-- It is rather rare to have such a large transactions
+-- so it should not be a practical problem.
+txOutIdxToByteString :: TxOutIdx -> BuiltinByteString
+txOutIdxToByteString idx = do
+  if idx >= 256
+    then traceError "2"
+    else integerToByteString BigEndian (2 :: Integer) idx
+
+{-# INLINEABLE mkThreadTokenName #-}
+mkThreadTokenName :: Seed -> MarloweOutputIndex -> Val.TokenName
+mkThreadTokenName (TxOutRef { txOutRefId = TxId txId, txOutRefIdx }) = do
+  let
+    threadTokenPreimage = txId <> txOutIdxToByteString txOutRefIdx
+  \marloweOutputIndex -> do
+    let
+      preimage = threadTokenPreimage <> txOutIdxToByteString marloweOutputIndex
+    Val.TokenName . sha2_256 $ preimage
+
+-- We optimize below for the small binary size by extracting helper functions.
+-- That was our primary bottleneck which could block us from publishing the script.
+
+{-# INLINEABLE countAll #-}
+countAll :: (a -> Bool) -> [a] -> Maybe Integer
+countAll pred = do
+  let
+    go acc [] = Just acc
+    go acc (x:xs) | pred x = go (acc + 1) xs
+    go _acc _xs = Nothing
+  go 0
+
+type MintTokenAmount = Integer
+
+mintTokenAmount :: MintTokenAmount
+mintTokenAmount = 1
+
+burnTokenAmount :: MintTokenAmount
+burnTokenAmount = -1
+
+{-# INLINEABLE countMintedTokens #-}
+countMintedTokens :: CurrencySymbol -> MintTokenAmount -> MintValue -> Maybe Integer
+countMintedTokens ownCurrency expectedAmount = do
+  let
+    pred (_tokenName, amount) = amount == expectedAmount
+  \mintValue -> do
+    let
+      mintMap = mintValueToMap mintValue
+    case AssocMap.lookup ownCurrency mintMap of
+      Just (AssocMap.toList -> mintedTokens) -> countAll pred mintedTokens
+      Nothing -> Just 0
+
+{-# INLINEABLE isOwnOutput #-}
+isOwnOutput :: BuiltinByteString -> TxOut -> Bool
+isOwnOutput ownHash TxOut{txOutAddress = Ledger.Address (ScriptCredential (ScriptHash vh)) _} | vh == ownHash = True
+isOwnOutput _ownHash _txOut = False
+
+{-# INLINEABLE isOwnInput #-}
+isOwnInput :: BuiltinByteString -> TxInInfo -> Bool
+isOwnInput ownHash = do
+  let
+    isOwnOutput' = isOwnOutput ownHash
+  \TxInInfo{txInInfoResolved} -> isOwnOutput' txInInfoResolved
+
 {-# INLINEABLE mkMarloweValidator #-}
 -- | The Marlowe semantics validator.
 mkMarloweValidator
@@ -164,11 +259,168 @@ mkMarloweValidator
   -> ScriptContext
   -- ^ The script context.
   -> Bool
-  -- ^ Whether the transaction validated.
+  -- ^ Whether the transaction validated or minting was allowed.
+mkMarloweValidator
+  (ScriptHash rolePayoutValidatorHash)
+  ScriptContext{scriptContextTxInfo, scriptContextRedeemer=Redeemer redeemer, scriptContextScriptInfo=MintingScript ownCurrency@(CurrencySymbol ownHash)} = case unsafeFromBuiltinData redeemer of
+-- I. Minting:
+--  1. Inputs:
+--    1.1. There should be no input at the own hash address to avoid accounting for extra tokens and analysis of token interaction.
+--    1.2. The seed input should be consumed.
+--  2. Minting: The minting value should be equal to the number of outputs at the own hash address.
+--  3. Outputs: Validate outputs at the own hash only.
+--    3.1 All the datums are initialized with correct hash.
+--    3.2 The accounts value should be covered by the output value and contain Marlowe thread token.
+--    3.3 The accounts contain only positive values.
+--    3.4 The accounts should be sorted and unique.
+--    3.5 The roles currency in the Marlowe parameters should be equal to the role payout validator hash or empty.
+    Minting seed -> do
+      let
+        TxInfo {txInfoOutputs, txInfoMint, txInfoInputs } = scriptContextTxInfo
+
+        -- 1. Inputs validation
+        inputsValid = do
+          let
+            isNotOwnInput = not . isOwnInput ownHash
+
+            checkInputs :: SeedConsumed -> [TxInInfo] -> Bool
+            checkInputs seedConsumed [] = traceIfFalse "1.2" seedConsumed
+            checkInputs seedConsumed (txInInfo:remainingInputs) = do
+              let
+                TxInInfo{txInInfoOutRef} = txInInfo
+                notOwnInput = traceIfFalse "1.1" (isNotOwnInput txInInfo)
+                seedConsumed' = seedConsumed || txInInfoOutRef == seed
+              notOwnInput
+                && checkInputs seedConsumed' remainingInputs
+          checkInputs False txInfoInputs
+
+        -- 2. Minting validation:
+        -- * We check that no more tokens are minted beside the thread tokens.
+        -- * This validation implies outputs were already validated.
+        ownMintsNumber = countMintedTokens ownCurrency mintTokenAmount txInfoMint
+
+        -- 3. Outputs validation: we check that every output contains *at least* thread token
+        -- Create singleton value with a unique thread token name
+        mkThreadTokenValue :: MarloweOutputIndex -> Val.Value
+        mkThreadTokenValue = do
+          let
+            mkThreadTokenName' = mkThreadTokenName seed
+          \marloweOutputIndex -> do
+            let
+              threadTokenName = mkThreadTokenName' marloweOutputIndex
+            Val.singleton ownCurrency threadTokenName 1
+
+        isValueValid :: MarloweOutputIndex -> Val.Value -> Accounts -> Bool
+        isValueValid marloweOutputIndex outValue outAccounts = do
+          let
+            threadTokenValue = mkThreadTokenValue marloweOutputIndex
+            -- We check that the output contains **at least** one thread token.
+            -- In theory it could contain more own currency tokens but the minting
+            -- level check will only allow a one token per output in total.
+            expectedValue = totalBalance outAccounts <> threadTokenValue
+          traceIfFalse "3.2" (expectedValue == outValue)
+
+        -- The actual validation of the outputs at the own hash address.
+        checkAndCountMarloweOutputs :: MarloweOutputsNumber -> [TxOut] -> Maybe MarloweOutputsNumber
+        checkAndCountMarloweOutputs marloweOutputsNumberSoFar [] = Just marloweOutputsNumberSoFar
+        checkAndCountMarloweOutputs marloweOutputsNumberSoFar (TxOut{txOutAddress, txOutValue, txOutDatum }:remainingTxOuts) = do
+          let
+            isDatumValid :: BuiltinData -> MarloweParams -> POSIXTime -> Accounts -> Contract -> Bool
+            isDatumValid outDatum outMarloweParams@(MarloweParams (CurrencySymbol outRoleCurrencyHash)) outMinTime outAccounts outContract = do
+              let
+                isAccountKeySmaller firstAccountKey secondAccountKey = do
+                  let
+                    cmpAccountKey (partyA, tokenA) (partyB, tokenB) = case compare partyA partyB of
+                      EQ -> compare tokenA tokenB
+                      ordering -> ordering
+                  cmpAccountKey firstAccountKey secondAccountKey == LT
+
+                areAccountsValid [] = True
+                areAccountsValid ((firstAccountKey, firstAmount): remaining) = do
+                  let
+                    go _prevAccountKey [] = True
+                    go prevAccountKey ((accountKey, amount):remaining) = do
+                      let
+                        isSorted = isAccountKeySmaller prevAccountKey accountKey
+                        isPositive = amount > 0
+                      traceIfFalse "3.3" isPositive
+                        && traceIfFalse "3.4" isSorted
+                        && go accountKey remaining
+
+                  traceIfFalse "3.3" (firstAmount > 0)
+                    && go firstAccountKey remaining
+
+                accountsValid = areAccountsValid (AssocMap.toList outAccounts)
+
+                expectedState = State
+                  { accounts = outAccounts
+                  , choices = AssocMap.empty
+                  , boundValues = AssocMap.empty
+                  , minTime = outMinTime
+                  }
+                expectedDatum = toBuiltinData $ MarloweData
+                  { marloweParams = outMarloweParams
+                  , marloweState = expectedState
+                  , marloweContract = outContract
+                  }
+                datumContentValid = traceIfFalse "3.1" (equalsData expectedDatum outDatum)
+                outRoleCurrencyValid = traceIfFalse "3.5" (outRoleCurrencyHash == "" || outRoleCurrencyHash == rolePayoutValidatorHash)
+              datumContentValid
+                && accountsValid
+                && outRoleCurrencyValid
+
+          case txOutAddress of
+            (P.Address (ScriptCredential (ScriptHash vh)) _) | vh == ownHash -> do
+              case txOutDatum of
+                OutputDatumHash svh -> case findDatum svh scriptContextTxInfo of
+                  Just (Datum serialisedDatum) -> do
+                    let
+                      MarloweData { marloweParams, marloweState = State { accounts, minTime }, marloweContract } = unsafeFromBuiltinData serialisedDatum
+                    if isDatumValid serialisedDatum marloweParams minTime accounts marloweContract
+                      && isValueValid marloweOutputsNumberSoFar txOutValue accounts
+                      then checkAndCountMarloweOutputs (marloweOutputsNumberSoFar + 1) remainingTxOuts
+                      else Nothing
+                  _ -> trace "3.0" Nothing
+                _ -> trace "3.0" Nothing
+            _ -> checkAndCountMarloweOutputs marloweOutputsNumberSoFar remainingTxOuts
+
+      inputsValid
+          && case (checkAndCountMarloweOutputs 0 txInfoOutputs, ownMintsNumber) of
+            (Just ownOutputsNumber, Just ownMintsNumber') -> traceIfFalse "2" (ownMintsNumber' == ownOutputsNumber)
+            _ -> False
+-- II. Burning:
+--  1. Inputs: We allow any outputs and we just count the number of inputs at the own hash address.
+--  2. Minting:
+--    2.1 All the tokens in the own minting info should be burned (quantity = -1).
+--    2.2 Absolute tokens amount which are burned should be equal to the number of all own inputs.
+--  3. Outputs: There should be no outputs at the own hash address.
+    Burning -> do
+      let
+        TxInfo {txInfoMint, txInfoInputs, txInfoOutputs} = scriptContextTxInfo
+        ownInputsNumber :: Integer
+        ownInputsNumber = do
+          let
+            isOwnInput' = isOwnInput ownHash
+
+            step txInInfo acc | isOwnInput' txInInfo = acc + 1
+            step _ acc = acc
+          List.foldr step 0 txInfoInputs
+
+        noOutputsAtOwnAddress = do
+          traceIfFalse "3" (not $ List.any (isOwnOutput ownHash) txInfoOutputs)
+
+        ownBurnsNumber = countMintedTokens ownCurrency burnTokenAmount txInfoMint
+
+      noOutputsAtOwnAddress && case ownBurnsNumber of
+        Just ownBurnsNumber' -> traceIfFalse "2.2" (ownBurnsNumber' == ownInputsNumber)
+        Nothing -> False
+
+-- III. Spending: Spending spec is defined separately.
 mkMarloweValidator
   rolePayoutValidatorHash
-  ctx@ScriptContext{scriptContextTxInfo, scriptContextRedeemer=Redeemer (unsafeFromBuiltinData -> marloweTxInputs), scriptContextScriptInfo} = do
-    let scriptInValue = txOutValue $ txInInfoResolved ownInput
+  ScriptContext{scriptContextTxInfo, scriptContextRedeemer=Redeemer redeemer, scriptContextScriptInfo=SpendingScript txOutRef datum} = do
+    let marloweTxInputs = unsafeFromBuiltinData redeemer
+    let TxInfo { txInfoMint } = scriptContextTxInfo
     let interval =
           -- Marlowe semantics require a closed interval, so we might adjust by one millisecond.
           case closeInterval $ txInfoValidRange scriptContextTxInfo of
@@ -206,8 +458,9 @@ mkMarloweValidator
     -- [Marlowe-Cardano Specification: "Constraint 8. Input contract".]
     -- The semantics computation operates on the state and contract from
     -- the incoming datum.
-    let computedResult = computeTransaction txInput marloweState marloweContract
-    case computedResult of
+    let ownOutputs = List.filter (\TxOut{txOutAddress} -> ownAddress == txOutAddress) allOutputs
+
+    case computeTransaction txInput marloweState marloweContract of
       TransactionOutput
         { txOutPayments = computedTxOutPayments
         , txOutState = computedTxOutState
@@ -218,7 +471,7 @@ mkMarloweValidator
         -- [Marlowe-Cardano Specification: "Constraint 11. Output contract."]
         -- The output datum maintains the parameters and uses the state
         -- and contract resulting from the semantics computation.
-        let marloweData =
+        let computedMarloweDatum =
               MarloweData
                 { marloweParams = marloweParams
                 , marloweContract = computedTxOutContract
@@ -230,31 +483,73 @@ mkMarloweValidator
             payoutsByParty = AssocMap.toList $ foldMapList payoutByParty computedTxOutPayments
             payoutsOk = payoutConstraints payoutsByParty
 
-            checkContinuation =
+            continuationOk =
               case computedTxOutContract of
                 -- [Marlowe-Cardano Specification: "Constraint 4. No output to script on close".]
                 Close -> do
                   let
                     -- Check for any output to the script address.
                     hasNoOutputToOwnScript :: Bool
-                    hasNoOutputToOwnScript = List.all ((/= ownAddress) . txOutAddress) allOutputs
+                    hasNoOutputToOwnScript = case ownOutputs of
+                      [] -> True
+                      _ -> False
+
+                    -- Delegate thread token management to the minting policy
+                    ownMintingExecuted :: Bool
+                    ownMintingExecuted = isJust . AssocMap.lookup (CurrencySymbol ownHash) . mintValueToMap $ txInfoMint
+
                   traceIfFalse "c" hasNoOutputToOwnScript
+                    && traceIfFalse "e" ownMintingExecuted
                 _ -> do
-                  let totalIncome = foldMapList collectDeposits inputContents
-                      totalPayouts = foldMapList snd payoutsByParty
-                      finalBalance = scriptInValue + totalIncome - totalPayouts
                   -- [Marlowe-Cardano Specification: "Constraint 3. Single Marlowe output".]
                   -- [Marlowe-Cardano Specification: "Constraint 6. Output value to script."]
                   -- Check that the single Marlowe output has the correct datum and value.
-                  checkOwnOutputConstraint marloweData finalBalance
-                    -- [Marlowe-Cardano Specification: "Constraint 18. Final balance."]
-                    -- [Marlowe-Cardano Specification: "Constraint 13. Positive balances".]
-                    -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
-                    -- Check that the final state obeys the Semantic's invariants.
-                    && checkState finalBalance computedTxOutState
+                  -- NOTE: We consider all the other checks which verify the correctness of the interpreter
+                  -- result to be redundant. If that would be the case then it is a critical issue
+                  -- and we do not have any real mitigation to it.
+                  -- [Marlowe-Cardano Specification: "Constraint 18. Final balance."]
+                  -- [Marlowe-Cardano Specification: "Constraint 13. Positive balances".]
+                  -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
+                  let
+                    -- We hash the datum through searching for the exact expected value which should be cheaper
+                    -- than serializing and hashing the datum.
+                    expectedDatumHash = findDatumHash' computedMarloweDatum
+
+                    TxOut{txOutValue = continuingValue, txOutDatum = continuingDatum } = case ownOutputs of
+                      [out] -> out
+                      _ -> traceError "o" -- No continuation or multiple Marlowe contract outputs is forbidden.
+
+                    continuingDatumHash = case continuingDatum of
+                      OutputDatumHash h -> h
+                      _ -> traceError "o" -- The output datum must be a hash.
+
+                    -- TODO: Measure if we should rather filter out own currency token from the continuing value.
+                    -- We could do the above without actually checking the token name under the assumption of a single
+                    -- own input.
+                    -- TODO: Test BulitinValue.
+                    --
+                    -- Construct thread token singleton value by fetching the token name info from the own input.
+                    threadTokenValue = do
+                      let
+                        ownCurrencySymbol = CurrencySymbol ownHash
+                        go [] = traceError "2"
+                        go ((currCurrencySymbol, tokensMap):_) | currCurrencySymbol == ownCurrencySymbol = case AssocMap.toList tokensMap of
+                          [(tokenName, amount)] | amount == 1 -> Val.singleton ownCurrencySymbol tokenName 1
+                          _ -> traceError "2"
+                        go (_:remainingValues) = go remainingValues
+                      go $ AssocMap.toList (Val.getValue scriptInValue)
+
+
+                    -- The final value of the output should be equal to the sum of the Marlowe accounts plus the thread token.
+                    expectedValue = totalBalance computedMarloweDatum.marloweState.accounts + threadTokenValue
+
+                  traceIfFalse "d" $
+                    Just continuingDatumHash == expectedDatumHash
+                      && continuingValue == expectedValue
+
         inputsOk
           && payoutsOk
-          && checkContinuation
+          && continuationOk
           -- [Marlowe-Cardano Specification: "20. Single satisfaction".]
           -- Either there must be no payouts, or there must be no other validators.
           && traceIfFalse "z" (List.null payoutsByParty || noOthers)
@@ -265,94 +560,41 @@ mkMarloweValidator
       Error TEUselessTransaction -> traceError "u"
       Error TEHashMismatch -> traceError "m"
     where
-      MarloweData {..} = case scriptContextScriptInfo of
-        SpendingScript _ (H.Just (Datum d)) -> unsafeFromBuiltinData d
+      TxInfo{txInfoInputs, txInfoOutputs} = scriptContextTxInfo
+
+      MarloweData {..} = case datum of
+        H.Just (Datum d) -> unsafeFromBuiltinData d
         _ -> traceError "f"
 
       -- The roles currency is in the Marlowe parameters.
       MarloweParams{rolesCurrency} = marloweParams
 
-      -- Find the input being spent by a script.
-      findOwnInput :: ScriptContext -> Maybe TxInInfo
-      findOwnInput ScriptContext{scriptContextTxInfo = TxInfo{txInfoInputs}, scriptContextScriptInfo = SpendingScript txOutRef _datum} =
-        List.find (\TxInInfo{txInInfoOutRef} -> txInInfoOutRef == txOutRef) txInfoInputs
-      findOwnInput _ = Nothing
+      TxInInfo{txInInfoResolved = TxOut{txOutAddress = ownAddress, txOutValue = scriptInValue}} = case List.find (\TxInInfo{txInInfoOutRef} -> txInInfoOutRef == txOutRef) txInfoInputs of
+        Just self -> self
+        _ -> traceError "x" -- Input to be validated was not found.
+
+      ownHash = case ownAddress of
+        (P.Address (ScriptCredential (ScriptHash ownHash)) _) -> ownHash
+        _ -> traceError "x"
 
       -- [Marlowe-Cardano Specification: "2. Single Marlowe script input".]
       -- The inputs being spent by this script, and whether other validators are present.
-      ownInput :: TxInInfo
       noOthers :: Bool
-      (ownInput@TxInInfo{txInInfoResolved = TxOut{txOutAddress = ownAddress}}, noOthers) =
-        case findOwnInput ctx of
-          Just ownTxInInfo -> examineScripts (sameValidatorHash ownTxInInfo) Nothing True (txInfoInputs scriptContextTxInfo)
-          _ -> traceError "x" -- Input to be validated was not found.
-
-      -- Check for the presence of multiple Marlowe validators or other Plutus validators.
-      examineScripts
-        :: (ScriptHash -> Bool) -- Test for this validator.
-        -> Maybe TxInInfo -- The input for this validator, if found so far.
-        -> Bool -- Whether no other validator has been found so far.
-        -> [TxInInfo] -- The inputs remaining to be examined.
-        -> (TxInInfo, Bool) -- The input for this validator and whether no other validators are present.
-        -- This validator has not been found.
-      examineScripts _ Nothing _ [] = traceError "x"
-      -- This validator has been found, and other validators may have been found.
-      examineScripts _ (Just self) noOthers [] = (self, noOthers)
-      -- Found both this validator and another script, so we short-cut.
-      examineScripts _ (Just self) False _ = (self, False)
-      -- Found one script.
-      examineScripts f mSelf noOthers (tx@TxInInfo{txInInfoResolved = TxOut{txOutAddress = Ledger.Address (ScriptCredential vh) _}} : txs)
-        -- The script is this validator.
-        | f vh = case mSelf of
-            -- We hadn't found it before, so we save it in `mSelf`.
-            Nothing -> examineScripts f (Just tx) noOthers txs
-            -- We already had found this validator before
-            Just _ -> traceError "w"
-        -- The script is something else, so we set `noOther` to `False`.
-        | otherwise = examineScripts f mSelf False txs
-      -- An input without a validator is encountered.
-      examineScripts f self others (_ : txs) = examineScripts f self others txs
-
-      -- Check if inputs are being spent from the same script.
-      sameValidatorHash :: TxInInfo -> ScriptHash -> Bool
-      sameValidatorHash TxInInfo{txInInfoResolved = TxOut{txOutAddress = Ledger.Address (ScriptCredential vh1) _}} vh2 = vh1 == vh2
-      sameValidatorHash _ _ = False
-
-      -- Check a state for the correct value, positive accounts, and no duplicates.
-      checkState :: Val.Value -> State -> Bool
-      checkState expected State{..} =
-         -- [Marlowe-Cardano Specification: "Constraint 5. Input value from script".]
-         -- and/or
-         -- [Marlowe-Cardano Specification: "Constraint 18. Final balance."]
-         traceIfFalse "v" (totalBalance accounts == expected)
-         -- These checks were redundant:
-         -- [Marlowe-Cardano Specification: "Constraint 13. Positive balances".]
-         -- [Marlowe-Cardano Specification: "Constraint 19. No duplicates".]
+      noOthers = do
+        let
+          isOtherScriptInput TxInInfo{txInInfoResolved = TxOut{txOutAddress = Ledger.Address (ScriptCredential (ScriptHash vh)) _}} = vh /= ownHash
+          isOtherScriptInput _ = False
+          othersFound = List.any isOtherScriptInput txInfoInputs
+        not othersFound
 
       -- Look up the Datum hash for specific data.
       findDatumHash' :: (ToData o) => o -> Maybe DatumHash
       findDatumHash' datum = findDatumHash (Datum $ toBuiltinData datum) scriptContextTxInfo
 
       -- Check that the correct datum and value is being output to the script.
-      checkOwnOutputConstraint :: MarloweData -> Val.Value -> Bool
-      checkOwnOutputConstraint ocDatum ocValue = do
-        let 
-          hsh = findDatumHash' ocDatum
-          continuingOutput = case List.filter (\TxOut{txOutAddress} -> ownAddress == txOutAddress) allOutputs of
-            [out] -> out
-            _ -> traceError "o" -- No continuation or multiple Marlowe contract outputs is forbidden.
-        traceIfFalse "d" $ checkScriptOutput (==) ownAddress hsh ocValue continuingOutput -- "Output constraint"
-
-
-      -- Check that address, value, and datum match the specified.
-      checkScriptOutput :: (Val.Value -> Val.Value -> Bool) -> Ledger.Address -> Maybe DatumHash -> Val.Value -> TxOut -> Bool
-      checkScriptOutput comparison addr hsh value TxOut{txOutAddress, txOutValue, txOutDatum = OutputDatumHash svh} =
-        txOutValue `comparison` value && hsh == Just svh && txOutAddress == addr
-      checkScriptOutput _ _ _ _ _ = False
-
       -- All of the script outputs.
       allOutputs :: [TxOut]
-      allOutputs = txInfoOutputs scriptContextTxInfo
+      allOutputs = txInfoOutputs
 
       -- Check merkleization and transform transaction input to semantics input.
       marloweTxInputToInput :: MarloweTxInput -> Input
@@ -368,6 +610,8 @@ mkMarloweValidator
       allInputsAreAuthorized :: [InputContent] -> Bool
       allInputsAreAuthorized = List.all validateInputWitness
         where
+          totalSpent = valueSpent scriptContextTxInfo
+
           validateInputWitness :: InputContent -> Bool
           validateInputWitness input =
             case input of
@@ -378,16 +622,10 @@ mkMarloweValidator
               validatePartyWitness :: Party -> Bool
               validatePartyWitness (Address _ address) = traceIfFalse "s" $ txSignedByAddress address -- The key must have signed.
               validatePartyWitness (Role role) =
+                -- FIXME: Optimize this expensive folding and check away by collecting own spent tokens names
                 traceIfFalse "t"
                   $ Val.singleton rolesCurrency role 1 -- The role token must be present.
-                  `Val.leq` valueSpent scriptContextTxInfo
-
-      -- Tally the deposits in the input.
-      collectDeposits :: InputContent -> Val.Value
-      collectDeposits (IDeposit _ _ (Token cur tok) amount)
-        | amount > 0 = Val.singleton cur tok amount -- SCP-5123: Semantically negative deposits
-        | otherwise = zero -- do not remove funds from the script's UTxO.
-      collectDeposits _ = zero
+                  `Val.leq` totalSpent
 
       -- Extract the payout to a party.
       payoutByParty :: Payment -> AssocMap.Map Party Val.Value
@@ -410,11 +648,18 @@ mkMarloweValidator
             -- the return of the role token being in separate UTxOs in situations where a contract is also paying to the address
             -- where that change and that role token are sent.
             Address _ address -> traceIfFalse "p" $ valuePaidToAddress address `geqSingleton` value -- At least sufficient value paid.
-            Role role ->
+            Role role -> do
               let hsh = findDatumHash' (rolesCurrency, role)
                   addr = Address.scriptHashAddress rolePayoutValidatorHash
-               in -- Some output must have the correct value and datum to the role-payout address.
-                  traceIfFalse "r" $ List.any (checkScriptOutput geqSingleton addr hsh value) allOutputs
+
+              -- Some output must have the correct value and datum to the role-payout address.
+              traceIfFalse "r" $ List.any (checkScriptOutput geqSingleton addr hsh value) allOutputs
+
+      -- Check that address, value, and datum match the specified.
+      checkScriptOutput :: (Val.Value -> Val.Value -> Bool) -> Ledger.Address -> Maybe DatumHash -> Val.Value -> TxOut -> Bool
+      checkScriptOutput comparison addr hsh value TxOut{txOutAddress, txOutValue, txOutDatum = OutputDatumHash svh} =
+        txOutValue `comparison` value && hsh == Just svh && txOutAddress == addr
+      checkScriptOutput _ _ _ _ _ = False
 
       -- Check that a multiasset value is not less than another value, optimized for singletons.
       -- Note that the semantics of this function differ from `geq` in cases where the first
@@ -433,4 +678,6 @@ mkMarloweValidator
       -- Tally the value paid to an address.
       valuePaidToAddress :: Ledger.Address -> Val.Value
       valuePaidToAddress address = foldMapList txOutValue $ List.filter ((== address) . txOutAddress) allOutputs
-
+mkMarloweValidator
+  _rolePayoutValidatorHash
+  _ = traceError "g" -- The script context must be a spending or minting script.

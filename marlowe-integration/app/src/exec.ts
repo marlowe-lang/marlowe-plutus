@@ -1,9 +1,12 @@
 import { err, ok, type Result } from "neverthrow";
 import { execSync } from "node:child_process";
+import { Json } from '@konduit/codec/json';
+import type { JsonDeserialiser, JsonError } from "@konduit/codec/json/codecs";
+import type { Tagged } from "type-fest";
 
-export type Path = string;
+export type Path = Tagged<string, "Path">;
 
-export type CliArg = [string, string | number | boolean | undefined] | string;
+export type CliArg = [string, string | number | boolean | undefined | bigint] | string;
 export type CliArgs = CliArg[];
 
 export type CommandError = {
@@ -43,14 +46,28 @@ export function runCommand(command: string, debug: boolean = false): Result<stri
 
 // FIXME: We should replace internal casting with a proper codec.
 // Till then we use this unsafe approach.
-export function runCommandJson<T>(command: string): Result<T, CommandError | string> {
-  return runCommand(command).andThen(jsonStr => {
-    try {
-      return ok(JSON.parse(jsonStr) as T);
-    } catch (e) {
-      return err(`Failed to parse JSON from command: ${command}, Error: ${e}, JSON: ${jsonStr}`);
+export function runCommandJson(command: string, debug = false): Result<Json, CommandError | string> {
+  return runCommand(command, debug).andThen(jsonStr => {
+    if(debug) {
+      console.debug(`Parsing cmd output: ${jsonStr}`);
     }
+    return Json.fromString(jsonStr)
   });
+}
+
+export function runCommandJsonTyped<T>(
+  command: string,
+  deserialiser: JsonDeserialiser<T>,
+  debug: boolean = false
+): Result<T, CommandError | JsonError> {
+  return runCommand(command, debug)
+    .andThen((str) => {
+      if(debug) {
+        console.debug(`Parsing cmd output: ${str}`);
+      }
+      return Json.fromString(str);
+    })
+    .andThen(deserialiser);
 }
 
 export function buildCliCommand(
@@ -70,6 +87,8 @@ export function buildCliCommand(
       if (value) parts.push(key);
     } else if (typeof value === 'number') {
       parts.push(key, String(value));
+    } else if (typeof value === 'bigint') {
+      parts.push(key, value.toString());
     } else {
       parts.push(key, value);
     }
@@ -86,10 +105,20 @@ export function execCli(
   return runCommand(cmd, debug);
 }
 
-export function execCliJson<T>(
+export function execCliJson(
   program: string,
   args: CliArgs
-): Result<T, CommandError | string> {
+): Result<Json, CommandError | string> {
   const cmd = buildCliCommand(program, args);
-  return runCommandJson<T>(cmd);
+  return runCommandJson(cmd);
+}
+
+export function execCliJsonTyped<T>(
+  program: string,
+  args: CliArgs,
+  deserialiser: JsonDeserialiser<T>,
+  debug: boolean = false,
+): Result<T, CommandError | JsonError> {
+  const cmd = buildCliCommand(program, args);
+  return runCommandJsonTyped(cmd, deserialiser, debug);
 }

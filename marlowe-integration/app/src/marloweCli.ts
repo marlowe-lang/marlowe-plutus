@@ -1,6 +1,6 @@
 import type { Result } from 'neverthrow';
-import { type TestnetMagic, TxOutRefHex, TxOutRefRecord } from './cardano.js';
 import { execCli, type CliArgs, type CommandError, type Path } from './exec.js';
+import { TxOutRefHex, type NetworkMagicNumber, type TxOutRef } from '@konduit/konduit-consumer/cardano';
 
 function getMarloweCli(repoRoot: string): string {
   if (process.env.MARLOWE_CLI) {
@@ -27,7 +27,7 @@ export function runInitialize(
   stateFile: Path,
   outFile: Path,
   options: {
-    testnetMagic: TestnetMagic;
+    testnetMagic: NetworkMagicNumber;
     socketPath: string;
   },
   debug: boolean = false
@@ -43,26 +43,26 @@ export function runInitialize(
   ], debug);
 }
 
-const flattenTxOutRef = (txOutRef: TxOutRefHex | TxOutRefRecord): TxOutRefHex => {
+const flattenTxOutRef = (txOutRef: TxOutRefHex | TxOutRef): TxOutRefHex => {
   if (typeof txOutRef === 'string') {
     return txOutRef;
   } else {
-    return TxOutRefHex.fromTxOutRefRecord(txOutRef);
+    return TxOutRefHex.fromTxOutRef(txOutRef);
   }
 }
 
 export function runExecute(
   repoRoot: string,
   marloweOutFile: Path,
-  txIn: TxOutRefHex | TxOutRefRecord,
+  txIn: TxOutRefHex | TxOutRef,
   requiredSigner: Path,
   changeAddress: string,
   outFile: Path,
   options: {
     testnetMagic: number;
     socketPath: string;
-    txInMarlowe?: TxOutRefHex | TxOutRefRecord;
-    txInCollateral?: TxOutRefHex | TxOutRefRecord;
+    txInMarlowe?: TxOutRefHex | TxOutRef;
+    txInCollateral?: TxOutRefHex | TxOutRef;
     marloweInFile?: Path;
     submit?: number;
   },

@@ -37,7 +37,7 @@ import Data.Functor (($>), (<&>))
 import Data.Maybe (catMaybes)
 import Marlowe.Plutus.Semantics.Types
 import PlutusLedgerApi.V2 (POSIXTime (..))
-import qualified Marlowe.Plutus.AssocMap as AM
+import qualified PlutusTx.AssocMap as AM
 import Test.QuickCheck (Gen, Arbitrary (arbitrary), sized, frequency, oneof, elements, chooseInteger, chooseInt, resize, vectorOf, suchThat)
 import Marlowe.Plutus.Testing.Contrib.Integer.Arbitrary (arbitraryPositiveInteger)
 import Marlowe.Plutus.Testing.Semantics.Arbitrary ()

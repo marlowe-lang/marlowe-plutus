@@ -141,8 +141,7 @@ import qualified Marlowe.Plutus.Semantics.Types as M
   ( Party (Address)
   )
 import qualified PlutusLedgerApi.V1.Value as V (singleton)
-import qualified PlutusTx.AssocMap as PlutusTxAM
-import qualified Marlowe.Plutus.AssocMap as AM
+import qualified PlutusTx.AssocMap as AM
 import qualified PlutusTx.Prelude as P
 import qualified Marlowe.Plutus.Testing.Transactions as Transactions
 import Marlowe.Plutus.Testing.Contrib.PlutusTx.Arbitrary (arbitraryAnyCurrencySymbol, arbitraryNonAdaCurrencySymbol)
@@ -292,19 +291,19 @@ bareSpending p =
                     -- ^ txInfoMint
                     mempty
                     -- ^ txInfoTxCerts
-                    PlutusTxAM.empty
+                    AM.empty
                     -- ^ txInfoWdrl
                     (Interval (LowerBound NegInf False) (UpperBound PosInf True))
                     -- ^ txInfoValidRange
                     mempty
                     -- ^ txInfoSignatories
-                    PlutusTxAM.empty
+                    AM.empty
                     -- ^ txInfoRedeemers
-                    PlutusTxAM.empty
+                    AM.empty
                     -- ^ txInfoData
                     <$> (TxId <$> arbitrary)
                     -- ^ txInfoId
-                    <@> PlutusTxAM.empty
+                    <@> AM.empty
                     -- ^ txInfoVotes
                     <@> mempty
                     -- ^ txInfoProposalProcedures
@@ -482,10 +481,10 @@ consolidatePayments ps =
 mappendPlutusTxAssocMapFirst
   :: forall k v
    . P.Eq k
-  => PlutusTxAM.Map k v
-  -> PlutusTxAM.Map k v
-  -> PlutusTxAM.Map k v
-mappendPlutusTxAssocMapFirst = PlutusTxAM.unionWith const
+  => AM.Map k v
+  -> AM.Map k v
+  -> AM.Map k v
+mappendPlutusTxAssocMapFirst = AM.unionWith const
 
 -- | Generate a valid Marlowe semantics transaction.
 genValidSemanticsTransaction
@@ -506,12 +505,12 @@ genValidSemanticsTransaction semanticsAddress rolePayoutAddress (AddNoise addNoi
     let
       semanticsRedeemer = makeSemanticsRedeemer marloweInput
     redeemer .= semanticsRedeemer
-    infoData %= mappendPlutusTxAssocMapFirst (PlutusTxAM.unsafeFromList merkleizations)
+    infoData %= mappendPlutusTxAssocMapFirst (AM.unsafeFromList merkleizations)
 
     -- Add the spending from the script.
     (inScript, inData) <- makeScriptInput semanticsAddress datum (SetAsSpending True)
     infoInputs <>= [inScript]
-    infoData %= mappendPlutusTxAssocMapFirst (PlutusTxAM.unsafeFromList [inData])
+    infoData %= mappendPlutusTxAssocMapFirst (AM.unsafeFromList [inData])
 
     -- Add the role inputs.
     roleInputs <- fmap concat . mapM makeRoleIn . txInputs =<< use input
@@ -530,12 +529,12 @@ genValidSemanticsTransaction semanticsAddress rolePayoutAddress (AddNoise addNoi
         TxInInfo txOutRef _ = inScript
         spendingRedeemer = (Spending txOutRef, semanticsRedeemer)
         redeemersList = PlusTxAM.toList redeemers
-      PlutusTxAM.unsafeFromList $ spendingRedeemer : redeemersList
+      AM.unsafeFromList $ spendingRedeemer : redeemersList
 
     -- Add the script output.
     (outScript, outData) <- makeScriptOutput semanticsAddress
     infoOutputs <>= outScript
-    infoData %= mappendPlutusTxAssocMapFirst (PlutusTxAM.unsafeFromList outData)
+    infoData %= mappendPlutusTxAssocMapFirst (AM.unsafeFromList outData)
 
     -- Add the role outputs.
     infoOutputs <><~ mapM makeRoleOut roleInputs
@@ -545,7 +544,7 @@ genValidSemanticsTransaction semanticsAddress rolePayoutAddress (AddNoise addNoi
     (payments, paymentData) <-
       fmap (bimap mconcat mconcat . unzip) . mapM (makePayment rolePayoutAddress currencySymbol) =<< (Transactions.output `uses` txOutPayments)
     infoOutputs <>= consolidatePayments payments
-    infoData %= mappendPlutusTxAssocMapFirst (PlutusTxAM.unsafeFromList paymentData)
+    infoData %= mappendPlutusTxAssocMapFirst (AM.unsafeFromList paymentData)
 
     -- Add the signatories.
     actionSignatories <- concatMap makeActionSignatory <$> input `uses` txInputs
@@ -676,7 +675,7 @@ genValidPayoutTransaction rolePayoutAddress (AddNoise noisy) =
     -- Add the script input.
     (inScript, inData) <- makePayoutIn rolePayoutAddress (SetAsSpending True)
     infoInputs <>= [inScript]
-    infoData %= mappendPlutusTxAssocMapFirst (PlutusTxAM.unsafeFromList [inData])
+    infoData %= mappendPlutusTxAssocMapFirst (AM.unsafeFromList [inData])
 
     -- The redeemer is unit.
     redeemer .= Redeemer (toBuiltinData ())
@@ -734,10 +733,10 @@ doAddNoise =
 
 newtype MaxLength = MaxLength Int
 
-arbitraryDatumHashMap :: MaxLength -> Gen (PlutusTxAM.Map DatumHash Datum)
+arbitraryDatumHashMap :: MaxLength -> Gen (AM.Map DatumHash Datum)
 arbitraryDatumHashMap (MaxLength maxLength) = do
   pairs <- arbitrary `suchThat` ((< maxLength) . length)
-  pure $ PlutusTxAM.unsafeFromList pairs
+  pure $ AM.unsafeFromList pairs
 
 
 -- | Add noise to the inputs, outputs, and data in a Plutus transaction.
@@ -758,7 +757,7 @@ shuffleTransaction =
     go infoInputs
     go infoOutputs
     go infoSignatories
-    infoData <~ (lift . fmap PlutusTxAM.unsafeFromList . shuffle . PlutusTxAM.toList =<< use infoData)
+    infoData <~ (lift . fmap AM.unsafeFromList . shuffle . AM.toList =<< use infoData)
 
 merkleize :: ArbitraryTransactionM SemanticsTransaction ()
 merkleize = do
@@ -911,7 +910,7 @@ checkDoubleInput scripts@MarloweScripts{semanticsAddress} (CheckPlutusLog checkP
           -- Add a second script input.
           infoInputs <>= [inScript]
           -- Add the new datum and its hash.
-          infoData %= mappendPlutusTxAssocMapFirst (PlutusTxAM.unsafeFromList [(inDatumHash, inDatum)])
+          infoData %= mappendPlutusTxAssocMapFirst (AM.unsafeFromList [(inDatumHash, inDatum)])
           shuffleTransaction
     plutusLog = if checkPlutusLog
           then Just ["w"]
@@ -1027,7 +1026,7 @@ checkDatumOutput scripts (CheckPlutusLog checkPlutusLog) referencePaths perturb 
                 | h == outDatumHash = (h, outDatum')
                 | otherwise = pair
           -- Update the data with the modification.
-          infoData %= PlutusTxAM.unsafeFromList . fmap perturbOwnOutputDatum . PlutusTxAM.toList
+          infoData %= AM.unsafeFromList . fmap perturbOwnOutputDatum . AM.toList
       plutusLog = if checkPlutusLog
             then Just ["d"]
             else Nothing
@@ -1105,7 +1104,7 @@ checkMerkleization scripts (CheckPlutusLog checkPlutusLog) referencePaths (MakeI
         when makeInvalid do
           -- Remove the merkleized continuation datums for the input.
           hashes <- input `uses` (concatMap merkleHash . txInputs)
-          infoData %= (PlutusTxAM.unsafeFromList . filter ((`notElem` hashes) . fst) . PlutusTxAM.toList)
+          infoData %= (AM.unsafeFromList . filter ((`notElem` hashes) . fst) . AM.toList)
       plutusLog = if checkPlutusLog
             then Just ["h"]
             else Nothing

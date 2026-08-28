@@ -48,7 +48,7 @@ import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath ((</>), takeBaseName)
 
 import Marlowe.Plutus.Analysis.FSSemantics (SlotLength (..))
-import qualified Marlowe.Plutus.AssocMap as AM (empty, singleton)
+import qualified PlutusTx.AssocMap as AM (empty, singleton)
 import Paths_marlowe_plutus (getDataDir)
 import Test.QuickCheck (Gen, elements)
 import Marlowe.Plutus.Testing.Semantics.Golden (GoldenTransaction)

@@ -117,39 +117,38 @@ import PlutusTx.Prelude
 
 -- FIXME: Clone of AssocMap from PlutusTx which fixes
 -- missing INLINE pragmas
-import Marlowe.Plutus.AssocMap (Map)
-import qualified Marlowe.Plutus.AssocMap as Map
 
-import qualified Control.Applicative as H -- ((<*>), (<|>))
+import Control.Applicative qualified as H -- ((<*>), (<|>))
 import Control.DeepSeq (NFData)
 import Control.Newtype.Generics (Newtype)
-import qualified Data.Aeson as A
-import qualified Data.Aeson as JSON
-import qualified Data.Aeson.KeyMap as KeyMap
+import Data.Aeson qualified as A
+import Data.Aeson qualified as JSON
+import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Aeson.Types hiding (Error, Value)
-import qualified Data.Aeson.Types as JSON
+import Data.Aeson.Types qualified as JSON
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Base16 as Base16
+import Data.ByteString.Base16 qualified as Base16
 import Data.ByteString.Base16.Aeson (EncodeBase16 (EncodeBase16))
-import qualified Data.ByteString.Base16.Aeson as Base16.Aeson
-import qualified Data.Char as Char
-import qualified Data.Foldable as F
+import Data.ByteString.Base16.Aeson qualified as Base16.Aeson
+import Data.Char qualified as Char
+import Data.Foldable qualified as F
 import Data.Scientific (floatingOrInteger, scientific, Scientific)
 import Data.String (String, IsString)
 import Data.Text (Text)
-import qualified Data.Text as Text
+import Data.Text qualified as Text
 import Data.Text.Encoding as Text (decodeUtf8, decodeUtf8', encodeUtf8)
-import qualified Marlowe.Plutus.Semantics.Types.Address as Address
-import qualified PlutusLedgerApi.V1.Value as Val
+import GHC.Generics qualified as H (Generic)
+import Marlowe.Plutus.Semantics.Types.Address qualified as Address
+import PlutusLedgerApi.V1.Value qualified as Val
 import PlutusLedgerApi.V2 (CurrencySymbol (CurrencySymbol, unCurrencySymbol), POSIXTime (..), TokenName (unTokenName))
-import qualified PlutusLedgerApi.V2 as Ledger (Address (..))
-
+import PlutusLedgerApi.V2 qualified as Ledger (Address (..))
+import PlutusTx (makeIsDataIndexed)
+import PlutusTx.AssocMap (Map)
+import PlutusTx.AssocMap qualified as Map
 import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringHex)
 import PlutusTx.Lift (makeLift)
-import qualified PlutusTx.List as List
-import PlutusTx (makeIsDataIndexed)
-import qualified GHC.Generics as H (Generic)
-import qualified Prelude as H
+import PlutusTx.List qualified as List
+import Prelude qualified as H
 
 #ifdef ASDATA_CASE
 import Data.Data (Data)
@@ -164,6 +163,7 @@ data Party
   | -- | Party identified by a role token name.
     Role TokenName
   deriving stock (H.Generic, H.Eq, H.Ord)
+
 
 -- Users can opt-in and use this newtype wrapper to
 -- automagically parse Party from String literals:
@@ -311,12 +311,12 @@ pattern LenientTokeNameHex hexStr <- UnsafeTokenNameHex hexStr
   where
     LenientTokeNameHex = Val.TokenName . stringToBuiltinByteStringHex
 
-mkCurrencySymbolHex :: String -> Maybe Val.CurrencySymbol
+mkCurrencySymbolHex :: String -> Maybe CurrencySymbol
 mkCurrencySymbolHex str
-  | List.all Char.isHexDigit str = Just . Val.CurrencySymbol . stringToBuiltinByteStringHex $ str
+  | List.all Char.isHexDigit str = Just . CurrencySymbol . stringToBuiltinByteStringHex $ str
   | otherwise = Nothing
 
-unsafeMkCurrencySymbolHex :: String -> Val.CurrencySymbol
+unsafeMkCurrencySymbolHex :: String -> CurrencySymbol
 unsafeMkCurrencySymbolHex str =
   case mkCurrencySymbolHex str of
     Just cs -> cs
@@ -324,16 +324,16 @@ unsafeMkCurrencySymbolHex str =
 
 -- Actually the constructor here is unsafe.
 {-# COMPLETE UnsafeCurrencySymbolHex #-}
-pattern UnsafeCurrencySymbolHex :: String -> Val.CurrencySymbol
+pattern UnsafeCurrencySymbolHex :: String -> CurrencySymbol
 pattern UnsafeCurrencySymbolHex hexStr <- CurrencySymbol (fromBuiltinByteStringToHex -> hexStr)
   where
     UnsafeCurrencySymbolHex = unsafeMkCurrencySymbolHex
 
 {-# COMPLETE LenientCurrencySymbolHex #-}
-pattern LenientCurrencySymbolHex :: String -> Val.CurrencySymbol
-pattern LenientCurrencySymbolHex hexStr <- Val.CurrencySymbol (fromBuiltinByteStringToHex -> hexStr)
+pattern LenientCurrencySymbolHex :: String -> CurrencySymbol
+pattern LenientCurrencySymbolHex hexStr <- CurrencySymbol (fromBuiltinByteStringToHex -> hexStr)
   where
-    LenientCurrencySymbolHex = Val.CurrencySymbol . stringToBuiltinByteStringHex
+    LenientCurrencySymbolHex = CurrencySymbol . stringToBuiltinByteStringHex
 
 -- | Token - represents a currency or token, it groups
 --   a pair of a currency symbol and token name.
@@ -1211,13 +1211,28 @@ instance Eq Party where
   Role r1 == Role r2 = r1 == r2
   Role _ == _ = False
 
+instance Ord Party where
+  {-# INLINEABLE compare #-}
+  compare (Address n1 a1) (Address n2 a2) = case compare n1 n2 of
+    ordering | ordering == EQ -> Address.cmpAddress a1 a2
+    ordering -> ordering
+  compare Address{} _ = LT
+  compare _ Address{} = GT
+  compare (Role r1) (Role r2) = compare r1 r2
+
 instance Eq ChoiceId where
   {-# INLINEABLE (==) #-}
   ChoiceId n1 p1 == ChoiceId n2 p2 = n1 == n2 && p1 == p2
 
 instance Eq Token where
   {-# INLINEABLE (==) #-}
-  Token n1 p1 == Token n2 p2 = n1 == n2 && p1 == p2
+  Token c1 n1 == Token c2 n2 = c1 == c2 && n1 == n2
+
+instance Ord Token where
+  {-# INLINEABLE compare #-}
+  compare (Token c1 n1) (Token c2 n2) = case compare c1 c2 of
+    ordering | ordering == EQ -> compare n1 n2
+    ordering -> ordering
 
 instance Eq ValueId where
   {-# INLINEABLE (==) #-}

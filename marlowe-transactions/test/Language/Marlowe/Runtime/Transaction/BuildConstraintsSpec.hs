@@ -47,7 +47,7 @@ import qualified PlutusLedgerApi.V2 as PV2
 import qualified Marlowe.Plutus.Semantics.Types as V1
 import Marlowe.Plutus.Semantics (MarloweData (..), MarloweParams (..))
 import Marlowe.Plutus.Semantics.Types (unsafeMkPartyAddressBech32, ada)
-import qualified Marlowe.Plutus.AssocMap as AM
+import qualified PlutusTx.AssocMap as AM
 import Marlowe.Plutus.Binaries.Devel (marloweValidatorBytes, marloweValidatorHash, rolePayoutValidatorBytes, rolePayoutValidatorHash)
 import Language.Marlowe.Runtime.ChainSync.Api hiding (Datum, ada)
 import qualified Language.Marlowe.Runtime.ChainSync.Api as Chain
@@ -89,6 +89,7 @@ import Cardano.Ledger.Shelley.API (
   Coin (..),
  )
 import Cardano.Ledger.Plutus.Language (Language (..))
+import Language.Marlowe.Runtime.Transaction.Constraints (ThreadTokenConstraints(PassThreadToken))
 
 type TestEra = C.ConwayEra
 
@@ -845,7 +846,7 @@ runCreateTest
   :: WalletContext
   -> RoleTokensConfig
   -> V1.Contract
-  -> Either InitError ((Core.Datum 'Core.V1, Chain.TxOutAssets, RolesPolicyId), TxConstraints TestEra 'Core.V1)
+  -> Either InitError ((Core.Datum 'Core.V1, Chain.TxOutAssets, Maybe RolesPolicyId), TxConstraints TestEra 'Core.V1)
 runCreateTest walletCtx roles contract =
   let adjustMinUTxO = AdjustMinUTxO id
   in runIdentity $ buildInitConstraints
@@ -853,7 +854,6 @@ runCreateTest walletCtx roles contract =
         babbageEraOnwardsTest
         Core.MarloweV1
         walletCtx
-        (Chain.TokenName "thread")
         roles
         (Core.MarloweTransactionMetadata Nothing mempty)
         (Chain.Lovelace 2_000_000)
@@ -1032,6 +1032,7 @@ e2eSpec = do
         , marloweOutputConstraints = mempty
         , signatureConstraints = mempty
         , metadataConstraints = Core.emptyMarloweTransactionMetadata
+        , threadTokenConstraints = PassThreadToken
         }
       walletCtx = mkWalletContext testnetId verificationKey
       txBodyResult = solveConstraints
@@ -1116,6 +1117,7 @@ mkMarloweContext :: ValidatorsVersion -> NetworkId -> Maybe (V1.Contract, Maybe 
 mkMarloweContext _version network possibleContractInfo = do
   let
     marloweAddress = fromCardanoAddressInEra C.ConwayEra $ mkMarloweValidatorAddress network
+
     -- Existing on-chain contract output if the contract is ongoing
     scriptOutput = do
       (contract, possibleState) <- possibleContractInfo
@@ -1139,7 +1141,12 @@ mkMarloweContext _version network possibleContractInfo = do
         { Core.utxo = marloweTxOutRef
         , Core.address = marloweAddress
         , Core.datum = marloweData
-        , Core.assets = Chain.TxOutAssets $ Chain.Assets (Chain.Lovelace 2_000_000) (Chain.Tokens Map.empty)
+        , Core.assets = do
+            let
+              marlowePolicyId = Chain.PolicyId .  PV2.fromBuiltin . PV2.getScriptHash $ marloweValidatorHash
+              threadTokenAssetId = Chain.AssetId marlowePolicyId (Chain.TokenName . BS.pack . replicate 32 $ 0)
+            let tokens = Chain.Tokens . Map.singleton threadTokenAssetId $ Chain.Quantity 1
+            Chain.TxOutAssets . Chain.Assets (Chain.Lovelace 2_000_000) $ tokens
         }
     -- Published on chain script outputs with binaries
     marloweScriptTxOutRef = Chain.TxOutRef (Chain.TxId $ LBS.toStrict $ LBS.replicate 32 3) (Chain.TxIx 0)

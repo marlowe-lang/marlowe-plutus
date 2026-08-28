@@ -188,11 +188,8 @@ import qualified Prelude as H
 import PlutusTx.Foldable (foldr)
 import PlutusTx.Semigroup ((<>))
 import PlutusTx.Monoid (Monoid (mempty))
-
--- FIXME: Clone of AssocMap from PlutusTx which fixes
--- missing INLINE pragmas
-import Marlowe.Plutus.AssocMap (Map)
-import qualified Marlowe.Plutus.AssocMap as Map
+import PlutusTx.AssocMap (Map)
+import qualified PlutusTx.AssocMap as Map
 
 {-# INLINEABLE foldMapAssocMap #-}
 foldMapAssocMap :: (Monoid m) => ((k, v) -> m) -> Map k v -> m

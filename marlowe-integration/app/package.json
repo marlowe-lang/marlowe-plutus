@@ -4,6 +4,7 @@
     "marlowe-integration": "dist/index.js"
   },
   "dependencies": {
+    "@emurgo/cardano-serialization-lib-nodejs": "^17.0.0",
     "@konduit/konduit-consumer": "workspace:^",
     "@marlowe-lang/language": "workspace:^",
     "@marlowe-lang/runtime": "workspace:^",

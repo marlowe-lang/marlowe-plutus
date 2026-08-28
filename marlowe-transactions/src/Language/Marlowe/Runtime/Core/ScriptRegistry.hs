@@ -51,6 +51,20 @@ data ScriptInPlutus
   | ScriptInPlutusV3 PLA.SerialisedScript
   deriving (Show, Eq, Ord)
 
+hashScriptInPlutus :: ScriptInPlutus -> Chain.ScriptHash
+hashScriptInPlutus (ScriptInPlutusV2 bytes) =
+  Chain.fromCardanoScriptHash
+  . C.hashScript
+  . C.PlutusScript C.PlutusScriptV2
+  . C.PlutusScriptSerialised
+  $ bytes
+hashScriptInPlutus (ScriptInPlutusV3 bytes) =
+  Chain.fromCardanoScriptHash
+  . C.hashScript
+  . C.PlutusScript C.PlutusScriptV3
+  . C.PlutusScriptSerialised
+  $ bytes
+
 toCardanoScriptInAnyLang :: ScriptInPlutus -> C.ScriptInAnyLang
 toCardanoScriptInAnyLang (ScriptInPlutusV2 bytes) =
     C.ScriptInAnyLang (C.PlutusScriptLanguage C.PlutusScriptV2)

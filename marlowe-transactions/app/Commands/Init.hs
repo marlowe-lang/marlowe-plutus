@@ -37,7 +37,7 @@ import Data.Functor ((<&>))
 import qualified Data.Map.Strict as Map
 import qualified PlutusLedgerApi.V3 as PV3
 import Language.Marlowe.Runtime.Plutus.V3.Api (toPlutusTxOutRef)
-import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext(WalletContext))
+import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext(WalletContext), MintingSeed(MintingSeed))
 import Control.Monad (when)
 import qualified Language.Marlowe.Runtime.Transaction.Constraints as Constraints
 import Marlowe.Plutus.RoleTokens (mkRoleTokens)
@@ -190,7 +190,7 @@ runInitCommand cmd = do
     _ -> pure ()
 
   let
-    mkRoleTokensPolicy txOutRef tokens = do
+    mkRoleTokensPolicy (MintingSeed txOutRef) tokens = do
       let
         mkPolicy = if cmd.develScripts then Devel.mkRoleTokensPolicyBytes else Production.mkRoleTokensPolicyBytes
         roleTokens = mkRoleTokens $ Map.toList tokens <&> \(TokenName bs, amount) -> do

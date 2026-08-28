@@ -8,7 +8,8 @@
 --
 
 -----------------------------------------------------------------------------
-
+--
+-- | FIXME: Is this still needed - the module was dropped already.
 -- | Independent implementation of association-map functions.
 module Marlowe.Plutus.Testing.Semantics.AssocMap (
   -- * Utility functions
@@ -25,7 +26,7 @@ module Marlowe.Plutus.Testing.Semantics.AssocMap (
 import Data.Function (on)
 import Data.List (groupBy, nub, sortBy)
 
-import qualified Marlowe.Plutus.AssocMap as AM (Map, toList, unsafeFromList)
+import qualified PlutusTx.AssocMap as AM (Map, toList, unsafeFromList)
 
 -- | Fail if the map contains duplicate keys.
 assocMapValid :: (Eq k) => AM.Map k v -> AM.Map k v

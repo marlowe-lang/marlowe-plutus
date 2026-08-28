@@ -54,7 +54,7 @@ import Numeric.Natural (Natural)
 import qualified PlutusLedgerApi.V1 as Plutus
 import qualified PlutusLedgerApi.V2 as PV2
 import Data.Base16.Types (extractBase16)
-import qualified Marlowe.Plutus.AssocMap as MAM
+import qualified PlutusTx.AssocMap as AM
 import qualified Cardano.Api as C
 import Data.Data (Proxy(..))
 import qualified Data.Aeson as A
@@ -675,13 +675,9 @@ instance Binary PV2.BuiltinData where
       Right hashableScriptData -> pure $
         PV2.dataToBuiltinData . C.toPlutusData . C.getScriptData $ hashableScriptData
 
-instance (Binary k, Binary v) => Binary (PV2.Map k v)
+instance (Binary k, Binary v) => Binary (AM.Map k v)
 
-instance (Binary k, Binary v) => Binary (MAM.Map k v)
-
-instance (Variations k, Variations v) => Variations (PV2.Map k v)
-
-instance (Variations k, Variations v) => Variations (MAM.Map k v)
+instance (Variations k, Variations v) => Variations (AM.Map k v)
 
 -- The following require manual instances to avoid infinite recursion.
 instance Variations V1.Contract where

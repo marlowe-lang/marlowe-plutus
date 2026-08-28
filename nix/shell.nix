@@ -129,6 +129,8 @@ let
       "/home/paluh/.config/opencode"
       "/home/paluh/.local/share/opencode"
       "/home/paluh/.cache/opencode"
+      "/home/paluh/projects/cl/"
+      "/home/paluh/programming/cardano/mgdoc"
     ];
     # (builtins.trace (lib.concatStringsSep ", " (lib.attrNames project.hsPkgs.cardano-crypto-class.components.library)) project)
     # (builtins.trace (lib.concatStringsSep ", " cryptoShell.nativeBuildInputs) cryptoShell)

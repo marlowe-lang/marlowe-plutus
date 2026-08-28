@@ -76,7 +76,7 @@ import Marlowe.Plutus.Semantics.Types.Address (
   serialiseAddress,
   serialiseAddressBech32,
  )
-import Marlowe.Plutus.AssocMap as AM
+import PlutusTx.AssocMap as AM
 import Marlowe.Plutus.Foldings (extractNonMerkleizedContractRoles)
 import qualified PlutusLedgerApi.V1 as PV1
 import qualified PlutusLedgerApi.V1.Credential as Credential

@@ -17,8 +17,8 @@ import Marlowe.Plutus.Semantics (
   reduceContractUntilQuiescent,
  )
 import Marlowe.Plutus.Semantics.Types
-import Marlowe.Plutus.AssocMap as AM
 import Marlowe.Plutus.Testing.Semantics.Path
+import PlutusTx.AssocMap as AM
 import Test.QuickCheck
 import Test.Tasty (TestName, TestTree, testGroup)
 import Test.Tasty.QuickCheck (testProperty)

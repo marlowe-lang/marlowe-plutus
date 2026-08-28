@@ -886,6 +886,9 @@ newtype ScriptHash = ScriptHash {unScriptHash :: ByteString}
 policyIdToScriptHash :: PolicyId -> ScriptHash
 policyIdToScriptHash (PolicyId h) = ScriptHash h
 
+scriptHashToPolicyId :: ScriptHash -> PolicyId
+scriptHashToPolicyId (ScriptHash h) = PolicyId h
+
 fromCardanoScriptHash :: Cardano.ScriptHash -> ScriptHash
 fromCardanoScriptHash = ScriptHash . Cardano.serialiseToRawBytes
 

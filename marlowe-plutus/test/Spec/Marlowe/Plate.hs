@@ -21,7 +21,7 @@ import Data.Map.Strict as M (fromList)
 import Data.Set as S (fromList)
 import qualified Marlowe.Plutus.Plate as P
 import qualified Marlowe.Plutus.Semantics.Types as V1
-import qualified Marlowe.Plutus.AssocMap as AM
+import qualified PlutusTx.AssocMap as AM
 import qualified PlutusLedgerApi.V2 as PV2
 import Test.Tasty.HUnit (assertEqual, testCase)
 

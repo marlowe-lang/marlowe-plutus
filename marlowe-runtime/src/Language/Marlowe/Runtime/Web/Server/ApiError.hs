@@ -91,33 +91,31 @@ constraintErrorToApiError err = ApiError (show err) errorCode details statusCode
           ["tokens" .= toJSON (toDTO tokens)]
 
     details = case err of
-      InvalidTokenQuantity assetId quantity ->
+      BalancingError msg ->
         tagged
-          "InvalidTokenQuantity"
-          ["assetId" .= toJSON (toDTO assetId), "quantity" .= quantity]
-      MintingUtxoNotFound txOutRef ->
+          "BalancingError"
+          ["msg" .= msg]
+      CalculateMinUtxoFailed msg ->
         tagged
-          "MintingUtxoNotFound"
-          ["txOutRef" .= toJSON (toDTO txOutRef)]
-      RoleTokenNotFound assetId ->
+          "CalculateMinUtxoFailed"
+          ["msg" .= msg]
+      CoinSelectionFailed coinSelectionFailed ->
         tagged
-          "RoleTokenNotFound"
-          ["assetId" .= toJSON (toDTO assetId)]
-      ToCardanoError -> tagged "ToCardanoError" []
-      MissingMarloweInput -> tagged "MissingMarloweInput" []
-      PayoutNotFound txOutRef ->
+          "CoinSelectionFailed"
+          ["coinSelectionFailed" .= coinSelectionErrorDetails coinSelectionFailed]
+      HelperScriptNotFound tokenName ->
         tagged
-          "PayoutNotFound"
-          ["txOutRef" .= toJSON (toDTO txOutRef)]
-      InvalidPayoutDatum txOutRef datum ->
-        tagged
-          "InvalidPayoutDatum"
-          [ "txOutRef" .= toJSON (toDTO txOutRef)
-          , "datum" .= toJSON datum
-          ]
+          "HelperScriptNotFound"
+          ["tokenName" .= toJSON (toDTO tokenName)]
       InvalidHelperDatum txOutRef datum ->
         tagged
           "InvalidHelperDatum"
+          [ "txOutRef" .= toJSON (toDTO txOutRef)
+          , "datum" .= toJSON datum
+          ]
+      InvalidPayoutDatum txOutRef datum ->
+        tagged
+          "InvalidPayoutDatum"
           [ "txOutRef" .= toJSON (toDTO txOutRef)
           , "datum" .= toJSON datum
           ]
@@ -127,70 +125,81 @@ constraintErrorToApiError err = ApiError (show err) errorCode details statusCode
           [ "txOutRef" .= toJSON (toDTO txOutRef)
           , "address" .= toJSON (toDTO address)
           ]
-      CalculateMinUtxoFailed msg ->
+      InvalidTokenQuantity assetId quantity ->
         tagged
-          "CalculateMinUtxoFailed"
-          ["msg" .= msg]
-      CoinSelectionFailed coinSelectionFailed ->
-        tagged
-          "CoinSelectionFailed"
-          ["coinSelectionFailed" .= coinSelectionErrorDetails coinSelectionFailed]
-      BalancingError msg ->
-        tagged
-          "BalancingError"
-          ["msg" .= msg]
+          "InvalidTokenQuantity"
+          ["assetId" .= toJSON (toDTO assetId), "quantity" .= quantity]
       MarloweInputInWithdraw -> tagged "MarloweInputInWithdraw" []
       MarloweOutputInWithdraw -> tagged "MarloweOutputInWithdraw" []
-      PayoutOutputInWithdraw -> tagged "PayoutOutputInWithdraw" []
+      MarloweScriptUTxOInWithdraw -> tagged "MarloweScriptUTxOInWithdraw" []
+      MintingUtxoNotFound txOutRef ->
+        tagged
+          "MintingUtxoNotFound"
+          ["txOutRef" .= toJSON (toDTO txOutRef)]
+      MissingMarloweInput -> tagged "MissingMarloweInput" []
       PayoutInputInInitOrApply -> tagged "PayoutInputInInitOrApply" []
+      PayoutNotFound txOutRef ->
+        tagged
+          "PayoutNotFound"
+          ["txOutRef" .= toJSON (toDTO txOutRef)]
+      PayoutOutputInWithdraw -> tagged "PayoutOutputInWithdraw" []
+      RoleTokenNotFound assetId ->
+        tagged
+          "RoleTokenNotFound"
+          ["assetId" .= toJSON (toDTO assetId)]
+      ThreadTokenNotFound -> tagged "ThreadTokenNotFound" []
+      ThreadTokenNotMinted -> tagged "ThreadTokenNotMinted" []
+      ToCardanoError -> tagged "ToCardanoError" []
       UnknownPayoutScript scriptHash ->
         tagged
           "UnknownPayoutScript"
           ["scriptHash" .= toJSON scriptHash]
-      HelperScriptNotFound tokenName ->
-        tagged
-          "HelperScriptNotFound"
-          ["tokenName" .= toJSON (toDTO tokenName)]
 
     statusCode = case err of
-      InvalidTokenQuantity _ _ -> 400
-      MintingUtxoNotFound _ -> 400
-      RoleTokenNotFound _ -> 400
-      PayoutNotFound _ -> 400
-      CoinSelectionFailed _ -> 400
-      ToCardanoError -> 500
-      MissingMarloweInput -> 500
-      InvalidPayoutDatum _ _ -> 500
-      InvalidHelperDatum _ _ -> 500
-      InvalidPayoutScriptAddress _ _ -> 500
-      CalculateMinUtxoFailed _ -> 500
       BalancingError _ -> 500
+      CalculateMinUtxoFailed _ -> 500
+      CoinSelectionFailed _ -> 400
+      HelperScriptNotFound _ -> 503
+      InvalidHelperDatum _ _ -> 500
+      InvalidPayoutDatum _ _ -> 500
+      InvalidPayoutScriptAddress _ _ -> 500
+      InvalidTokenQuantity _ _ -> 400
       MarloweInputInWithdraw -> 500
       MarloweOutputInWithdraw -> 500
-      PayoutOutputInWithdraw -> 500
+      MarloweScriptUTxOInWithdraw -> 500
+      MintingUtxoNotFound _ -> 400
+      MissingMarloweInput -> 500
       PayoutInputInInitOrApply -> 500
+      PayoutNotFound _ -> 400
+      PayoutOutputInWithdraw -> 500
+      RoleTokenNotFound _ -> 400
+      ThreadTokenNotFound -> 500
+      ThreadTokenNotMinted -> 500
+      ToCardanoError -> 500
       UnknownPayoutScript _ -> 500
-      HelperScriptNotFound _ -> 503
 
     errorCode = case err of
-      InvalidTokenQuantity _ _ -> "InvalidTokenQuantity"
-      MintingUtxoNotFound _ -> "MintingUtxoNotFound"
-      RoleTokenNotFound _ -> "RoleTokenNotFound"
-      ToCardanoError -> "ToCardanoError"
-      MissingMarloweInput -> "MissingMarloweInput"
-      PayoutNotFound _ -> "PayoutNotFound"
-      InvalidPayoutDatum _ _ -> "InvalidPayoutDatum"
-      InvalidHelperDatum _ _ -> "InvalidHelperDatum"
-      InvalidPayoutScriptAddress _ _ -> "InvalidPayoutScriptAddress"
+      BalancingError _ -> "BalancingError"
       CalculateMinUtxoFailed _ -> "CalculateMinUtxoFailed"
       CoinSelectionFailed _ -> "CoinSelectionFailed"
-      BalancingError _ -> "BalancingError"
+      HelperScriptNotFound _ -> "HelperScriptNotFound"
+      InvalidHelperDatum _ _ -> "InvalidHelperDatum"
+      InvalidPayoutDatum _ _ -> "InvalidPayoutDatum"
+      InvalidPayoutScriptAddress _ _ -> "InvalidPayoutScriptAddress"
+      InvalidTokenQuantity _ _ -> "InvalidTokenQuantity"
       MarloweInputInWithdraw -> "MarloweInputInWithdraw"
       MarloweOutputInWithdraw -> "MarloweOutputInWithdraw"
-      PayoutOutputInWithdraw -> "PayoutOutputInWithdraw"
+      MarloweScriptUTxOInWithdraw -> "MarloweScriptUTxOInWithdraw"
+      MintingUtxoNotFound _ -> "MintingUtxoNotFound"
+      MissingMarloweInput -> "MissingMarloweInput"
       PayoutInputInInitOrApply -> "PayoutInputInInitOrApply"
+      PayoutNotFound _ -> "PayoutNotFound"
+      PayoutOutputInWithdraw -> "PayoutOutputInWithdraw"
+      RoleTokenNotFound _ -> "RoleTokenNotFound"
+      ThreadTokenNotFound -> "ThreadTokenNotFound"
+      ThreadTokenNotMinted -> "ThreadTokenNotMinted"
+      ToCardanoError -> "ToCardanoError"
       UnknownPayoutScript _ -> "UnknownPayoutScript"
-      HelperScriptNotFound _ -> "HelperScriptNotFound"
 
 decodeConstraintError :: A.Value -> A.Parser ConstraintError
 decodeConstraintError = A.withObject "ConstraintError" $ \o -> do

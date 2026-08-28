@@ -7,9 +7,11 @@ module Language.Marlowe.Runtime.Transaction.Constraints (
   MarloweContext (..),
   MarloweInputConstraints (..),
   MarloweOutputConstraints (..),
+  MintingSeed (..),
   PayoutContext (..),
   RoleTokenConstraints (RoleTokenConstraintsNone, MintRoleTokens, DistributeRoleTokens, SpendRoleTokens),
   SolveConstraints,
+  ThreadTokenConstraints (..),
   TxConstraints (..),
   WalletContext (..),
   adjustTxForMinUtxo,
@@ -17,10 +19,12 @@ module Language.Marlowe.Runtime.Transaction.Constraints (
   ensureMinUtxo,
   findMinUtxo,
   mkTxOutValue,
+  mustBurnThreadToken,
   mustConsumeMarloweOutput,
   mustConsumePayout,
   mustDistributeRoleToken,
   mustMintRoleToken,
+  mustMintThreadToken,
   mustPayToAddress,
   mustPayToRole,
   mustSendMarloweOutput,
@@ -50,7 +54,7 @@ import Cardano.Ledger.Core (ppMaxTxSizeL, ppTxFeePerByteL, ppTxFeeFixedL)
 import Cardano.Ledger.Coin (CoinPerByte(unCoinPerByte), Coin(Coin))
 import Cardano.Ledger.Compactible (fromCompact)
 import Control.Applicative ((<|>))
-import Control.Error (hoistMaybe, note, noteT, runExceptT)
+import Control.Error (hoistMaybe, note, noteT, runExceptT, ExceptT(ExceptT))
 import Control.Monad (forM, unless, when, (<=<))
 import Control.Monad.Trans.Class (MonadTrans (..))
 import Data.Aeson (ToJSON (toJSON), (.=))
@@ -58,7 +62,6 @@ import qualified Data.Aeson as A
 import Data.Foldable (Foldable (fold))
 import Data.Function (on)
 import Data.Functor ((<&>))
-import Data.Either (partitionEithers)
 import Data.List (delete, find, minimumBy, nub)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -103,17 +106,19 @@ import qualified Language.Marlowe.Runtime.ChainSync.Api as Chain
 import Language.Marlowe.Runtime.Core.Api (
   MarloweTransactionMetadata (..),
   MarloweVersionTag (..),
-  TransactionScriptOutput (utxo),
+  TransactionScriptOutput (assets, utxo),
   emptyMarloweTransactionMetadata,
   encodeMarloweTransactionMetadata,
   fromChainPayoutDatum,
  )
 import qualified Language.Marlowe.Runtime.Core.Api as Core
-import Language.Marlowe.Runtime.Core.ScriptRegistry (HelperScript, ReferenceScriptUtxo (..), toCardanoScriptInAnyLang)
+import Language.Marlowe.Runtime.Core.ScriptRegistry (HelperScript(OpenRoleScript), ReferenceScriptUtxo (..), toCardanoScriptInAnyLang, hashScriptInPlutus)
 import qualified Language.Marlowe.Runtime.Core.ScriptRegistry as ScriptRegistry
 import Language.Marlowe.Runtime.Transaction.Api (CoinSelectionError (..), ConstraintError (..), Destination (..))
 import qualified Marlowe.Plutus.Scripts.Types as V1
+import qualified Marlowe.Plutus.Scripts as V1
 import Lens.Micro ((^.))
+import qualified PlutusLedgerApi.V3 as P
 
 -- | Describes a set of Marlowe-specific conditions that a transaction must satisfy.
 data TxConstraints era v = TxConstraints
@@ -125,6 +130,7 @@ data TxConstraints era v = TxConstraints
   , marloweOutputConstraints :: MarloweOutputConstraints v
   , signatureConstraints :: Set Chain.PaymentKeyHash
   , metadataConstraints :: Core.MarloweTransactionMetadata
+  , threadTokenConstraints :: ThreadTokenConstraints era
   }
 
 deriving instance Show (TxConstraints era 'V1)
@@ -132,10 +138,39 @@ deriving instance Eq (TxConstraints era 'V1)
 deriving instance Generic (TxConstraints era 'V1)
 deriving instance ToJSON (TxConstraints era 'V1)
 
+newtype MintingSeed = MintingSeed {unMintingSeed :: Chain.TxOutRef}
+  deriving (Eq, Show)
+deriving newtype instance ToJSON MintingSeed
+
+data ThreadTokenConstraints era
+  = BurnThreadToken
+  | MintThreadToken MintingSeed
+  | PassThreadToken
+  deriving (Eq, Show)
+
+instance ToJSON (ThreadTokenConstraints era) where
+  toJSON = \case
+    BurnThreadToken -> toJSON ("burn" :: String)
+    MintThreadToken out ->
+      A.object
+        [ "mint" .= out
+        ]
+    PassThreadToken -> toJSON ("carry" :: String)
+
+instance Semigroup (ThreadTokenConstraints era) where
+  a <> PassThreadToken = a
+  _ <> b = b
+
+mustBurnThreadToken :: (Core.IsMarloweVersion v) => TxConstraints era v
+mustBurnThreadToken = mempty{threadTokenConstraints = BurnThreadToken}
+
+mustMintThreadToken :: (Core.IsMarloweVersion v) => MintingSeed -> TxConstraints era v
+mustMintThreadToken seed = mempty{threadTokenConstraints = MintThreadToken seed}
+
 -- | Constraints related to role tokens.
 data RoleTokenConstraints era
   = RoleTokenConstraintsNone
-  | NEMintRoleTokens Chain.TxOutRef (C.ScriptWitness C.WitCtxMint era) NEDistribution
+  | NEMintRoleTokens MintingSeed (C.ScriptWitness C.WitCtxMint era) NEDistribution
   | NEDistributeRoleTokens NEDistribution
   | NESpendRoleTokens (NESet Chain.AssetId)
   deriving (Eq, Show)
@@ -169,7 +204,7 @@ pattern DistributeRoleTokens dist <- NEDistributeRoleTokens (toDistribution -> d
       maybe RoleTokenConstraintsNone NEDistributeRoleTokens $ nonEmptyDistribution dist
 
 pattern MintRoleTokens
-  :: Chain.TxOutRef
+  :: MintingSeed
   -> C.ScriptWitness C.WitCtxMint era
   -> Distribution
   -> RoleTokenConstraints era
@@ -196,7 +231,7 @@ instance Monoid (RoleTokenConstraints era) where
 
 data NEDistribution
   = NESendToAddresses (NEMap Chain.AssetId (NEMap Chain.Address Chain.Quantity))
-  | NESendToScripts Chain.AssetId (NEMap Chain.AssetId (NEMap Destination Chain.Quantity))
+  | NESendToScripts (NEMap Chain.AssetId (NEMap Destination Chain.Quantity))
   deriving (Eq, Show, Generic, ToJSON)
 
 nonEmptyDistribution :: Distribution -> Maybe NEDistribution
@@ -206,8 +241,8 @@ nonEmptyDistribution = \case
       . NEMap.nonEmptyMap
       . Map.mapMaybe (NEMap.nonEmptyMap . Map.filter (> mempty))
       $ dist
-  SendToScripts thread dist ->
-    fmap (NESendToScripts thread)
+  SendToScripts dist ->
+    fmap NESendToScripts
       . NEMap.nonEmptyMap
       . Map.mapMaybe (NEMap.nonEmptyMap . Map.filter (> mempty))
       $ dist
@@ -215,22 +250,22 @@ nonEmptyDistribution = \case
 toDistribution :: NEDistribution -> Distribution
 toDistribution = \case
   NESendToAddresses dist -> SendToAddresses $ NEMap.toMap $ NEMap.toMap <$> dist
-  NESendToScripts thread dist -> SendToScripts thread $ NEMap.toMap $ NEMap.toMap <$> dist
+  NESendToScripts dist -> SendToScripts $ NEMap.toMap $ NEMap.toMap <$> dist
 
 data Distribution
   = SendToAddresses (Map Chain.AssetId (Map Chain.Address Chain.Quantity))
-  | SendToScripts Chain.AssetId (Map Chain.AssetId (Map Destination Chain.Quantity))
+  | SendToScripts (Map Chain.AssetId (Map Destination Chain.Quantity))
   deriving (Eq, Show)
 
 instance Semigroup Distribution where
   SendToAddresses dist <> SendToAddresses dist' =
     SendToAddresses $ Map.unionWith (Map.unionWith (<>)) dist dist'
-  SendToScripts _ dist <> SendToScripts thread dist' =
-    SendToScripts thread $ Map.unionWith (Map.unionWith (<>)) dist dist'
-  SendToScripts thread dist <> SendToAddresses dist' =
-    SendToScripts thread $ Map.unionWith (Map.unionWith (<>)) dist (Map.mapKeysMonotonic ToAddress <$> dist')
-  SendToAddresses dist <> SendToScripts thread dist' =
-    SendToScripts thread $ Map.unionWith (Map.unionWith (<>)) (Map.mapKeysMonotonic ToAddress <$> dist) dist'
+  SendToScripts dist <> SendToScripts dist' =
+    SendToScripts $ Map.unionWith (Map.unionWith (<>)) dist dist'
+  SendToScripts dist <> SendToAddresses dist' =
+    SendToScripts $ Map.unionWith (Map.unionWith (<>)) dist (Map.mapKeysMonotonic ToAddress <$> dist')
+  SendToAddresses dist <> SendToScripts dist' =
+    SendToScripts $ Map.unionWith (Map.unionWith (<>)) (Map.mapKeysMonotonic ToAddress <$> dist) dist'
 
 -- | Require the transaction to mint the specified number of role tokens with the
 -- specified assetId and send them to the given destinations. Additionally, require that
@@ -244,18 +279,18 @@ instance Semigroup Distribution where
 --   5. The transaction mints 1 of thread token with the specified name if specified.
 mustMintRoleToken
   :: (Core.IsMarloweVersion v)
-  => Chain.TxOutRef
+  => MintingSeed
   -> C.ScriptWitness C.WitCtxMint era
   -> Chain.AssetId
-  -> Either Chain.Address (Chain.AssetId, HelperScript)
+  -> Either Chain.Address HelperScript
   -> Chain.Quantity
   -> TxConstraints era v
-mustMintRoleToken txOutRef witness assetId destination quantity =
+mustMintRoleToken seed witness assetId destination quantity =
   mempty
     { roleTokenConstraints =
-        MintRoleTokens txOutRef witness case destination of
+        MintRoleTokens seed witness case destination of
           Left addr -> SendToAddresses $ Map.singleton assetId $ Map.singleton addr quantity
-          Right (thread, script) -> SendToScripts thread $ Map.singleton assetId $ Map.singleton (ToScript script) quantity
+          Right helperScript -> SendToScripts $ Map.singleton assetId $ Map.singleton (ToScript helperScript) quantity
     }
 
 -- | Require the transaction to send the specified number of role tokens with the
@@ -266,14 +301,14 @@ mustMintRoleToken txOutRef witness assetId destination quantity =
 mustDistributeRoleToken
   :: (Core.IsMarloweVersion v)
   => Chain.AssetId
-  -> Either Chain.Address (Chain.AssetId, HelperScript)
+  -> Either Chain.Address HelperScript
   -> Chain.Quantity
   -> TxConstraints era v
 mustDistributeRoleToken assetId destination quantity =
   mempty
     { roleTokenConstraints = DistributeRoleTokens case destination of
         Left addr -> SendToAddresses $ Map.singleton assetId $ Map.singleton addr quantity
-        Right (thread, script) -> SendToScripts thread $ Map.singleton assetId $ Map.singleton (ToScript script) quantity
+        Right script -> SendToScripts $ Map.singleton assetId $ Map.singleton (ToScript script) quantity
     }
 
 -- | Require the transaction to spend a UTXO with 1 role token of the specified
@@ -291,6 +326,8 @@ mustSpendRoleToken assetId = mempty{roleTokenConstraints = SpendRoleTokens $ Set
 data MarloweOutputConstraints v
   = MarloweOutputConstraintsNone
   | MarloweOutput Chain.TxOutAssets (Core.Datum v)
+  -- | ^ This does not include thread token information in the assets by design.
+  -- | We do not want to deal with the script hashes etc.
 
 deriving instance Show (MarloweOutputConstraints 'V1)
 deriving instance Eq (MarloweOutputConstraints 'V1)
@@ -431,6 +468,7 @@ instance (Core.IsMarloweVersion v) => Semigroup (TxConstraints era v) where
               { marloweMetadata = on (<|>) (marloweMetadata . metadataConstraints) a b
               , transactionMetadata = on (<>) (transactionMetadata . metadataConstraints) a b
               }
+        , threadTokenConstraints = on (<>) threadTokenConstraints a b
         }
 
 instance (Core.IsMarloweVersion v) => Monoid (TxConstraints era v) where
@@ -445,6 +483,7 @@ instance (Core.IsMarloweVersion v) => Monoid (TxConstraints era v) where
         , marloweOutputConstraints = mempty
         , signatureConstraints = mempty
         , metadataConstraints = emptyMarloweTransactionMetadata
+        , threadTokenConstraints = PassThreadToken
         }
 
 -- | Data from a wallet needed to solve the constraints.
@@ -885,7 +924,20 @@ selectCoins era protocol marloweVersion scriptCtx walletCtx@WalletContext{..} he
       change :: C.Value
       change =
         -- This is the change required to balance native tokens.
-        deleteLovelace $ -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+        deleteLovelace $ -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing. -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
+           -- The lovelace are irrelevant because pure-lovelace change is handled during the final balancing.
           (mconcat $ txOutToValue . snd <$> selection) -- The inputs selected by the algorithm for spending many include native tokens that weren't in the required `outputs`.
             <> C.negateValue targetSelectionValue -- The tokens required by `outputs` (as represented in the `targetSelectionValue` requirement) shouldn't be included as change.
             -- Compute the change that contains native tokens used for balancing, omitting ones explicitly specified in the outputs.
@@ -1080,6 +1132,10 @@ allUtxos era marloweVersion scriptCtx WalletContext{..} HelpersContext{..} inclu
                 <> foldMap (pure . helperScriptUTxO . helperScriptInfo) helperScriptStates
           )
 
+altEither :: Either e a -> Either e a -> Either e a
+altEither (Left _) r = r
+altEither l _ = l
+
 solveInitialTxBodyContent
   :: forall era v
    . C.BabbageEraOnwards era
@@ -1128,31 +1184,43 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
 
     getWalletInputs
       :: Set Chain.AssetId -> Either ConstraintError [(C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn era))]
-    getWalletInputs helperRoles = case roleTokenConstraints of
-      RoleTokenConstraintsNone -> pure []
-      DistributeRoleTokens _ -> pure [] -- Coin selection will handle these inputs.
-      MintRoleTokens txOutRef _ _ -> do
-        txIn <- note ToCardanoError $ toCardanoTxIn txOutRef
-        _ <- note (MintingUtxoNotFound txOutRef) $ lookupUTxO txOutRef availableUtxos
-        pure [(txIn, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending)]
-      SpendRoleTokens roleTokens -> do
-        let availTuples = map toUTxOTuple . toUTxOsList $ availableUtxos
-            roleTokens' = roleTokens Set.\\ helperRoles
-        txIns <-
-          -- Filter out Ada because we don't need to specifically select an input for an Ada role token.
-          nub <$> forM (filter (not . isAda) $ Set.toList roleTokens') \token -> do
-            -- Find an element from availTuples where 'token' is in the assets.
-            let containsToken :: Chain.TransactionOutput -> Bool
-                containsToken = Map.member token . Chain.unTokens . Chain.tokens . Chain.unTxOutAssets . Chain.assets
-            (txOutRef, _) <- note (RoleTokenNotFound token) $ find (containsToken . snd) availTuples
-            note ToCardanoError $ toCardanoTxIn txOutRef
-        pure $ (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) <$> txIns
+    getWalletInputs helperRoles = do
+      roleTokenInputs <- case roleTokenConstraints of
+        RoleTokenConstraintsNone -> pure []
+        DistributeRoleTokens _ -> pure [] -- Coin selection will handle these inputs.
+        MintRoleTokens (MintingSeed txOutRef) _ _ -> do
+          txIn <- note ToCardanoError $ toCardanoTxIn txOutRef
+          _ <- note (MintingUtxoNotFound txOutRef) $ lookupUTxO txOutRef availableUtxos
+          pure [(txIn, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending)]
+        SpendRoleTokens roleTokens -> do
+          let availTuples = map toUTxOTuple . toUTxOsList $ availableUtxos
+              roleTokens' = roleTokens Set.\\ helperRoles
+          txIns <-
+            -- Filter out Ada because we don't need to specifically select an input for an Ada role token.
+            nub <$> forM (filter (not . isAda) $ Set.toList roleTokens') \token -> do
+              -- Find an element from availTuples where 'token' is in the assets.
+              let containsToken :: Chain.TransactionOutput -> Bool
+                  containsToken = Map.member token . Chain.unTokens . Chain.tokens . Chain.unTxOutAssets . Chain.assets
+              (txOutRef, _) <- note (RoleTokenNotFound token) $ find (containsToken . snd) availTuples
+              note ToCardanoError $ toCardanoTxIn txOutRef
+          pure $ (,C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending) <$> txIns
+      threadTokenMintingInputs <- case threadTokenConstraints of
+        PassThreadToken -> pure []
+        BurnThreadToken -> pure []
+        MintThreadToken (MintingSeed txOutRef) -> do
+          seedTxIn <- note ToCardanoError $ toCardanoTxIn txOutRef
+          if (not . any (\(txIn, _) -> txIn == seedTxIn)) roleTokenInputs
+            then do
+              _ <- note (MintingUtxoNotFound txOutRef) $ lookupUTxO txOutRef availableUtxos
+              pure [(seedTxIn, C.BuildTxWith $ C.KeyWitness C.KeyWitnessForSpending)]
+            else pure []
+      pure $ roleTokenInputs <> threadTokenMintingInputs
 
     getMarloweInput :: Either ConstraintError (Maybe (C.TxIn, C.BuildTxWith C.BuildTx (C.Witness C.WitCtxTxIn era)))
     getMarloweInput = case (marloweInputConstraints, scriptCtx) of
       (MarloweInputConstraintsNone, _) -> pure Nothing
-      (MarloweInput _ _ inputs, Left MarloweContext{..}) -> fmap Just $ do
-        Core.TransactionScriptOutput{..} <- note MissingMarloweInput scriptOutput
+      (MarloweInput _ _ inputs, Left MarloweContext{marloweScriptUTxO, scriptOutput}) -> fmap Just $ do
+        Core.TransactionScriptOutput{datum, utxo} <- note MissingMarloweInput scriptOutput
         txIn <- note ToCardanoError $ toCardanoTxIn utxo
         plutusScriptOrRefInput <-
           note ToCardanoError $
@@ -1234,47 +1302,48 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
         )
 
     solveTxInsReference :: Set Chain.ScriptHash -> Set C.TxIn -> Either ConstraintError (C.TxInsReference C.BuildTx era)
-    solveTxInsReference requiredPayoutScriptHashes helperTxInReferences =
-      let items :: [Maybe (Either ConstraintError C.TxIn)]
-          items = marloweTxInReference : payoutTxInReferences requiredPayoutScriptHashes <> (pure . pure <$> Set.toList helperTxInReferences)
-          sequenced :: Maybe (Either ConstraintError [C.TxIn])
-          sequenced = case sequenceA items of
-            Nothing -> Nothing
-            Just es -> case partitionEithers es of
-              ([], rights) -> Just $ Right rights
-              (lefts, _) -> Just $ Left $ head lefts
-      in maybe (pure C.TxInsReferenceNone) (\case
-            Left err -> Left err
-            Right txIns -> Right $ C.TxInsReference era txIns $ C.BuildTxWith mempty) sequenced
+    solveTxInsReference requiredPayoutScriptHashes helperTxInReferences = do
+      marloweScriptTxIn <- do
+        marloweScriptUTxO <- getMarloweScriptUTxO
+        note ToCardanoError $ toCardanoTxIn (txOutRef marloweScriptUTxO)
+      payoutTxIns <- payoutTxInReferences requiredPayoutScriptHashes
+      let
+        txIns =
+          marloweScriptTxIn
+          : (payoutTxIns <> Set.toList helperTxInReferences)
+      pure if null txIns
+        then C.TxInsReferenceNone
+        else C.TxInsReference era txIns $ C.BuildTxWith mempty
 
-    -- Only include the marlowe reference script if we are consuming a marlowe
-    -- input.
-    marloweTxInReference :: Maybe (Either ConstraintError C.TxIn)
-    marloweTxInReference = case (marloweInputConstraints, scriptCtx) of
-      (MarloweInputConstraintsNone, _) -> Nothing
-      (_, Left MarloweContext{..}) -> Just $ note ToCardanoError $ toCardanoTxIn (txOutRef marloweScriptUTxO)
-      (_, Right _) -> Just $ Left MarloweInputInWithdraw
+    getMarloweScriptUTxO :: Either ConstraintError ReferenceScriptUtxo
+    getMarloweScriptUTxO = case scriptCtx of
+      Left MarloweContext{marloweScriptUTxO} -> pure marloweScriptUTxO
+      Right _ -> Left MarloweScriptUTxOInWithdraw
 
     -- Only include the payout reference scripts if we are consuming any payout
     -- inputs.
-    payoutTxInReferences :: Set Chain.ScriptHash -> [Maybe (Either ConstraintError C.TxIn)]
+    payoutTxInReferences :: Set Chain.ScriptHash -> Either ConstraintError [C.TxIn]
     payoutTxInReferences requiredScriptHashes
-      | Set.null requiredScriptHashes = []
+      | Set.null requiredScriptHashes = pure []
       | otherwise = case scriptCtx of
           Right PayoutContext{..} ->
-            Set.toList requiredScriptHashes <&> \payoutScriptHash -> Just do
+            for (Set.toList requiredScriptHashes) \payoutScriptHash -> do
               ScriptRegistry.ReferenceScriptUtxo{..} <-
                 note (UnknownPayoutScript payoutScriptHash) $ Map.lookup payoutScriptHash payoutScriptOutputs
               note ToCardanoError $ toCardanoTxIn txOutRef
-          Left _ -> [Just $ Left PayoutInputInInitOrApply]
+          Left _ -> Left PayoutInputInInitOrApply
 
     getMarloweOutput :: Either ConstraintError (Maybe Chain.TransactionOutput)
     getMarloweOutput = case (marloweOutputConstraints, scriptCtx) of
       (MarloweOutputConstraintsNone, _) -> Right Nothing
-      (MarloweOutput assets datum, Left MarloweContext{..}) ->
+      (MarloweOutput contractAssets datum, Left MarloweContext{marloweAddress}) -> do
+        threadToken <- getMintedThreadToken `altEither` getExistingThreadToken
+        let
+          outputAssets = contractAssets <> do
+            unsafeTxOutAssets . Chain.Assets mempty . Chain.Tokens . Map.singleton threadToken $ Chain.Quantity 1
         Right $
           Just $
-            Chain.TransactionOutput marloweAddress assets Nothing $
+            Chain.TransactionOutput marloweAddress outputAssets Nothing $
               Just $
                 Core.toChainDatum marloweVersion datum
       _ -> Left MarloweOutputInWithdraw
@@ -1337,28 +1406,32 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
           RoleTokenConstraintsNone -> pure []
           MintRoleTokens _ _ dist -> go $ DistributeRoleTokens dist
           DistributeRoleTokens (SendToAddresses distribution) ->
-            go $ DistributeRoleTokens $ SendToScripts (Chain.AssetId "" "") $ Map.mapKeysMonotonic ToAddress <$> distribution
-          DistributeRoleTokens (SendToScripts (Chain.AssetId _ threadToken) dist) -> sequence $ runExceptT do
-            (assetId, dist') <- lift $ Map.toList dist
-            (dest, q) <- lift $ Map.toList dist'
-            address <- case dest of
-              ToAddress a -> pure a
-              ToScript script ->
-                noteT (HelperScriptNotFound $ Chain.tokenName assetId)
-                  . hoistMaybe
-                  . Map.lookup script
-                  $ helperAddress <$> currentHelperScripts
-            -- In the current setup this will never happen because we guard this invariant on the distribution level.
-            let assets = unsafeTxOutAssets (Chain.Assets mempty $ Chain.Tokens $ Map.singleton assetId q)
-            pure
-              Chain.TransactionOutput
-                { address
-                , assets = assets
-                , datumHash = Nothing
-                , datum = case dest of
-                    ToAddress _ -> Nothing
-                    ToScript _ -> Just $ Chain.B $ Chain.unTokenName threadToken
-                }
+            go . DistributeRoleTokens . SendToScripts $ Map.mapKeysMonotonic ToAddress <$> distribution
+          DistributeRoleTokens (SendToScripts dist) -> do
+            sequence $ runExceptT do
+              (assetId, dist') <- lift $ Map.toList dist
+              (dest, q) <- lift $ Map.toList dist'
+              address <- case dest of
+                ToAddress a -> pure a
+                ToScript script ->
+                  noteT (HelperScriptNotFound $ Chain.tokenName assetId)
+                    . hoistMaybe
+                    . Map.lookup script
+                    $ helperAddress <$> currentHelperScripts
+              -- In the current setup this will never happen because we guard this invariant on the distribution level.
+              let assets = unsafeTxOutAssets (Chain.Assets mempty $ Chain.Tokens $ Map.singleton assetId q)
+              datum <- case dest of
+                ToAddress _ -> pure Nothing
+                ToScript OpenRoleScript -> do
+                  Chain.TokenName threadTokenNameBytes <- ExceptT . pure $ getMintedThreadTokenName
+                  pure . Just . Chain.B $ threadTokenNameBytes
+              pure
+                Chain.TransactionOutput
+                  { address
+                  , assets = assets
+                  , datumHash = Nothing
+                  , datum
+                  }
           SpendRoleTokens roleTokens -> do
             let availTuples = map toUTxOTuple . toUTxOsList $ availableUtxos
                 roleTokens' = roleTokens Set.\\ helperRoles
@@ -1427,20 +1500,113 @@ solveInitialTxBodyContent era protocol marloweVersion scriptCtx WalletContext{..
             C.TxExtraKeyWitnesses alonzoEraOnwards
               <$> traverse toCardanoPaymentKeyHash (Set.toList signatureConstraints)
 
-    solveTxMintValue :: Either ConstraintError (C.TxMintValue C.BuildTx era)
-    solveTxMintValue = case roleTokenConstraints of
-      MintRoleTokens _ witness (SendToScripts thread distribution) -> go witness (Just thread) case traverse demoteDestination distribution of
+    getExistingThreadToken :: Either ConstraintError Chain.AssetId
+    getExistingThreadToken = do
+      case scriptCtx of
+        -- Extract the thread token
+        Left (MarloweContext { scriptOutput=Just (Core.TransactionScriptOutput {assets})}) -> do
+          marlowePolicyId <- getMarlowePolicyId
+          let
+            possibleThreadToken = do
+              let
+                tokens = Map.toList . Chain.unTokens . Chain.tokens . Chain.unTxOutAssets $ assets
+                isMarlowePolicyToken (Chain.AssetId policyId _tokenName, _quantity) = policyId == marlowePolicyId
+              filter isMarlowePolicyToken tokens
+          case possibleThreadToken of
+            [(threadToken, _quantity)] -> pure threadToken
+            _ -> Left ThreadTokenNotFound
+        _ -> Left ThreadTokenNotFound
+
+    getMintedThreadTokenName :: Either ConstraintError Chain.TokenName
+    getMintedThreadTokenName = case threadTokenConstraints of
+      MintThreadToken (MintingSeed (Chain.TxOutRef { txId = Chain.TxId txId, txIx = Chain.TxIx txIx })) -> do
+        let
+          seed = P.TxOutRef (P.TxId $ P.toBuiltin txId) (fromIntegral txIx)
+          -- We hard code the Marlowe output index to be `0` because at the moment
+          -- our tx builder handles only single contract creation / closure per tx.
+          V1.TokenName (P.fromBuiltin -> threadTokenNameBytes) = V1.mkThreadTokenName seed 0
+        pure $ Chain.TokenName threadTokenNameBytes
+      BurnThreadToken -> Left ThreadTokenNotMinted
+      PassThreadToken -> Left ThreadTokenNotMinted
+
+    getMintedThreadToken :: Either ConstraintError Chain.AssetId
+    getMintedThreadToken = do
+      marlowePolicyId <- getMarlowePolicyId
+      threadTokenName <- getMintedThreadTokenName
+      pure $ Chain.AssetId marlowePolicyId threadTokenName
+
+    getMarlowePolicyId :: Either ConstraintError Chain.PolicyId
+    getMarlowePolicyId = do
+      marloweScriptUTxO <- getMarloweScriptUTxO
+      pure . Chain.scriptHashToPolicyId . hashScriptInPlutus $ marloweScriptUTxO.script
+
+    getThreadTokenMintValue :: Either ConstraintError (C.TxMintValue C.BuildTx era)
+    getThreadTokenMintValue = do
+      mintingCtx :: Maybe (Chain.Redeemer, Chain.TokenName, Chain.Quantity) <- case threadTokenConstraints of
+        PassThreadToken -> pure Nothing
+        MintThreadToken (MintingSeed (Chain.TxOutRef { txId = Chain.TxId txId, txIx = Chain.TxIx txIx })) -> do
+          let
+            seed = P.TxOutRef (P.TxId $ P.toBuiltin txId) (fromIntegral txIx)
+            redeemer = Chain.toRedeemer $ V1.Minting seed
+          tokenName <- getMintedThreadTokenName
+          pure $ Just (redeemer, tokenName, Chain.Quantity 1)
+        BurnThreadToken -> do
+          let
+            redeemer = Chain.toRedeemer V1.Burning
+          threadToken <- getExistingThreadToken
+          let Chain.AssetId _ tokenName = threadToken
+          pure $ Just (redeemer, tokenName, Chain.Quantity (-1))
+      case mintingCtx of
+        Nothing -> pure C.TxMintNone
+        Just (Chain.Redeemer redeemer, tokeName, quantity) -> do
+          marloweScriptUTxO <- getMarloweScriptUTxO
+          (plutusScriptV3InEra :: C.ScriptLanguageInEra C.PlutusScriptV3 era) <- case era of
+            C.BabbageEraOnwardsBabbage -> Left ToCardanoError
+            C.BabbageEraOnwardsConway -> pure C.PlutusScriptV3InConway
+            C.BabbageEraOnwardsDijkstra -> pure C.PlutusScriptV3InDijkstra
+          plutusScriptOrRefInput <-
+            note ToCardanoError $
+              C.PReferenceScript
+                <$> toCardanoTxIn marloweScriptUTxO.txOutRef
+          marlowePolicyId <- getMarlowePolicyId
+          let
+            witness =
+              C.PlutusScriptWitness
+                plutusScriptV3InEra
+                C.PlutusScriptV3
+                plutusScriptOrRefInput
+                C.NoScriptDatumForMint
+                (C.unsafeHashableScriptData $ toCardanoScriptData redeemer)
+                (C.ExecutionUnits 0 0)
+            marloweAssetId = Chain.AssetId marlowePolicyId tokeName
+            tokens = Chain.Tokens $ Map.singleton marloweAssetId quantity
+          value <- note ToCardanoError $ tokensToCardanoValue tokens
+          let
+            policyAssetsMap = C.valueToPolicyAssets value
+            mintValues = [(pid, assets, C.BuildTxWith witness) | (pid, assets) <- Map.toList policyAssetsMap]
+          pure $ C.mkTxMintValue maryEraOnwards mintValues
+
+    getRoleTokenMintValue :: Either ConstraintError (C.TxMintValue C.BuildTx era)
+    getRoleTokenMintValue = case roleTokenConstraints of
+      MintRoleTokens _ witness (SendToScripts distribution) -> go witness $ case traverse demoteDestination distribution of
         Nothing -> distribution
         Just distribution' -> Map.mapKeysMonotonic ToAddress <$> distribution'
-      MintRoleTokens _ witness (SendToAddresses distribution) -> go witness Nothing (Map.mapKeysMonotonic ToAddress <$> distribution)
+      MintRoleTokens _ witness (SendToAddresses distribution) -> go witness (Map.mapKeysMonotonic ToAddress <$> distribution)
       _ -> pure C.TxMintNone
       where
-        go witness thread distribution = do
-          let tokens = maybe id (flip Map.insert (Chain.Quantity 1)) thread $ fold <$> distribution
+        go witness distribution = do
+          let tokens = fold <$> distribution
           value <- note ToCardanoError $ tokensToCardanoValue $ Chain.Tokens tokens
-          let policyAssetsMap = C.valueToPolicyAssets value
-              mintValues = [(pid, assets, C.BuildTxWith witness) | (pid, assets) <- Map.toList policyAssetsMap]
+          let
+            policyAssetsMap = C.valueToPolicyAssets value
+            mintValues = [(pid, assets, C.BuildTxWith witness) | (pid, assets) <- Map.toList policyAssetsMap]
           pure $ C.mkTxMintValue maryEraOnwards mintValues
+
+    solveTxMintValue :: Either ConstraintError (C.TxMintValue C.BuildTx era)
+    solveTxMintValue = do
+      threadTokenMintValue <- getThreadTokenMintValue
+      roleTokenMintValue <- getRoleTokenMintValue
+      pure $ threadTokenMintValue <> roleTokenMintValue
 
 demoteDestination :: Map Destination Chain.Quantity -> Maybe (Map Chain.Address Chain.Quantity)
 demoteDestination dist =

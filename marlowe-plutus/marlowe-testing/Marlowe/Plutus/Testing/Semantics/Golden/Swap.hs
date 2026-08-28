@@ -40,7 +40,7 @@ import Marlowe.Plutus.Semantics.Types (
 
 import PlutusLedgerApi.V2 (CurrencySymbol, POSIXTime (..))
 
-import qualified Marlowe.Plutus.AssocMap as AM (Map, unsafeFromList)
+import qualified PlutusTx.AssocMap as AM (Map, unsafeFromList)
 
 aSymbol, bSymbol :: CurrencySymbol
 aSymbol = unsafeMkCurrencySymbolHex "13e78e78c233e131b0cbe4424225d338b7c5ac65e16df0a3e6c9d8f8"

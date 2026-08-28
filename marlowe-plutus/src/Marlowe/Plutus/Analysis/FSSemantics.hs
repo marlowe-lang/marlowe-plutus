@@ -17,7 +17,7 @@ import Data.SBV.Internals (SMTModel (..))
 import Marlowe.Plutus.Semantics
 import Marlowe.Plutus.Semantics.Types
 import PlutusLedgerApi.V2 (POSIXTime (POSIXTime, getPOSIXTime))
-import qualified Marlowe.Plutus.AssocMap as AssocMap
+import qualified PlutusTx.AssocMap as AssocMap
 import PlutusLedgerApi.Common (ToData, UnsafeFromData)
 
 ---------------------------------------------------

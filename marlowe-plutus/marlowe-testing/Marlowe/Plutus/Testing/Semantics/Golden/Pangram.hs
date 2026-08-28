@@ -65,7 +65,7 @@ import Marlowe.Plutus.Semantics.Types (
 
 import PlutusLedgerApi.V2 (POSIXTime (..))
 
-import qualified Marlowe.Plutus.AssocMap as AM (Map, unsafeFromList)
+import qualified PlutusTx.AssocMap as AM (Map, unsafeFromList)
 
 party1 :: Party
 party1 =

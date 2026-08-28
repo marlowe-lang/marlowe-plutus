@@ -17,7 +17,7 @@ module Spec.Marlowe.Semantics.Entropy (
 ) where
 
 import Data.List (group, sort)
-import Marlowe.Plutus.AssocMap as AM
+import PlutusTx.AssocMap as AM
 import Marlowe.Plutus.Semantics.Types (Accounts, ChoiceId, ChosenNum, Party, Token, ValueId)
 import PlutusLedgerApi.V2 (PubKeyHash, TokenName)
 import Marlowe.Plutus.Testing.Semantics.Arbitrary (arbitraryChoiceName)

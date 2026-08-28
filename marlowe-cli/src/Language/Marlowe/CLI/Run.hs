@@ -218,8 +218,7 @@ import PlutusLedgerApi.V2 (
   adaToken,
   toBuiltinData,
  )
-import Marlowe.Plutus.AssocMap qualified as AM (toList)
-import PlutusTx.AssocMap qualified as PAM (toList)
+import PlutusTx.AssocMap qualified as AM (toList)
 import Prettyprinter (Pretty (..))
 import System.IO (hPutStrLn, stderr)
 
@@ -523,9 +522,9 @@ prepareTransactionImpl marloweIn txInputs minimumTime maximumTime printStats =
                 hPutStrLn stderr $ "  Ada: " <> show (fromValue money)
             sequence_
               [ hPutStrLn stderr $ "  " <> show (pretty symbol) <> "." <> show (pretty token) <> ": " <> show amount
-              | (symbol, tokenAmounts) <- PAM.toList $ getValue money
+              | (symbol, tokenAmounts) <- AM.toList $ getValue money
               , symbol /= adaSymbol
-              , (token, amount) <- PAM.toList tokenAmounts
+              , (token, amount) <- AM.toList tokenAmounts
               ]
           | (i, payment@(Payment accountId payee _ _)) <- zip [1 ..] mtPayments
           , let money = paymentMoney payment

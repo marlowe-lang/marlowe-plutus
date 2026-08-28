@@ -109,7 +109,7 @@ import Test.Tasty.QuickCheck (
 
 import Control.Monad.Writer (runWriter)
 import Marlowe.Plutus.Analysis.FSSemantics (SlotLength (SlotLength))
-import qualified Marlowe.Plutus.AssocMap as AM
+import qualified PlutusTx.AssocMap as AM
 
 -- | Record of choices.
 type Choices = AM.Map ChoiceId ChosenNum

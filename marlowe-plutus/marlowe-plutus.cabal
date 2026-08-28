@@ -150,7 +150,7 @@ library
     Marlowe.Plutus.Analysis.Safety.Transaction
     Marlowe.Plutus.Analysis.Safety.Types
     Marlowe.Plutus.Analysis.Safety.Types.Validator
-    Marlowe.Plutus.AssocMap
+    -- Marlowe.Plutus.AssocMap
     Marlowe.Plutus.Contrib.Data.Foldable
     Marlowe.Plutus.Contrib.PlutusTx.Debugging.Trace
     Marlowe.Plutus.Contrib.PlutusTx.Dict

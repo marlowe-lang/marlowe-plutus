@@ -31,7 +31,7 @@ function mkContract(partyAddr: AddressBech32, timeout: POSIXMilliseconds): Contr
 
 // Let's port the above to a much simpler flow which uses our marloweRuntimeCli client.
 export const run = async (faucetAddr: AddressBech32, faucetSkeyFile: Path) => {
-  const timeout = unwrapOk(POSIXMilliseconds.addMilliseconds(POSIXMilliseconds.now(), Milliseconds.fromDigits(6, 0, 0, 0, 0, 0)));
+  const timeout = unwrapOk(POSIXMilliseconds.addMilliseconds(POSIXMilliseconds.now(), Milliseconds.fromDigits(6, 0, 0, 0, 0)));
   const contract = mkContract(faucetAddr, timeout);
   const result = await
     toAsync(marloweRuntimeCli.runInit(contract, faucetAddr, {}, null, true))
@@ -41,7 +41,7 @@ export const run = async (faucetAddr: AddressBech32, faucetSkeyFile: Path) => {
           txEnvelope: signedTxEnvelope,
         };
       }))
-    .andThen(({ txEnvelope, contractId }) => cardanoCli.submitTxEnvelope(txEnvelope).map(() => contractId))
+    .andThen(({ txEnvelope, contractId }) => cardanoCli.submitTxEnvelope(txEnvelope, true).map(() => contractId))
     .andThen((contractId) => waitPatientlyForResultAsync(
         () => toAsync(marloweRuntimeCli.runGet(contractId, {}, null, true)),
         (_res: ContractState) => true,

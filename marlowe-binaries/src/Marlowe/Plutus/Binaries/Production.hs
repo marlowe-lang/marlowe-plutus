@@ -15,6 +15,10 @@
 {-# OPTIONS -fno-unbox-strict-fields #-}
 {-# OPTIONS_GHC -fobject-code #-}
 
+
+-- FIXME: drop this
+{-# OPTIONS_GHC -Wno-unused-imports #-}
+
 module Marlowe.Plutus.Binaries.Production where
 
 import Marlowe.Plutus.Binaries.Core (applyArg, hashScript)
@@ -30,14 +34,16 @@ import qualified PlutusLedgerApi.V3 as PV3
 import qualified PlutusLedgerApi.V3 as V3
 import qualified Prelude as Haskell
 
-{-# INLINEABLE rolePayoutValidator #-}
-rolePayoutValidator :: CompiledCode (BuiltinData -> BuiltinUnit)
-rolePayoutValidator =
-  $$(PlutusTx.compile [||rolePayoutValidator'||])
- where
-  rolePayoutValidator' :: BuiltinData -> BuiltinUnit
-  rolePayoutValidator' ctx =
-    check $ mkRolePayoutValidator (unsafeFromBuiltinData ctx)
+import Marlowe.Plutus.Binaries.Devel (marloweValidator, rolePayoutValidator)
+
+-- {-# INLINEABLE rolePayoutValidator #-}
+-- rolePayoutValidator :: CompiledCode (BuiltinData -> BuiltinUnit)
+-- rolePayoutValidator =
+--   $$(PlutusTx.compile [||rolePayoutValidator'||])
+--  where
+--   rolePayoutValidator' :: BuiltinData -> BuiltinUnit
+--   rolePayoutValidator' ctx =
+--     check $ mkRolePayoutValidator (unsafeFromBuiltinData ctx)
 
 rolePayoutValidatorHash :: ScriptHash
 rolePayoutValidatorHash = hashScript PlutusV3 rolePayoutValidator
@@ -45,15 +51,15 @@ rolePayoutValidatorHash = hashScript PlutusV3 rolePayoutValidator
 rolePayoutValidatorBytes :: SerialisedScript
 rolePayoutValidatorBytes = serialiseCompiledCode rolePayoutValidator
 
-{-# INLINEABLE marloweValidator #-}
-marloweValidator :: CompiledCode (BuiltinData -> BuiltinUnit)
-marloweValidator =
-  $$(PlutusTx.compile [||marloweValidator'||])
-    `applyArg` rolePayoutValidatorHash
- where
-  marloweValidator' :: ScriptHash -> BuiltinData -> BuiltinUnit
-  marloweValidator' rolePayoutHash ctx =
-    check $ mkMarloweValidator rolePayoutHash (unsafeFromBuiltinData ctx)
+-- {-# INLINEABLE marloweValidator #-}
+-- marloweValidator :: CompiledCode (BuiltinData -> BuiltinUnit)
+-- marloweValidator =
+--   $$(PlutusTx.compile [||marloweValidator'||])
+--     `applyArg` rolePayoutValidatorHash
+--  where
+--   marloweValidator' :: ScriptHash -> BuiltinData -> BuiltinUnit
+--   marloweValidator' rolePayoutHash ctx =
+--     check $ mkMarloweValidator rolePayoutHash (unsafeFromBuiltinData ctx)
 
 marloweValidatorHash :: ScriptHash
 marloweValidatorHash = hashScript PlutusV3 marloweValidator

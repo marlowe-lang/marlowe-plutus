@@ -68,6 +68,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@emurgo/cardano-serialization-lib-nodejs@npm:^17.0.0":
+  version: 17.0.0
+  resolution: "@emurgo/cardano-serialization-lib-nodejs@npm:17.0.0"
+  checksum: 10c0/f43192164b35565b6bfa1ef97079dd06400804c3e620b7a674de2b6b27230ec992f8dd251428cab4d354232125dee0694d0e5bb573c011c698336658c3c23dac
+  languageName: node
+  linkType: hard
+
 "@esbuild/aix-ppc64@npm:0.28.0":
   version: 0.28.0
   resolution: "@esbuild/aix-ppc64@npm:0.28.0"
@@ -324,6 +331,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@marlowe-lang/integration@workspace:app"
   dependencies:
+    "@emurgo/cardano-serialization-lib-nodejs": "npm:^17.0.0"
     "@konduit/konduit-consumer": "workspace:^"
     "@marlowe-lang/language": "workspace:^"
     "@marlowe-lang/runtime": "workspace:^"

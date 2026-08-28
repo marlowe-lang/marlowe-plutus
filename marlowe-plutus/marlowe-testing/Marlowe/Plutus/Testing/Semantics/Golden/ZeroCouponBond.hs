@@ -37,7 +37,7 @@ import Marlowe.Plutus.Semantics.Types (
  )
 import PlutusLedgerApi.V2 (POSIXTime (..))
 
-import qualified Marlowe.Plutus.AssocMap as AM (Map, unsafeFromList)
+import qualified PlutusTx.AssocMap as AM (Map, unsafeFromList)
 
 lender :: Party
 lender = mkRoleUtf8 "Lender"

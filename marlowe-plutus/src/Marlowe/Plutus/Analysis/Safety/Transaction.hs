@@ -79,8 +79,7 @@ import Data.Traversable (for)
 import Marlowe.Plutus.Analysis.FSSemantics (SlotLength (..))
 import qualified PlutusLedgerApi.Common as P
 import qualified PlutusLedgerApi.V2 as P hiding (evaluateScriptCounting)
-import qualified Marlowe.Plutus.AssocMap as AM
-import qualified PlutusTx.AssocMap as PlutusTxAM
+import qualified PlutusTx.AssocMap as AM
 import qualified PlutusTx.List as List
 import qualified PlutusTx.Builtins as P
 
@@ -192,7 +191,7 @@ executeTransaction evaluationContext semanticsValidator semanticsAddress payoutA
         txInfoFee = oneLovelace
         txInfoMint = mempty
         txInfoDCert = mempty
-        txInfoWdrl = PlutusTxAM.empty
+        txInfoWdrl = AM.empty
         txInfoValidRange = P.Interval (P.LowerBound (P.Finite $ fst txInterval) True) (P.UpperBound (P.Finite $ snd txInterval) True)
         findSignatory :: InputContent -> [P.PubKeyHash]
         findSignatory (IDeposit _ (Address _ (P.Address (P.PubKeyCredential pkh) _)) _ _) = pure pkh
@@ -203,8 +202,8 @@ executeTransaction evaluationContext semanticsValidator semanticsAddress payoutA
             <> case creatorAddress of
               P.Address (P.PubKeyCredential pkh) _ -> pure pkh
               _ -> mempty
-        txInfoRedeemers = PlutusTxAM.singleton scriptContextPurpose redeemer
-        txInfoData = PlutusTxAM.unsafeFromList $ ((,) =<< P.DatumHash . dataHash) <$> List.nub (inDatum : outDatum <> outPaymentDatums <> merkleDatums)
+        txInfoRedeemers = AM.singleton scriptContextPurpose redeemer
+        txInfoData = AM.unsafeFromList $ ((,) =<< P.DatumHash . dataHash) <$> List.nub (inDatum : outDatum <> outPaymentDatums <> merkleDatums)
         txInfoId = "2222222222222222222222222222222222222222222222222222222222222222"
         scriptContextTxInfo = P.TxInfo{..}
         scriptContextPurpose = P.Spending inScriptTxRef
@@ -510,7 +509,7 @@ calcValidatorsExBudget evaluationContext creatorAddress txInSpecs txOutSpecs (in
   txInfoId <- freshTxId
   let
       txInfoRedeemers =
-        PlutusTxAM.unsafeFromList $
+        AM.unsafeFromList $
             M.elems validatorsEvalContext <&> \(ValidatorEvalContext _ _ redeemer txOutRef) -> do
               let purpose = P.Spending txOutRef
               (purpose, redeemer)
@@ -522,7 +521,7 @@ calcValidatorsExBudget evaluationContext creatorAddress txInSpecs txOutSpecs (in
       txInfoFee = oneLovelace
       txInfoMint = mempty
       txInfoDCert = mempty
-      txInfoWdrl = PlutusTxAM.empty
+      txInfoWdrl = AM.empty
       txInfoSignatories =
         extraSignatories
           <> case creatorAddress of
@@ -531,7 +530,7 @@ calcValidatorsExBudget evaluationContext creatorAddress txInSpecs txOutSpecs (in
       txInfoData = do
         let inDatums = mapMaybe (\(TxInSpec _ _ datum _) -> datum) txInSpecs
             outDatums = mapMaybe (\(TxOutSpec _ _ datum) -> datum) txOutSpecs
-        PlutusTxAM.unsafeFromList $ ((,) =<< datumHash) <$> (List.nub $ inDatums <> outDatums)
+        AM.unsafeFromList $ ((,) =<< datumHash) <$> (List.nub $ inDatums <> outDatums)
 
   scriptPurposePlaceholder <- P.Spending <$> freshTxOutRef
   let scriptContextTxInfo = P.TxInfo{..}

@@ -18,8 +18,8 @@ module Marlowe.Plutus.Testing.Semantics.Golden (
 import Marlowe.Plutus.Semantics (TransactionInput, TransactionOutput (..), computeTransaction)
 import Marlowe.Plutus.Semantics.Types (Contract, State (State))
 import PlutusLedgerApi.V2 (POSIXTime)
+import qualified PlutusTx.AssocMap as AM (empty)
 
-import qualified Marlowe.Plutus.AssocMap as AM (empty)
 import qualified Marlowe.Plutus.Testing.Semantics.Golden.Escrow as Escrow (contract, valids)
 import qualified Marlowe.Plutus.Testing.Semantics.Golden.Negative as Negative (contract, valids)
 import qualified Marlowe.Plutus.Testing.Semantics.Golden.Pangram as Pangram (contract, valids)

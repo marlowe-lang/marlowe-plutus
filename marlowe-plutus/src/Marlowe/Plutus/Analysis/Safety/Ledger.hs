@@ -104,8 +104,8 @@ import PlutusLedgerApi.V2 (
   toBuiltinData,
  )
 import qualified PlutusLedgerApi.V2 as P (Address (..), Value)
-import qualified Marlowe.Plutus.AssocMap as AM (Map, keys, toList, unsafeFromList)
 import PlutusTx.Builtins (serialiseData)
+import qualified PlutusTx.AssocMap as AM (Map, keys, toList, unsafeFromList)
 import qualified PlutusTx.Prelude as P (lengthOfByteString)
 
 -- | Check the safety of a Marlowe contract and state.

@@ -1511,24 +1511,27 @@ data CoinSelectionError
 
 -- | Errors that can occur when trying to solve the constraints.
 data ConstraintError
-  = MintingUtxoNotFound TxOutRef
-  | RoleTokenNotFound AssetId
-  | ToCardanoError
-  | MissingMarloweInput
-  | PayoutNotFound TxOutRef
-  | InvalidPayoutDatum TxOutRef (Maybe Chain.Datum)
-  | InvalidHelperDatum TxOutRef (Maybe Chain.Datum)
-  | InvalidPayoutScriptAddress TxOutRef Address
-  | InvalidTokenQuantity Chain.AssetId Chain.Quantity
+  = BalancingError String
   | CalculateMinUtxoFailed String
   | CoinSelectionFailed CoinSelectionError
-  | BalancingError String
+  | HelperScriptNotFound Chain.TokenName
+  | InvalidHelperDatum TxOutRef (Maybe Chain.Datum)
+  | InvalidPayoutDatum TxOutRef (Maybe Chain.Datum)
+  | InvalidPayoutScriptAddress TxOutRef Address
+  | InvalidTokenQuantity Chain.AssetId Chain.Quantity
   | MarloweInputInWithdraw
   | MarloweOutputInWithdraw
-  | PayoutOutputInWithdraw
+  | MarloweScriptUTxOInWithdraw
+  | MintingUtxoNotFound TxOutRef
+  | MissingMarloweInput
   | PayoutInputInInitOrApply
+  | PayoutNotFound TxOutRef
+  | PayoutOutputInWithdraw
+  | RoleTokenNotFound AssetId
+  | ThreadTokenNotFound
+  | ThreadTokenNotMinted
+  | ToCardanoError
   | UnknownPayoutScript ScriptHash
-  | HelperScriptNotFound Chain.TokenName
   deriving (Generic)
 
 deriving instance Eq ConstraintError

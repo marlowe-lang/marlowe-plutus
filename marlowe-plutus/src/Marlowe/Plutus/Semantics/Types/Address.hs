@@ -29,6 +29,9 @@ module Marlowe.Plutus.Semantics.Types.Address (
   deserialiseAddressBech32,
   serialiseAddress,
   serialiseAddressBech32,
+
+  -- * Utilities
+  cmpAddress
 ) where
 
 import Codec.Binary.Bech32 (
@@ -162,3 +165,33 @@ deserialiseAddressBech32 encoded =
     (network', address) <- deserialiseAddress bs
     guard H.$ network H.== network'
     H.pure (network, address)
+
+
+{-# INLINEABLE cmpCredential #-}
+cmpCredential :: Credential -> Credential -> P.Ordering
+cmpCredential (PubKeyCredential (PubKeyHash pkh1)) (PubKeyCredential (PubKeyHash pkh2)) = P.compare pkh1 pkh2
+cmpCredential (ScriptCredential (ScriptHash svah1)) (ScriptCredential (ScriptHash svah2)) = P.compare svah1 svah2
+cmpCredential (PubKeyCredential _) (ScriptCredential _) = P.LT
+cmpCredential (ScriptCredential _) (PubKeyCredential _) = P.GT
+
+{-# INLINEABLE cmpStakingCredential #-}
+cmpStakingCredential :: H.Maybe StakingCredential -> H.Maybe StakingCredential -> P.Ordering
+cmpStakingCredential H.Nothing H.Nothing = P.EQ
+cmpStakingCredential H.Nothing (H.Just _) = P.LT
+cmpStakingCredential (H.Just _) H.Nothing = P.GT
+cmpStakingCredential (H.Just (StakingHash _)) (H.Just (StakingPtr {})) = P.LT
+cmpStakingCredential (H.Just (StakingPtr {})) (H.Just (StakingHash _)) = P.GT
+cmpStakingCredential (H.Just (StakingHash cred1)) (H.Just (StakingHash cred2)) = cmpCredential cred1 cred2
+cmpStakingCredential (H.Just (StakingPtr slot1 tx1 cert1)) (H.Just (StakingPtr slot2 tx2 cert2)) =
+  case P.compare slot1 slot2 of
+    P.EQ -> case P.compare tx1 tx2 of
+      P.EQ -> P.compare cert1 cert2
+      ordering -> ordering
+    ordering -> ordering
+
+{-# INLINEABLE cmpAddress #-}
+cmpAddress :: Address -> Address -> P.Ordering
+cmpAddress (Address cred1 staking1) (Address cred2 staking2) =
+  case cmpCredential cred1 cred2 of
+    P.EQ -> cmpStakingCredential staking1 staking2
+    ordering -> ordering

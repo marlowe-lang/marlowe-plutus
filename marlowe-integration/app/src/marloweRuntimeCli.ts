@@ -1,5 +1,4 @@
 import type { Tagged } from 'type-fest';
-import { type AddressBech32, type TestnetMagic } from './cardano.js';
 import { execCli, type CliArgs, type CommandError, type Path } from './exec.js';
 import * as fs from 'node:fs'
 import type { PositiveInt } from '@konduit/codec/integers/smallish';
@@ -12,12 +11,13 @@ import type { JsonError } from '@konduit/codec/json/codecs';
 import type { NormalInput } from '@marlowe-lang/language/v1';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
+import type { AddressBech32, NetworkMagicNumber } from '@konduit/konduit-consumer/cardano';
 
 function getMarloweRuntimeClient(repoRoot: Path | null = null): string {
   if (process.env.MARLOWE_RUNTIME_CLIENT) {
     return process.env.MARLOWE_RUNTIME_CLIENT;
   }
-  repoRoot = repoRoot ?? process.env.ROOT_DIR ?? process.cwd();
+  repoRoot = repoRoot ?? process.env.ROOT_DIR as Path | null ?? process.cwd() as Path;
   return `cabal run -v0 --project-file ${repoRoot}/cabal.project marlowe-runtime:cli --`;
 }
 
@@ -75,7 +75,7 @@ export function runInitCLI(
     outputDir?: string;
     serverPort?: PositiveInt;
     socketPath?: string;
-    testnetMagic?: TestnetMagic;
+    testnetMagic?: NetworkMagicNumber,
   },
   repoRoot: Path | null = null,
   debug: boolean = false
@@ -111,13 +111,13 @@ export function runInit(
     develScripts?: boolean;
     serverPort?: PositiveInt;
     socketPath?: string;
-    testnetMagic?: TestnetMagic;
+    testnetMagic?: NetworkMagicNumber,
   },
   repoRoot: Path | null = null,
   debug: boolean = false
 ): Result<PostCreateContractResponse, JsonError | CommandError | string> {
   const tmpDir = mkTempDir(false);
-  const contractFile = writeContractFile(`${tmpDir}/contract.json`, contract);
+  const contractFile = writeContractFile(`${tmpDir}/contract.json` as Path, contract);
   const finalOptions = {
     outputDir: tmpDir,
     ...options,
@@ -234,7 +234,7 @@ export function runApplyInputsCLI(
     serverHost?: string;
     serverPort?: PositiveInt;
     socketPath?: string;
-    testnetMagic?: TestnetMagic;
+    testnetMagic?: NetworkMagicNumber;
   },
   repoRoot: Path | null = null,
   debug: boolean = false
@@ -272,13 +272,13 @@ export function runApplyInputs(
     serverHost?: string;
     serverPort?: PositiveInt;
     socketPath?: string;
-    testnetMagic?: TestnetMagic;
+    testnetMagic?: NetworkMagicNumber;
   },
   repoRoot: Path | null = null,
   debug: boolean = false
 ): Result<ApplyInputsResponse, JsonError | CommandError | string> {
   const tmpDir = mkTempDir(false);
-  const marloweInputsFile = `${tmpDir}/marlowe-inputs.json`;
+  const marloweInputsFile = `${tmpDir}/marlowe-inputs.json` as Path;
   fs.writeFileSync(marloweInputsFile, json.stringify(marloweInputs as Json, undefined, 2));
   const finalOptions = {
     outputDir: tmpDir,

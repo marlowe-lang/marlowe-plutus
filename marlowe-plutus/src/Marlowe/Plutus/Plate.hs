@@ -61,7 +61,7 @@ import qualified Data.Functor.Constant as F (Constant (..))
 import qualified Data.Map.Strict as M (foldr)
 import qualified Data.Set as S (Set, empty, fromList, map, singleton, toList, union)
 import qualified PlutusLedgerApi.V2 as Ledger (Address)
-import qualified Marlowe.Plutus.AssocMap as AM (keys)
+import qualified PlutusTx.AssocMap as AM (keys)
 
 -- | A multiplate for a Marlowe contract.
 data MarlowePlate f = MarlowePlate

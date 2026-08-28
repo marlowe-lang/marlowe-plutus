@@ -40,7 +40,7 @@ import Marlowe.Plutus.Semantics.Types (
 
 import PlutusLedgerApi.V2 (POSIXTime (..))
 
-import qualified Marlowe.Plutus.AssocMap as AM (Map, unsafeFromList)
+import qualified PlutusTx.AssocMap as AM (Map, unsafeFromList)
 
 seller :: Party
 seller = mkRoleUtf8 "Seller"

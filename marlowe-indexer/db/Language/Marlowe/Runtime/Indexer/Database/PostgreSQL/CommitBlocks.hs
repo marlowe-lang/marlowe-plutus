@@ -39,7 +39,7 @@ import Language.Marlowe.Runtime.History.Api (
 import Language.Marlowe.Runtime.Indexer.Party (ContractTxOutParty (ContractTxOutParty), commitParties)
 import Language.Marlowe.Runtime.Indexer.MarloweBlock
 import PlutusLedgerApi.V2 (CurrencySymbol (..), fromBuiltin)
-import qualified Marlowe.Plutus.AssocMap as MAMap
+import qualified PlutusTx.AssocMap as AM
 
 commitBlocks :: [MarloweBlock] -> H.Transaction ()
 commitBlocks blocks = do
@@ -293,8 +293,8 @@ transactionScriptOutputToRows contractId blockHeader@BlockHeader{..} payoutValid
 stateParties :: State -> Set.Set Party
 stateParties State{..} =
   Set.fromList $
-    (fst <$> MAMap.keys accounts)
-      <> (choiceParty <$> MAMap.keys choices)
+    (fst <$> AM.keys accounts)
+      <> (choiceParty <$> AM.keys choices)
 
 choiceParty :: ChoiceId -> Party
 choiceParty (ChoiceId _ party) = party

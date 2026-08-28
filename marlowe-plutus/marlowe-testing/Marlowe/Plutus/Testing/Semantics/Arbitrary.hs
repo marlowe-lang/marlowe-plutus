@@ -119,7 +119,7 @@ import Test.QuickCheck (
 
 import Control.Monad.Writer (runWriter)
 import qualified Data.Aeson as A
-import qualified Marlowe.Plutus.AssocMap as AM (Map, delete, empty, keys, toList, unsafeFromList)
+import qualified PlutusTx.AssocMap as AM (Map, delete, empty, keys, toList, unsafeFromList)
 import Marlowe.Plutus.Testing.Contrib.PlutusTx.Arbitrary (arbitraryAnyCurrencySymbol, arbitraryFibonacci, shrinkBuiltinByteString, arbitraryNonAdaCurrencySymbol)
 import qualified PlutusTx.Eq as P (Eq)
 

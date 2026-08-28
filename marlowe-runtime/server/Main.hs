@@ -57,7 +57,7 @@ import Language.Marlowe.Runtime.Transaction.Api (LoadHelpersContextError, RoleTo
 import Language.Marlowe.Runtime.Transaction.Api qualified as T
 import Language.Marlowe.Runtime.Transaction.BuildConstraints (MkRoleTokenMintingPolicy)
 import Language.Marlowe.Runtime.Transaction.Builders (execInit, execApplyInputs, LoadMarloweContext, Connector(Connector))
-import Language.Marlowe.Runtime.Transaction.Constraints (MarloweContext(MarloweContext))
+import Language.Marlowe.Runtime.Transaction.Constraints (MarloweContext(MarloweContext), MintingSeed(MintingSeed))
 import Language.Marlowe.Runtime.Transaction.Constraints qualified as Constraints
 import Language.Marlowe.Runtime.Web.Server (runServer, serverWithOpenApi, ServerDependencies(..), RuntimeAPIWithOpenAPI)
 import Language.Marlowe.Runtime.Web.Server.Monad (ServerM, InitContract, ApplyInputs)
@@ -198,7 +198,7 @@ logLevelParser =
 newtype UseRoleTokenDevelScript = UseRoleTokenDevelScript Bool
 
 mkRoleTokensPolicy :: Applicative m => UseRoleTokenDevelScript -> MkRoleTokenMintingPolicy m
-mkRoleTokensPolicy (UseRoleTokenDevelScript useRoleTokenDevelScript) txOutRef tokens = do
+mkRoleTokensPolicy (UseRoleTokenDevelScript useRoleTokenDevelScript) (MintingSeed txOutRef) tokens = do
   let
     mkPolicy = if useRoleTokenDevelScript then Devel.mkRoleTokensPolicyBytes else Production.mkRoleTokensPolicyBytes
     roleTokens = mkRoleTokens $ Map.toList tokens <&> \(Core.TokenName bs, amount) -> do

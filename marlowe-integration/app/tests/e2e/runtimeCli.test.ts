@@ -1,10 +1,13 @@
 import { test, beforeAll, afterAll } from 'vitest'
 import * as deposit from '../../src/testing/e2e/deposit.js';
+import * as bet from '../../src/testing/e2e/bet.js';
+import * as init from '../../src/testing/e2e/init.js';
 import * as fs from 'node:fs'
 import { AddressBech32, NetworkMagicNumber } from '@konduit/konduit-consumer/cardano';
 import { unwrapOrPanicWith } from '@konduit/konduit-consumer/neverthrow';
 import { PositiveBigInt } from '@konduit/codec/integers/big';
 import path from 'path';
+import { Path } from '../../src/exec.js';
 
 const parseEnv = (): TestEnv => {
   const repoRoot = process.env.ROOT_DIR || process.cwd();
@@ -27,10 +30,10 @@ const parseEnv = (): TestEnv => {
     return unwrapOrPanicWith(AddressBech32.fromString(faucetAddrStr), (err) => `Failed to parse FAUCET_ADDR: ${faucetAddrStr}, ${err}`);
   })();
   const faucetSkeyFile = (() => {
-    const faucetSkeyFile = process.env.FAUCET_SKEY_FILE;
+    let faucetSkeyFile = process.env.FAUCET_SKEY_FILE;
     if(!faucetSkeyFile) throw new Error("FAUCET_SKEY_FILE environment variable is not set");
     if(!fs.existsSync(faucetSkeyFile)) throw new Error(`FAUCET_SKEY_FILE does not exist: ${faucetSkeyFile}`);
-    return faucetSkeyFile;
+    return faucetSkeyFile as Path;
   })();
   return {
     faucetAddr,
@@ -45,7 +48,7 @@ const parseEnv = (): TestEnv => {
 
 type TestEnv = {
   faucetAddr: AddressBech32;
-  faucetSkeyFile: string;
+  faucetSkeyFile: Path;
   networkMagicNumber: NetworkMagicNumber;
   nodeSocketPath: string;
   preserveTempDir: boolean;
@@ -73,6 +76,14 @@ afterAll(async () => {
   }
 })
 
+// test('Init lifecycle using marloweRuntimeCli', { tags: ['lifecycle', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
+//   await init.run(ctx.env.faucetAddr, ctx.env.faucetSkeyFile);
+// })
+
 test('Deposit lifecycle using marloweRuntimeCli', { tags: ['lifecycle', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
   await deposit.run(ctx.env.faucetAddr, ctx.env.faucetSkeyFile);
 })
+
+// test('Bet lifecycle using marloweRuntimeCli', { tags: ['lifecycle', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
+//   await bet.run(ctx.env.faucetAddr, ctx.env.faucetSkeyFile);
+// })

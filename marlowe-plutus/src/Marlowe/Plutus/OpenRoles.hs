@@ -24,9 +24,7 @@ import PlutusLedgerApi.V2 (
   adaSymbol,
  )
 import PlutusLedgerApi.V2.Tx (TxOut (TxOut, txOutAddress, txOutValue))
--- Till the AssocMap instances are fixed in general (beside Value)
--- we use Marlowe.Plutus.AssocMap here.
-import qualified PlutusTx.AssocMap as PlutusTxAssocMap
+import qualified PlutusTx.AssocMap as AssocMap
 
 import Marlowe.Plutus.Semantics.Types as Semantics (
   ChoiceId (ChoiceId),
@@ -49,7 +47,6 @@ import PlutusTx.Prelude as PlutusTxPrelude (
 
 import qualified PlutusTx
 import PlutusTx.List as List
-import qualified Marlowe.Plutus.AssocMap as AssocMap
 import qualified Prelude as Haskell
 
 -- By decoding only the part of the script context I was able
@@ -127,14 +124,14 @@ mkOpenRoleValidator
 
         -- Extract role token information from the own input `Value`.
         (currencySymbol, roleName) = do
-          let valuesList = PlutusTxAssocMap.toList $ getValue ownValue
+          let valuesList = AssocMap.toList $ getValue ownValue
           -- Value should contain only min. ADA and a specific role token(s) (we can have few coins of the same role
           -- token - they are all released).
           -- Performance: `find` performs here clearly worse.
           case valuesList of
-            [(possibleAdaSymbol, _), (currencySymbol, PlutusTxAssocMap.toList -> [(roleName, _)])]
+            [(possibleAdaSymbol, _), (currencySymbol, AssocMap.toList -> [(roleName, _)])]
               | possibleAdaSymbol PlutusTxPrelude.== adaSymbol -> (currencySymbol, roleName)
-            [(currencySymbol, PlutusTxAssocMap.toList -> [(roleName, _)]), _] -> (currencySymbol, roleName)
+            [(currencySymbol, AssocMap.toList -> [(roleName, _)]), _] -> (currencySymbol, roleName)
             _ -> traceError "2" -- Invalid value - we expect only the role token(s).
 
         -- In order to release the role token we have to encounter an action which uses/unlocks the role.

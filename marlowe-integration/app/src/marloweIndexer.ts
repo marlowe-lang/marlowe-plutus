@@ -1,8 +1,7 @@
-import type { BlockHash, BlockNo, SlotNo, TxIdHex } from "./cardano.js";
 import * as pg from 'pg';
 import * as db from "./marloweIndexer/db.js";
 import { waitFor } from "./async.js";
-import { TxOutRefRecord } from "./cardano.js";
+import type { BlockHash, BlockNo, SlotNo, TxId, TxIdHex, TxIx, TxOutRef } from "@konduit/konduit-consumer/cardano";
 
 const DEFAULT_DB_CONFIG: pg.ClientConfig = {
   host: '127.0.0.1',
@@ -16,7 +15,7 @@ export const TEN_SECS_IN_MS = 10000;
 // DB:
 // export interface CreateTxOutRecord {
 //   txid: Buffer;
-//   txix: number;
+//   txix: bigint;
 //   blockid: Buffer;
 //   metadata: Buffer | null;
 //   slotno: bigint;
@@ -24,7 +23,7 @@ export const TEN_SECS_IN_MS = 10000;
 // }
 
 export interface CreateTxOut {
-  txOutRef: TxOutRefRecord;
+  txOutRef: TxOutRef;
   // TODO: Decode metadata
   metadata: Buffer | null;
   slotNo: SlotNo;
@@ -36,11 +35,11 @@ namespace CreateTxOut {
   export const fromDbCreateTxOutRecord = (rec: db.CreateTxOutRecord): CreateTxOut => {
     return {
       txOutRef: {
-        txId: rec.txid.toString('hex') as TxIdHex,
-        index: rec.txix,
+        txId: rec.txid as Uint8Array as TxId,
+        txIx: rec.txix as TxIx,
       },
       metadata: rec.metadata,
-      blockHash: rec.blockid as BlockHash,
+      blockHash: rec.blockid as Uint8Array as BlockHash,
       slotNo: rec.slotno as SlotNo,
       blockNo: rec.blockno as BlockNo,
     }
@@ -113,34 +112,40 @@ export async function waitForCreateTxOut(
 
 export type ApplyTx = {
   // Contract output:
-  txOutRef: TxOutRefRecord;
-  createTxOutRef: TxOutRefRecord;
+  txOutRef: TxOutRef | null;
+  createTxOutRef: TxOutRef;
   blockHash: BlockHash;
   invalidBefore: Date;
   invalidHereafter: Date;
   metadata: Buffer | null;
   // Contract input:
-  inputTxOutRef: TxOutRefRecord;
+  inputTxOutRef: TxOutRef;
 };
 
 namespace ApplyTx {
   export const fromDbApplyTxRecord = (rec: db.ApplyTx): ApplyTx => {
+    const txOutRef: TxOutRef | null = (() => {
+      if(rec.outputtxix === null) {
+        return null;
+      }
+      return {
+        txId: rec.txid as Uint8Array as TxId,
+        txIx: rec.outputtxix as TxIx
+      };
+    })();
     return {
-      txOutRef: {
-        txId: rec.txid.toString('hex') as TxIdHex,
-        index: rec.outputtxix === null ? -1 : rec.outputtxix,
-      },
+      txOutRef,
       createTxOutRef: {
-        txId: rec.createtxid.toString('hex') as TxIdHex,
-        index: rec.createtxix,
+        txId: rec.createtxid as Uint8Array as TxId,
+        txIx: rec.createtxix as TxIx
       },
-      blockHash: rec.blockid as BlockHash,
+      blockHash: rec.blockid as Uint8Array as BlockHash,
       invalidBefore: rec.invalidbefore,
       invalidHereafter: rec.invalidhereafter,
       metadata: rec.metadata,
       inputTxOutRef: {
-        txId: rec.inputtxid.toString('hex') as TxIdHex,
-        index: rec.inputtxix,
+        txId: rec.inputtxid as Uint8Array as TxId,
+        txIx: rec.inputtxix as TxIx
       }
     }
   }

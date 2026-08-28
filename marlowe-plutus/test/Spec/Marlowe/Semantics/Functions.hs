@@ -91,7 +91,8 @@ import Test.Tasty.QuickCheck (
  )
 
 import Marlowe.Plutus.Analysis.FSSemantics (SlotLength (SlotLength))
-import Marlowe.Plutus.AssocMap as AM (
+import Marlowe.Plutus.Merkle (dataHash)
+import PlutusTx.AssocMap as AM (
   delete,
   empty,
   filter,
@@ -103,7 +104,6 @@ import Marlowe.Plutus.AssocMap as AM (
   toList,
   unsafeFromList,
  )
-import Marlowe.Plutus.Merkle (dataHash)
 import qualified PlutusTx.List as List
 
 -- | Run the tests.

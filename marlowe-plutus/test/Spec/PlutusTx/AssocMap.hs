@@ -15,8 +15,8 @@ import Marlowe.Plutus.Testing.Semantics.AssocMap (assocMapDelete, assocMapEq, as
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.QuickCheck (Arbitrary (..), Gen, Property, elements, forAll, property, testProperty)
 
--- FIXME: We work with a fork of AssocMap until the instances are fixed upstream.
-import qualified Marlowe.Plutus.AssocMap as AM (
+-- FIXME: We work with a fork of AssocMap until the instances are fixed upstream. Is this still true?
+import qualified PlutusTx.AssocMap as AM (
   Map,
   delete,
   empty,

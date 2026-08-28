@@ -40,7 +40,7 @@ import qualified PlutusLedgerApi.V2 as PV2
 import UnliftIO (throwIO)
 import Hasql.Errors (SessionError)
 import qualified Hasql.Connection as Connection
-import qualified Marlowe.Plutus.AssocMap as MMap
+import qualified PlutusTx.AssocMap as AM
 
 indexParties :: (MonadIO m, MonadLog m) => Connection -> m ()
 indexParties connection = do
@@ -136,8 +136,8 @@ toEntries ContractTxOut{..} =
   ( Max slotNo
   , nub $
       [ContractTxOutParty{..} | party <- Set.toList $ extractAll contract]
-        <> [ContractTxOutParty{..} | party <- fmap fst . MMap.keys $ accounts state]
-        <> [ContractTxOutParty{..} | party <- fmap choiceParty . MMap.keys $ choices state]
+        <> [ContractTxOutParty{..} | party <- fmap fst . AM.keys $ accounts state]
+        <> [ContractTxOutParty{..} | party <- fmap choiceParty . AM.keys $ choices state]
   )
 
 choiceParty :: ChoiceId -> Party
