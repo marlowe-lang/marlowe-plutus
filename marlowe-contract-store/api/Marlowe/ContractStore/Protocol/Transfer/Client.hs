@@ -5,14 +5,12 @@ module Marlowe.ContractStore.Protocol.Transfer.Client where
 -- import Language.Marlowe.Object.Types hiding (Close)
 -- import Language.Marlowe.Protocol.Transfer.Server
 -- import Language.Marlowe.Protocol.Transfer.Types
--- import Language.Marlowe.Runtime.ChainSync.Api (DatumHash)
 -- import Network.Protocol.Peer.Trace
 -- import Network.TypedProtocol
 -- import Numeric.Natural (Natural)
 
-import Language.Marlowe.Runtime.ChainSync.Api (DatumHash)
 import Numeric.Natural (Natural)
-import Language.Marlowe.Object.Types (ObjectBundle, Label)
+import Language.Marlowe.Object.Types (ObjectBundle, Label, ContractHash)
 import Data.Map (Map)
 import Marlowe.ContractStore.Protocol.Transfer.Types (ImportError, Message (MsgStartImport, MsgRequestExport, MsgDone, MsgStartExport, MsgContractNotFound, MsgUpload, MsgImported, MsgUploaded, MsgUploadFailed, MsgDownload, MsgCancel, MsgDownloaded, MsgExported), MarloweTransfer (StIdle, StCanUpload, StCanDownload))
 import Network.TypedProtocol.Peer.Client (Client, pattern Yield, pattern Await, pattern Effect, pattern Done, IsPipelined (NonPipelined))
@@ -24,7 +22,7 @@ newtype MarloweTransferClient m a = MarloweTransferClient
 
 data ClientStIdle m a where
   SendMsgStartImport :: ClientStCanUpload m a -> ClientStIdle m a
-  SendMsgRequestExport :: DatumHash -> ClientStExport m a -> ClientStIdle m a
+  SendMsgRequestExport :: ContractHash -> ClientStExport m a -> ClientStIdle m a
   SendMsgDone :: a -> ClientStIdle m a
 
 deriving instance (Functor m) => Functor (ClientStIdle m)
@@ -48,7 +46,7 @@ data ClientStDownload m a = ClientStDownload
 deriving instance (Functor m) => Functor (ClientStCanUpload m)
 
 data ClientStUpload m a = ClientStUpload
-  { recvMsgUploaded :: Map Label DatumHash -> m (ClientStCanUpload m a)
+  { recvMsgUploaded :: Map Label ContractHash -> m (ClientStCanUpload m a)
   , recvMsgUploadFailed :: ImportError -> m (ClientStIdle m a)
   }
   deriving (Functor)

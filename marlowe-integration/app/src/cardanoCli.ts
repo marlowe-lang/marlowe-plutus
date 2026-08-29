@@ -29,6 +29,8 @@ import {
 } from '@konduit/konduit-consumer/cardano';
 import { valueRecords2ValueCodec, type ValueRecord } from '@konduit/konduit-consumer/cardano/connectorClient';
 import { PositiveBigInt } from '@konduit/codec/integers/big';
+import type { Wallet } from './cardano.js';
+import type { Path as TaggedPath } from './exec.js';
 
 export type Path = string;
 
@@ -464,6 +466,7 @@ export async function transferFunds(
   walletSkeyFile: Path,
   recipients: Recipient[],
   tmpDir: Path | null = null,
+  networkMagicNumber?: NetworkMagicNumber,
 ): Promise<Result<TxIdHex, CommandError | JsonError>> {
   if (recipients.length > MAX_TRANSFER_RECIPIENTS)
     throw new Error(
@@ -481,9 +484,19 @@ export async function transferFunds(
     nodeFs.mkdirSync(walletTmpDir, { recursive: true });
   }
 
+  const networkArg =
+    networkMagicNumber === undefined
+      ? ""
+      : networkMagicNumber === NetworkMagicNumber.MAINNET
+        ? " --mainnet"
+        : ` --testnet-magic ${networkMagicNumber}`;
+  const socketPathArg = process.env.CARDANO_NODE_SOCKET_PATH
+    ? ` --socket-path '${process.env.CARDANO_NODE_SOCKET_PATH}'`
+    : "";
+
   const initialUtxoMap: UtxoMap = unwrapOrPanicWith(
     runCommandJsonTyped(
-      `cardano-cli conway query utxo --address=${walletAddress} --output-json`,
+      `cardano-cli conway query utxo --address=${walletAddress} --output-json${networkArg}${socketPathArg}`,
       UtxoMap.jsonDeserialiser
     ),
     (e) => `Failed to query utxo by address ${walletAddress}: ${JSON.stringify(e)}`,
@@ -493,7 +506,7 @@ export async function transferFunds(
   const selectedUtxos = selectUtxos(totalSplit, initialUtxoMap);
 
   // Prepare inputs
-  const txInsArgs = Object.keys(selectedUtxos.selectedUtxos)
+  const txInsArgs = Array.from(selectedUtxos.selectedUtxos.keys())
     .map((txOutRef) => `--tx-in '${txOutRef}'`)
     .join(" ");
 
@@ -508,7 +521,7 @@ export async function transferFunds(
       ${txInsArgs} \
       ${txOutArgs} \
       --change-address '${walletAddress}' \
-      --out-file '${unsigedTxFile}'`,
+      --out-file '${unsigedTxFile}'${networkArg}${socketPathArg}`,
   );
 
   const signedTxFile = `${walletTmpDir}/split.tx.json`;
@@ -524,4 +537,53 @@ export async function transferFunds(
   const txId = getTxIdFromTxFile(signedTxFile);
   return txId;
 }
+
+// | Generate a fresh payment-only wallet on the given network and return its
+// address plus the path to its signing key. The wallet files are written under
+// `tmpDir` (or a fresh system temp dir if not provided) — callers that need
+// cleanup are responsible for removing it.
+export const createWallet = (
+  networkMagicNumber: NetworkMagicNumber,
+  tmpDir: Path | null = null,
+): Wallet => {
+  const walletTmpDir =
+    tmpDir ?? `${nodeOs.tmpdir()}/wallet-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+  nodeFs.mkdirSync(walletTmpDir, { recursive: true });
+
+  const vkeyFile = `${walletTmpDir}/wallet.vkey`;
+  const skeyFile = `${walletTmpDir}/wallet.skey`;
+  const addrFile = `${walletTmpDir}/wallet.addr`;
+
+  unwrapOrPanicWith(
+    runCommand(
+      `cardano-cli conway address key-gen ` +
+        `--verification-key-file ${vkeyFile} ` +
+        `--signing-key-file ${skeyFile}`,
+    ),
+    (e) => `Failed to generate wallet keys: ${e}`,
+  );
+
+  const networkArg =
+    networkMagicNumber === NetworkMagicNumber.MAINNET
+      ? "--mainnet"
+      : `--testnet-magic ${networkMagicNumber}`;
+
+  unwrapOrPanicWith(
+    runCommand(
+      `cardano-cli conway address build ` +
+        `--payment-verification-key-file ${vkeyFile} ` +
+        `${networkArg} ` +
+        `--out-file ${addrFile}`,
+    ),
+    (e) => `Failed to build wallet address: ${e}`,
+  );
+
+  const addrStr = nodeFs.readFileSync(addrFile, "utf8").trim();
+  const addr = unwrapOrPanicWith(
+    AddressBech32.fromString(addrStr),
+    (e) => `Failed to parse wallet address ${addrStr}: ${e}`,
+  );
+
+  return { addr, skeyFile: skeyFile as TaggedPath };
+};
 

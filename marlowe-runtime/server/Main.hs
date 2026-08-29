@@ -1,4 +1,5 @@
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Main where
 
@@ -44,6 +45,7 @@ import Language.Marlowe.CLI.Types (AUTxO(AUTxO), MessageFormat(MessageFormatText
 import Language.Marlowe.Runtime.Cardano.Api (fromPlutusSerialisedScript, fromCardanoAddressInEra, toCardanoScriptHash, fromCardanoTxIn, fromCardanoTxOutCtxUTxO)
 import Language.Marlowe.Runtime.ChainSync.Api (paymentCredential, fromCardanoScriptHash, SlotNo(SlotNo), NodeTip(NodeTip), ChainTip(ChainTip), BlockHeader(BlockHeader))
 import Language.Marlowe.Runtime.ChainSync.Api qualified as Core
+-- import Language.Marlowe.Runtime.ChainSync.Api (DatumHash(..)) -- removed for now
 import Language.Marlowe.Runtime.Core.Api (MarloweVersion(MarloweV1))
 import Language.Marlowe.Runtime.Core.Api qualified as Core
 import Language.Marlowe.Runtime.Core.ScriptRegistry ( MarloweScripts(MarloweScripts, marloweScript, payoutScript, marloweScriptUTxOs, payoutScriptUTxOs), GetAllScripts(GetAllScripts), ReferenceScriptUtxo(ReferenceScriptUtxo, txOutRef, script, txOut), fromCardanoScriptInAnyLang, ScriptInPlutus, GetCurrentScripts(GetCurrentScripts) )
@@ -59,8 +61,8 @@ import Language.Marlowe.Runtime.Transaction.BuildConstraints (MkRoleTokenMinting
 import Language.Marlowe.Runtime.Transaction.Builders (execInit, execApplyInputs, LoadMarloweContext, Connector(Connector))
 import Language.Marlowe.Runtime.Transaction.Constraints (MarloweContext(MarloweContext), MintingSeed(MintingSeed))
 import Language.Marlowe.Runtime.Transaction.Constraints qualified as Constraints
-import Language.Marlowe.Runtime.Web.Server (runServer, serverWithOpenApi, ServerDependencies(..), RuntimeAPIWithOpenAPI)
-import Language.Marlowe.Runtime.Web.Server.Monad (ServerM, InitContract, ApplyInputs)
+import Language.Marlowe.Runtime.Web.Server (runServer, runServerMExtract, serverWithOpenApi, ServerDependencies(..), RuntimeAPIWithOpenAPI)
+import Language.Marlowe.Runtime.Web.Server.Monad (ServerM, InitContract, ApplyInputs, GetContractSource, ImportBundle)
 import Log (LogLevel (..), runLogT, Logger, logAttention, LogT, MonadLog, logInfo)
 import Log.Backend.StandardOutput (withStdOutLogger)
 import Log.Backend.StandardOutputInlined (withStdOutInlinedLogger)
@@ -77,6 +79,11 @@ import Network.Wai.Middleware.Cors ( CorsResourcePolicy (corsRequestHeaders), co
 import Options.Applicative ( Parser, ParserInfo, execParser, fullDesc, header, help, helper, info, infoOption, long, metavar, option, progDesc, short, ReadM, asum, flag', eitherReader, strOption, auto, showDefault, value, optional)
 import Paths_marlowe_runtime (version)
 import PlutusLedgerApi.V3 qualified as PV3
+import qualified Language.Marlowe.Runtime.Contract.Store as ContractStore
+import qualified Language.Marlowe.Runtime.Contract.Store.Memory as StoreMemory
+import qualified Language.Marlowe.Runtime.Web.Contract.Source.Server as SourceServer
+import Control.Monad.Catch (MonadThrow)
+import qualified UnliftIO.STM
 import Servant ( Application, ServerError (..), hoistServer, serveWithContext, Handler (Handler), ErrorFormatter, ErrorFormatters, bodyParserErrorFormatter, urlParseErrorFormatter, headerParseErrorFormatter, defaultErrorFormatters, err400, Context(EmptyContext, (:.)))
 import Servant.Server.Internal.ServerError (responseServerError)
 import System.Environment.Blank (getEnv)
@@ -331,6 +338,58 @@ mkApplyInputs (networkId, systemStart, protocolParams) fetchEraHistory getContra
 
 type LedgerInfo = (C.NetworkId, C.SystemStart, L.PParams (C.ShelleyLedgerEra C.ConwayEra))
 
+-- | Create the in-memory `ContractStore` (STM-backed) wrapped for
+-- `ServerM`. The store is constructed once at startup. Every operation
+-- is lifted through `liftIO . atomically` so the store works in
+-- `ServerM` even though it's backed by `STM`.
+mkServerMStore :: ServerM (ContractStore.ContractStore ServerM)
+mkServerMStore = do
+  stmStore <- liftIO $ UnliftIO.STM.atomically StoreMemory.createContractStoreInMemory
+
+  let liftStage :: forall a. UnliftIO.STM.STM a -> ServerM a
+      liftStage = liftIO . UnliftIO.STM.atomically
+      store0 :: ContractStore.ContractStore ServerM
+      store0 =
+        ContractStore.ContractStore
+          { ContractStore.createContractStagingArea =
+              fmap
+                ( \(ContractStore.ContractStagingArea s f c d de) ->
+                    ContractStore.ContractStagingArea
+                      { ContractStore.stageContract = liftStage . s
+                      , ContractStore.flush = liftStage f
+                      , ContractStore.commit = liftStage c
+                      , ContractStore.discard = liftStage d
+                      , ContractStore.doesContractExist = liftStage . de
+                      }
+                )
+                (liftStage $ ContractStore.createContractStagingArea stmStore)
+          , ContractStore.getContract = liftStage . ContractStore.getContract stmStore
+          -- FIXME: paluh
+          , ContractStore.merkleizeInputs = undefined
+          , ContractStore.setGCRoots = \hs -> liftStage $ ContractStore.setGCRoots stmStore hs
+          }
+  pure store0
+
+-- | Wrap the `Source.Server.post` as a list-taking `ImportBundle m`. This
+-- matches the `Web.ImportBundle` type alias which takes `[ObjectBundle]`
+-- rather than a `Producer` — the `StreamBody` handler in the Servant
+-- router is responsible for materializing the producer into a list.
+mkImportBundle
+  :: (MonadIO m, MonadThrow m)
+  => ContractStore.ContractStore m
+  -> ImportBundle m
+mkImportBundle store mainLabel bundles =
+  SourceServer.post store mainLabel bundles
+
+-- | Adapter from `ContractStore.getContract` (which returns
+-- `Maybe ContractWithAdjacency`) to the field `getContractSource`
+-- expected by `ServerDependencies`. For now this is a direct mapping;
+-- the GET endpoints that consume it are not yet implemented.
+mkGetContractSource
+  :: ContractStore.ContractStore m
+  -> GetContractSource m
+mkGetContractSource _store _hash = error "GET /contracts/sources/{id} not yet implemented"
+
 queryLedgerInfo :: C.NetworkId -> C.LocalNodeConnectInfo -> IO LedgerInfo
 queryLedgerInfo networkId connectInfo = do
   rawQueryResult <- C.executeLocalStateQueryExpr connectInfo C.VolatileTip $
@@ -367,12 +426,11 @@ mkGetCurrentScripts networkId = \case
         MarloweV1 -> ms
 
 mkServerDependencies
-  :: forall
-   . Pool.Pool
+  :: Pool.Pool
   -> LedgerInfo
   -> GetAllScripts
   -> GetCurrentScripts
-  -> ServerDependencies ServerM
+  -> ServerM (ServerDependencies ServerM)
 mkServerDependencies pool ledgerInfo getAllScripts getCurrentScripts = do
   let
     dbQueries :: DatabaseQueries ServerM
@@ -403,19 +461,26 @@ mkServerDependencies pool ledgerInfo getAllScripts getCurrentScripts = do
       getAllScripts
       getCurrentSlotNo
 
-  ServerDependencies
-    { applyInputs
-    , burnRoleTokens = undefined
-    , initContract
-    , loadContract = fmap (fmap Right) . getContractState dbQueries
-    , loadPayout = undefined
-    , loadPayouts = undefined
-    , loadTransaction = undefined
-    , loadTransactions = undefined
-    , loadWithdrawal = undefined
-    , loadWithdrawals = undefined
-    , withdraw = undefined
-    }
+  -- The in-memory contract store (STM-backed).
+  contractStore0 <- mkServerMStore
+
+  let deps :: ServerDependencies ServerM
+      deps =
+        ServerDependencies
+          { applyInputs
+          , burnRoleTokens = undefined
+          , contractStore = contractStore
+          , initContract
+          , loadContract = fmap (fmap Right) . getContractState dbQueries
+          , loadPayout = undefined
+          , loadPayouts = undefined
+          , loadTransaction = undefined
+          , loadTransactions = undefined
+          , loadWithdrawal = undefined
+          , loadWithdrawals = undefined
+          , withdraw = undefined
+          }
+  pure deps
 
 runApp :: Options -> IO ()
 runApp opts = do
@@ -451,7 +516,6 @@ runApp opts = do
       Right getCurrentScripts -> pure getCurrentScripts
     let
       prettyLog = True
-      dependencies = mkServerDependencies pool ledgerInfo getAllScripts getCurrentScripts
       withLogger = if prettyLog then withStdOutLogger else withStdOutInlinedLogger
       errorRewriter = ResponseRewriterMiddleware.defaultErrorRewriter
       handleException :: SomeException -> Wai.Response
@@ -493,7 +557,9 @@ runApp opts = do
           , "scriptHashes" .= scriptHashes
           ]
 
-      Wai.runSettings waiSettings do
+      dependencies <- runServerMExtract undefined (mkServerDependencies pool ledgerInfo getAllScripts getCurrentScripts)
+
+      Wai.runSettings waiSettings $
         ResponseRewriterMiddleware.mkMiddleware errorRewriter $
           serverMiddleware debugInfoHttpResponse appLogger opts.logLevel $
             serveWithContext api (customFormatters :. EmptyContext) $

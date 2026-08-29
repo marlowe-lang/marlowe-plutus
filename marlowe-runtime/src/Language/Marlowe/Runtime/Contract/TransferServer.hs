@@ -1,0 +1,216 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeFamilies #-}
+
+-- | The `MarloweTransfer` protocol server, adapted from
+-- `.external-references/marlowe-cardano/marlowe-runtime/contract/Language/Marlowe/Runtime/Contract/TransferServer.hs`.
+-- The merkleization logic (`merkleizeAndStoreContracts`,
+-- `merkleizeAndStore`, `merkleizeAndStoreCase`) is copied verbatim. The
+-- outer `ServerSource` / `ResourceT` wrapper from the original has been
+-- dropped for this first cut: the web handler drives the same algebra
+-- directly via `runTransferServer`, so we do not need the typed-protocol
+-- `ServerSource` plumbing. The protocol scaffolding
+-- (`MarloweTransferServer`, `LinkError` handling, etc.) is provided by
+-- `marlowe-contract-store`.
+module Language.Marlowe.Runtime.Contract.TransferServer (
+  TransferServerDependencies (..),
+  runTransferServer,
+  runImport,
+  merkleizeAndStoreContracts,
+) where
+
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Except (ExceptT (..), runExceptT, throwE)
+import Control.Monad.Trans.Maybe (MaybeT (..))
+import Control.Monad.Trans.RWS (RWST, evalRWST)
+import qualified Control.Monad.Trans.RWS as RWS
+import qualified Data.DList as DList
+import qualified Data.Map as Map
+import qualified Data.Set as Set
+import qualified Data.Text as T
+import Data.Foldable (traverse_)
+import Data.Maybe (mapMaybe)
+import qualified Language.Marlowe.Object.Link as O
+import qualified Language.Marlowe.Object.Types as O
+import Language.Marlowe.Runtime.Contract.Api (ContractWithAdjacency (..))
+import Language.Marlowe.Runtime.Contract.Store (ContractStagingArea (..), ContractStore (..))
+import Language.Marlowe.Object.Types (ContractHash(ContractHash, unContractHash))
+import Marlowe.ContractStore.Protocol.Transfer.Server (
+  ServerStCanDownload (..),
+  ServerStCanUpload (..),
+  ServerStExport (..),
+  ServerStIdle (..),
+  ServerStDownload (..),
+  ServerStUpload (..),
+ )
+import Marlowe.ContractStore.Protocol.Transfer.Types (ImportError (..))
+import Marlowe.Plutus.Semantics.Types qualified as Core
+import qualified PlutusLedgerApi.V2 as PV2
+import PlutusTx.Builtins.Internal (BuiltinByteString (..))
+
+-- | Dependencies of the transfer server.
+newtype TransferServerDependencies m = TransferServerDependencies
+  { contractStore :: ContractStore m
+  }
+
+-- | Drive the transfer server algebra. Returns the initial `ServerStIdle`
+-- state; the caller can then invoke `recvMsgStartImport`,
+-- `recvMsgUpload`, etc. to feed bundles and observe results.
+--
+-- This is the web-server-friendly equivalent of the original
+-- `transferServer :: TransferServerDependencies m -> ServerSource
+-- MarloweTransferServer m ()`. The bodies of `idleServer`,
+-- `uploadServer`, and `downloadServer` are preserved from the original.
+runTransferServer
+  :: forall m a
+   . (MonadFail m)
+  => TransferServerDependencies m
+  -> m (ServerStIdle m a)
+runTransferServer deps@TransferServerDependencies{contractStore} = do
+  stage <- createContractStagingArea contractStore
+  pure $ idleServer deps stage
+
+idleServer :: forall m a. (MonadFail m) => TransferServerDependencies m -> ContractStagingArea m -> ServerStIdle m a
+idleServer deps stage =
+  ServerStIdle
+    { recvMsgStartImport = pure $ uploadServer deps mempty stage
+    , recvMsgRequestExport = \rootHash -> do
+        hashesO <- getClosureInExportOrder (contractStore deps) rootHash
+        let toContractHash (ContractHash bs) = ContractHash bs
+        pure $
+          maybe
+            (SendMsgContractNotFound (idleServer deps stage))
+            (SendMsgStartExport . downloadServer deps stage)
+            (map toContractHash <$> hashesO)
+    , recvMsgDone = error "runTransferServer: recvMsgDone reached; pass the resulting ServerStIdle back to your driver."
+    }
+
+uploadServer
+  :: forall m a
+   . (MonadFail m)
+  => TransferServerDependencies m
+  -> O.SymbolTable
+  -> ContractStagingArea m
+  -> ServerStCanUpload m a
+uploadServer deps objects stage =
+  ServerStCanUpload
+    { recvMsgImported = do
+        _ <- commit stage
+        pure $ idleServer deps stage
+    , recvMsgUpload = \bundle -> do
+        result <-
+          runExceptT $
+            O.linkBundle' bundle (merkleizeAndStoreContracts stage) objects
+        case result of
+          Left err -> pure $ SendMsgUploadFailed err (idleServer deps stage)
+          Right (Left err) -> pure $ SendMsgUploadFailed (LinkError err) (idleServer deps stage)
+          Right (Right (linked, objects')) -> do
+            _ <- flush stage
+            _ <- commit stage
+            pure $
+              SendMsgUploaded (Map.fromList $ mapMaybe sequence linked) $
+                uploadServer deps objects' stage
+    }
+
+downloadServer
+  :: forall m a
+   . MonadFail m
+  => TransferServerDependencies m
+  -> ContractStagingArea m
+  -> [ContractHash]
+  -> ServerStCanDownload m a
+downloadServer deps stage hashes =
+  ServerStCanDownload
+    { recvMsgCancel = pure $ idleServer deps stage
+    , recvMsgDownload = \i -> do
+        let (batchHashes, hashes') = splitAt (fromIntegral i) hashes
+        case batchHashes of
+          [] -> pure $ SendMsgExported (idleServer deps stage)
+          _ -> do
+            let getHashContract (ContractHash bs) =
+                  loadContract (contractStore deps) (ContractHash bs)
+            batches <- traverse getHashContract batchHashes
+            pure $
+              SendMsgDownloaded (O.ObjectBundle batches) $
+                downloadServer deps stage hashes'
+    }
+
+getClosureInExportOrder :: forall m. Monad m => ContractStore m -> ContractHash -> m (Maybe [O.ContractHash])
+getClosureInExportOrder store rootHash = runMaybeT $ DList.toList . snd <$> evalRWST (writeClosureInExportOrder rootHash) () mempty
+  where
+    writeClosureInExportOrder :: ContractHash -> RWST () (DList.DList O.ContractHash) (Set.Set O.ContractHash) (MaybeT m) ()
+    writeClosureInExportOrder hash = do
+      visited <- RWS.get
+      let hashO = O.fromCoreContractHash (BuiltinByteString (unContractHash hash))
+      if Set.member hashO visited
+        then pure ()
+        else do
+          ContractWithAdjacency{..} <- lift $ MaybeT $ getContract store hash
+          let toContractHash (O.ContractHash bs) = ContractHash bs
+          traverse_ writeClosureInExportOrder
+            (Set.toList $ Set.map toContractHash adjacency)
+          RWS.tell $ pure hashO
+          RWS.modify $ Set.insert hashO
+
+loadContract :: (MonadFail m) => ContractStore m -> ContractHash -> m O.LabelledObject
+loadContract store hash = do
+  Just ContractWithAdjacency{..} <- getContract store hash
+  let hashO = O.fromCoreContractHash (BuiltinByteString (unContractHash hash))
+  pure $ O.LabelledObject (O.Label $ T.pack $ show hashO) O.ContractType $ O.fromCoreContract contract
+
+merkleizeAndStoreContracts
+  :: (Monad m) => ContractStagingArea m -> O.LinkedObject -> ExceptT ImportError m (O.LinkedObject, Maybe ContractHash)
+merkleizeAndStoreContracts stage = \case
+  O.LinkedContract contract -> do
+    merkleizedContract <- merkleizeAndStore stage contract
+    hash <- lift $ stageContract stage merkleizedContract
+    pure (O.LinkedContract merkleizedContract, Just hash)
+  obj -> pure (obj, Nothing)
+
+merkleizeAndStore :: (Monad m) => ContractStagingArea m -> Core.Contract -> ExceptT ImportError m Core.Contract
+merkleizeAndStore stage = \case
+  Core.Close -> pure Core.Close
+  Core.Pay account payee token value contract -> Core.Pay account payee token value <$> merkleizeAndStore stage contract
+  Core.If obs c1 c2 -> Core.If obs <$> merkleizeAndStore stage c1 <*> merkleizeAndStore stage c2
+  Core.When cases timeout contract ->
+    Core.When <$> traverse (merkleizeAndStoreCase stage) cases <*> pure timeout <*> merkleizeAndStore stage contract
+  Core.Let valueId value contract -> Core.Let valueId value <$> merkleizeAndStore stage contract
+  Core.Assert obs contract -> Core.Assert obs <$> merkleizeAndStore stage contract
+
+merkleizeAndStoreCase
+  :: (Monad m) => ContractStagingArea m -> Core.Case Core.Contract -> ExceptT ImportError m (Core.Case Core.Contract)
+merkleizeAndStoreCase stage@ContractStagingArea{..} = \case
+  Core.Case action Core.Close -> pure $ Core.Case action Core.Close
+  Core.Case action contract -> do
+    contract' <- merkleizeAndStore stage contract
+    ContractHash hash <- lift $ stageContract contract'
+    pure $ Core.MerkleizedCase action $ BuiltinByteString hash
+  Core.MerkleizedCase action hash -> do
+    exists <- lift $ doesContractExist $ ContractHash (PV2.fromBuiltin @PV2.BuiltinByteString hash)
+    if exists
+      then pure $ Core.MerkleizedCase action hash
+      else throwE $ ContinuationNotInStore $ O.fromCoreContractHash hash
+
+-- | One-shot wrapper around `runTransferServer`: opens a staging area,
+-- links the bundle, merkleizes every linked contract, commits, and
+-- returns the final `Map Label ContractHash`. This is the convenience entry
+-- point the web handler uses to drive the import; the original
+-- `transferServer` returned a `ServerSource` instead, but for the web
+-- case a single-shot result is the right shape.
+runImport
+  :: forall m
+   . (Monad m)
+  => TransferServerDependencies m
+  -> O.ObjectBundle
+  -> m (Either ImportError (Map.Map O.Label ContractHash))
+runImport TransferServerDependencies{contractStore} bundle = do
+  stage <- createContractStagingArea contractStore
+  result <-
+    runExceptT $
+      O.linkBundle' bundle (merkleizeAndStoreContracts stage) mempty
+  case result of
+    Left err -> pure (Left err)
+    Right (Left err) -> pure (Left (LinkError err))
+    Right (Right (linked, _)) -> do
+      _ <- flush stage
+      _ <- commit stage
+      pure $ Right $ Map.fromList $ mapMaybe sequence linked

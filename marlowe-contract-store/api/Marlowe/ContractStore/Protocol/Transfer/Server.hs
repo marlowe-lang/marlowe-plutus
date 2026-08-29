@@ -1,8 +1,7 @@
 module Marlowe.ContractStore.Protocol.Transfer.Server where
 
-import Language.Marlowe.Runtime.ChainSync.Api (DatumHash)
 import Numeric.Natural (Natural)
-import Language.Marlowe.Object.Types (ObjectBundle, Label)
+import Language.Marlowe.Object.Types (ObjectBundle, Label, ContractHash)
 import Data.Map (Map)
 import Marlowe.ContractStore.Protocol.Transfer.Types (ImportError, Message (MsgStartImport, MsgRequestExport, MsgDone, MsgStartExport, MsgContractNotFound, MsgUpload, MsgImported, MsgUploaded, MsgUploadFailed, MsgDownload, MsgCancel, MsgDownloaded, MsgExported), MarloweTransfer (StIdle, StCanUpload, StCanDownload))
 import Network.TypedProtocol.Peer.Server (Server, pattern Yield, pattern Await, pattern Effect, pattern Done, IsPipelined (NonPipelined))
@@ -15,7 +14,7 @@ newtype MarloweTransferServer m a = MarloweTransferServer
 
 data ServerStIdle m a = ServerStIdle
   { recvMsgStartImport :: m (ServerStCanUpload m a)
-  , recvMsgRequestExport :: DatumHash -> m (ServerStExport m a)
+  , recvMsgRequestExport :: ContractHash -> m (ServerStExport m a)
   , recvMsgDone :: m a
   }
   deriving (Functor)
@@ -45,7 +44,7 @@ data ServerStDownload m a where
 deriving instance (Functor m) => Functor (ServerStDownload m)
 
 data ServerStUpload m a where
-  SendMsgUploaded :: Map Label DatumHash -> ServerStCanUpload m a -> ServerStUpload m a
+  SendMsgUploaded :: Map Label ContractHash -> ServerStCanUpload m a -> ServerStUpload m a
   SendMsgUploadFailed :: ImportError -> ServerStIdle m a -> ServerStUpload m a
 
 deriving instance (Functor m) => Functor (ServerStUpload m)

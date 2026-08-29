@@ -17,7 +17,7 @@ module Language.Marlowe.Runtime.Web.Client (
   postContract,
   postTransaction,
   -- postContractCreateTx,
-  -- postContractSource,
+  postContractSource,
   -- postWithdrawal,
   -- postWithdrawalCreateTx,
   -- putContract,
@@ -46,6 +46,7 @@ import Language.Marlowe.Runtime.Web.Contract.Transaction.API (PostTransactionsRe
 import Language.Marlowe.Runtime.Web.Core.Address ( Address, StakeAddress,)
 import Language.Marlowe.Runtime.Web.Core.Asset ( AssetId, PolicyId,)
 import Language.Marlowe.Runtime.Web.Core.NetworkId (NetworkId)
+import Language.Marlowe.Runtime.Web.Core.Object.Schema ()
 import Language.Marlowe.Runtime.Web.Core.Tip (ChainTip)
 import Language.Marlowe.Runtime.Web.Core.Tx ( TextEnvelope, TxId, TxOutRef,)
 import Language.Marlowe.Runtime.Web.Core.Tx qualified as Web
@@ -61,8 +62,6 @@ import Servant.Client.Streaming (ClientM)
 import Servant.Client.Streaming qualified as ServantStreaming
 import Servant.Pagination (ExtractRange (extractRange), HasPagination (..), PutRange (..), Range, Ranges)
 import Servant.Pipes ()
-
--- import Language.Marlowe.Runtime.Web.Core.Object.Schema ()
 
 runtimeClient :: Client ClientM RuntimeAPI
 runtimeClient = ServantStreaming.client runtimeApi
@@ -135,7 +134,7 @@ postContract
   -> PostContractsRequest
   -> ClientM (CreateTxEnvelope CardanoTx)
 postContract stakeAddress changeAddress availableUTxOs request = do
-  let (_ :<|> mkPostContract) :<|> _ = runtimeClient
+  let (_ :<|> mkPostContract :<|> _) :<|> _ = runtimeClient
   let postContract' = mkPostContract stakeAddress
   union <-
     postContract'
@@ -148,8 +147,8 @@ postContract stakeAddress changeAddress availableUTxOs request = do
 
 getContract :: ContractId -> ClientM ContractState
 getContract contractId = do
-  let (contractApi :<|> _) :<|> _ = runtimeClient
-  let getContract' :<|> _ = contractApi contractId
+  let (contractClient :<|> _) :<|> _ = runtimeClient
+  let getContract' :<|> _ = contractClient contractId
   response <- getContract'
   case matchUnion response of
     Just (contractState :: GetContractResponse) -> pure (retractLink contractState)
@@ -163,12 +162,12 @@ postTransaction
   -> ClientM (ApplyInputsTxEnvelope CardanoTx)
 postTransaction changeAddress availableUTxOs contractId request = do
   let
-    (contractApi :<|> _) :<|> _ = runtimeClient
-    _ :<|> (_ :<|> transactionsAPI) = contractApi contractId
-    _ :<|> postTransaction' :<|> _ = transactionsAPI
+    (mkContractsClient :<|> _) :<|> _ = runtimeClient
+    _ :<|> (_ :<|> transactionsClient) = mkContractsClient contractId
+    _ :<|> postTransactionClient :<|> _ = transactionsClient
 
   union <-
-    postTransaction'
+    postTransactionClient
       request
       changeAddress
       (CommaList availableUTxOs)
@@ -176,17 +175,17 @@ postTransaction changeAddress availableUTxOs contractId request = do
     Just (response :: PostTransactionsResponse CardanoTx) -> pure (retractLink response)
     Nothing -> liftIO $ fail "Unexpected response from postTransaction"
 
--- postContractSource
---   :: Label
---   -> Producer ObjectBundle IO ()
---   -> ClientM PostContractSourceResponse
--- postContractSource main bundles = do
---   let contractsClient :<|> _ = runtimeClient
---   let _ :<|> _ :<|> _ :<|> contractSourcesClient = contractsClient
---   let postContractSource' :<|> _ = contractSourcesClient
---   response <- postContractSource' main bundles
---   status <- extractStatus response
---   pure (status, getResponse response)
+postContractSource
+  :: Label
+  -> Producer ObjectBundle IO ()
+  -> ClientM PostContractSourceResponse
+postContractSource main bundles = do
+  let (_ :<|> _ :<|> sourceClient) :<|> _ = runtimeClient
+  let postContractSourceClient = sourceClient
+  union <- postContractSourceClient main bundles
+  case matchUnion union of
+    Just (response :: PostContractSourceResponse) -> pure response
+    Nothing -> liftIO $ fail "Unexpected response from postContractSource"
 -- 
 -- getContractSource :: ContractSourceId -> Bool -> ClientM Contract
 -- getContractSource contractSourceId expand = do

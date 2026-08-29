@@ -79,6 +79,7 @@ let
     pkgs.gnused
     pkgs.jq
     pkgs.nixpkgs-fmt
+    pkgs.nodejs
     pkgs.perl
     pkgs.postgresql
     pkgs.postgresql.lib
@@ -94,6 +95,35 @@ let
     pkgs.z3
     pkgs.zlib
   ];
+
+  commonShellHook = ''
+    ${preCommitCheck.shellHook}
+    export ROOT_DIR="$(git rev-parse --show-toplevel)"
+    export RUN_DIR="$ROOT_DIR/.run"
+
+    # Vars required by postgres part of the process compose:
+    export SQITCH_CHDIR="$ROOT_DIR/sql"
+    export POSTGRES_DIR="$RUN_DIR/postgres"
+    export PGPORT="15432"
+
+    # Vars required by testnet part of the process compose:
+    export TESTNET_DIR="$RUN_DIR/testnet"
+    export CARDONNAY_TESTNET_ID="9"
+    export CARDANO_NODE_NETWORK_ID=42
+    source <(cardonnay control print-env -i "$CARDONNAY_TESTNET_ID" -w "$TESTNET_DIR")
+
+    # This **will be** initialized by the testnet process compose when executed
+    export FAUCET_ADDR_FILE="$TESTNET_DIR/faucet.addr"
+    export FAUCET_SKEY_FILE="$TESTNET_DIR/faucet.skey"
+    export MARLOWE_PUBLISHING_INFO_FILE=$"$TESTNET_DIR/marlowe-publishing-info.json"
+
+    export PROCESS_COMPOSE_TESTNET_YAML=${process-compose-testnet-yaml}
+    export PROCESS_COMPOSE_POSTGRES_YAML=${process-compose-postgres-yaml}
+    export PROCESS_COMPOSE_DEV_ENV_YAML=${process-compose-dev-env-yaml}
+
+    export LD_LIBRARY_PATH="${ld-library-path}:$LD_LIBRARY_PATH"
+    export PATH=$PATH:"$ROOT_DIR/marlowe-integration/node_modules/.bin"
+  '';
 
   systemLevelLibDeps = project.shellFor {
     packages = p: [p.cardano-crypto-class p.ouroboros-consensus];
@@ -115,8 +145,21 @@ let
         jail.combinators.mount-cwd
         (jail.combinators.try-fwd-env "PKG_CONFIG_PATH")
         (jail.combinators.try-fwd-env "LD_LIBRARY_PATH")
+
+        (jail.combinators.try-fwd-env "ROOT_DIR")
+        (jail.combinators.try-fwd-env "RUN_DIR")
+        (jail.combinators.try-fwd-env "SQITCH_CHDIR")
+        (jail.combinators.try-fwd-env "POSTGRES_DIR")
+        (jail.combinators.try-fwd-env "PGPORT")
+        (jail.combinators.try-fwd-env "TESTNET_DIR")
+        (jail.combinators.try-fwd-env "CARDONNAY_TESTNET_ID")
         (jail.combinators.try-fwd-env "CARDANO_NODE_NETWORK_ID")
         (jail.combinators.try-fwd-env "CARDANO_NODE_SOCKET_PATH")
+        (jail.combinators.try-fwd-env "FAUCET_ADDR_FILE")
+        (jail.combinators.try-fwd-env "FAUCET_SKEY_FILE")
+        (jail.combinators.try-fwd-env "MARLOWE_PUBLISHING_INFO_FILE")
+        # we pass only the information about the running dev env
+        (jail.combinators.try-fwd-env "PROCESS_COMPOSE_DEV_ENV_YAML")
       ];
 
     extraReadwriteDirs = [
@@ -272,9 +315,9 @@ let
       export PROCESS_COMPOSE_TESTNET_YAML=${process-compose-testnet-yaml}
       export PROCESS_COMPOSE_POSTGRES_YAML=${process-compose-postgres-yaml}
       export PROCESS_COMPOSE_DEV_ENV_YAML=${process-compose-dev-env-yaml}
+      export PATH=$PATH:"$ROOT_DIR/marlowe-integration/node_modules/.bin"
 
       export LD_LIBRARY_PATH="${ld-library-path}:$LD_LIBRARY_PATH"
-      export PATH=$PATH:"$ROOT_DIR/marlowe-integration/node_modules/.bin"
 
       # ${db-schema-info}/bin/db-schema-info sql/final
     '';

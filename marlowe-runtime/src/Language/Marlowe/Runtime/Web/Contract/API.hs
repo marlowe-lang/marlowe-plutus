@@ -15,7 +15,7 @@ module Language.Marlowe.Runtime.Web.Contract.API (
   GetContractResponse,
   ContractSourcesAPI,
   ContractSourceAPI,
-  ContractSourceId (..),
+  ContractSourceId(..),
   GetContractsAPI,
   GetContractsResponse,
   PostContractsRequest (..),
@@ -24,22 +24,15 @@ module Language.Marlowe.Runtime.Web.Contract.API (
   ContractOrSourceId (..),
 ) where
 
-import Data.Aeson (
-  FromJSON (parseJSON),
-  ToJSON (toJSON),
-  Value (String),
-  withText,
- )
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Map (Map)
 import Data.Text (Text)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
-import Marlowe.Plutus.Semantics.Types (Contract)
 import qualified Marlowe.Plutus.Semantics.Types as Semantics
-import Language.Marlowe.Object.Types (Label, ObjectBundle)
 import Language.Marlowe.Runtime.Web.Adapter.Links (WithLink)
 import Language.Marlowe.Runtime.Web.Adapter.Pagination (PaginatedGet)
-import Language.Marlowe.Runtime.Web.Adapter.Servant (ListObject, OperationId, RenameResponseSchema)
+import Language.Marlowe.Runtime.Web.Adapter.Servant (OperationId, RenameResponseSchema)
 import Language.Marlowe.Runtime.Web.Contract.Next.API (NextAPI)
 import Language.Marlowe.Runtime.Web.Contract.Next.Schema ()
 import Language.Marlowe.Runtime.Web.Core.Address (
@@ -67,59 +60,33 @@ import Language.Marlowe.Runtime.Web.Core.BlockHeader (
  )
 import Language.Marlowe.Runtime.Web.Core.Metadata (Metadata)
 import Language.Marlowe.Runtime.Web.Core.Roles (RolesConfig)
-import Pipes (Producer)
 import Servant (
   Capture,
   Description,
-  FromHttpApiData,
-  Get,
   Header',
   JSON,
-  NewlineFraming,
   Optional,
-  Post,
-  Proxy (..),
-  QueryFlag,
-  QueryParam',
   QueryParams,
   ReqBody,
-  Required,
-  StreamBody,
   Strict,
   Summary,
-  ToHttpApiData,
   type (:<|>),
   type (:>), HasStatus, StatusOf
  )
-import Servant.API (FromHttpApiData (..), UVerb, StdMethod (GET, POST))
+import Servant.API (UVerb, StdMethod (GET, POST))
 import Servant.Pagination (
   HasPagination (RangeType, getFieldValue),
  )
 
 import Control.DeepSeq (NFData)
-import Control.Lens ((&), (?~))
-import Control.Monad ((<=<))
-import Data.Aeson.Types (parseFail)
-import Data.ByteString (ByteString)
-import Data.OpenApi (
-  HasOneOf (oneOf),
-  HasType (type_),
-  NamedSchema (NamedSchema),
-  OpenApiType (OpenApiString),
-  ToParamSchema (..),
-  ToSchema (..),
-  declareSchemaRef,
- )
-import qualified Data.OpenApi as OpenApi
-import qualified Data.Text as T
-import Language.Marlowe.Runtime.Web.Adapter.ByteString (hasLength)
-import Language.Marlowe.Runtime.Web.Core.Base16 (Base16 (..))
+import Data.OpenApi (ToSchema (..))
 import Language.Marlowe.Runtime.Web.Tx.API (
   CardanoTx,
   CreateTxEnvelope,
   PostTxAPI,
  )
 import Language.Marlowe.Runtime.Web.Contract.Transaction.API (TransactionsAPI)
+import Language.Marlowe.Runtime.Web.Contract.Source.API (ContractSourcesAPI, ContractOrSourceId (..), ContractSourceAPI, ContractSourceId (..), PostContractSourceResponse (..))
 
 type ContractId = TxOutRef
 
@@ -127,7 +94,7 @@ type ContractsAPI =
   Capture "contractId" ContractId :> ContractAPI
   :<|> PostContractsAPI
   -- :<|> GetContractsAPI
-  -- :<|> "sources" :> ContractSourcesAPI
+  :<|> "sources" :> ContractSourcesAPI
 
 -- | GET /contracts sub-API
 type GetContractsAPI =
@@ -200,44 +167,34 @@ type GetContractResponse = WithLink "transactions" ContractState
 instance HasStatus GetContractResponse where
   type StatusOf GetContractResponse = 200
 
--- | /contracts/sources sub-API
-type ContractSourcesAPI =
-  PostContractSourcesAPI
-    :<|> Capture "contractSourceId" ContractSourceId :> ContractSourceAPI
+data ContractHeader = ContractHeader
+  { contractId :: TxOutRef
+  , roleTokenMintingPolicyId :: Maybe PolicyId
+  , version :: MarloweVersion
+  , tags :: Map Text Metadata
+  , metadata :: Map Word64 Metadata
+  , status :: TxStatus
+  , block :: Maybe BlockHeader
+  }
+  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON, ToSchema)
 
--- | /contracts/sources/:contractSourceId sub-API
-type ContractSourceAPI =
-  GetContractSourceAPI
-    :<|> "adjacency"
-      :> Summary "Get adjacent contract source IDs by ID"
-      :> Description
-          "Get the contract source IDs which are adjacent to a contract source (they appear directly in the contract source)."
-      :> OperationId "getContractSourceAdjacency"
-      :> GetContractSourceIdsAPI
-    :<|> "closure"
-      :> Summary "Get contract source closure by ID"
-      :> Description
-          "Get the contract source IDs which appear in the full hierarchy of a contract source (including the ID of the contract source its self)."
-      :> OperationId "getContractSourceClosure"
-      :> GetContractSourceIdsAPI
+instance NFData ContractHeader
 
-type PostContractSourcesAPI =
-  Summary "Upload contract sources"
-    :> Description
-        "Upload a bundle of marlowe objects as contract sources. This API supports request body streaming, with newline \
-        \framing between request bundles."
-    :> OperationId "initContractSources"
-    :> QueryParam' '[Required, Description "The label of the top-level contract object in the bundle(s)."] "main" Label
-    :> StreamBody NewlineFraming JSON (Producer ObjectBundle IO ())
-    :> Post '[JSON] PostContractSourceResponse
+instance HasPagination ContractHeader "contractId" where
+  type RangeType ContractHeader "contractId" = ContractId
+  getFieldValue _ ContractHeader{..} = contractId
 
-type GetContractSourceAPI =
-  Summary "Get contract source by ID"
-    :> OperationId "getContractSourceById"
-    :> QueryFlag "expand"
-    :> Get '[JSON] Contract
-
-type GetContractSourceIdsAPI = RenameResponseSchema "ContractSourceIds" :> Get '[JSON] (ListObject ContractSourceId)
+data PostContractsRequest = PostContractsRequest
+  { tags :: Map Text Metadata
+  , metadata :: Map Word64 Metadata
+  , version :: MarloweVersion
+  , roles :: Maybe RolesConfig
+  , threadTokenName :: Maybe Text
+  , contract :: ContractOrSourceId
+  , accounts :: Map Party Assets
+  , minUTxODeposit :: Maybe Integer
+  }
+  deriving (Show, Eq, Generic, ToJSON, FromJSON, ToSchema)
 
 type PostContractsResponse tx = WithLink "contract" (CreateTxEnvelope tx)
 
@@ -265,82 +222,3 @@ data ContractState = ContractState
 
 instance NFData ContractState
 
-data ContractHeader = ContractHeader
-  { contractId :: TxOutRef
-  , roleTokenMintingPolicyId :: Maybe PolicyId
-  , version :: MarloweVersion
-  , tags :: Map Text Metadata
-  , metadata :: Map Word64 Metadata
-  , status :: TxStatus
-  , block :: Maybe BlockHeader
-  }
-  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON, ToSchema)
-
-instance NFData ContractHeader
-
-data PostContractSourceResponse = PostContractSourceResponse
-  { contractSourceId :: ContractSourceId
-  , intermediateIds :: Map Label ContractSourceId
-  }
-  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON, ToSchema)
-
-data PostContractsRequest = PostContractsRequest
-  { tags :: Map Text Metadata
-  , metadata :: Map Word64 Metadata
-  , version :: MarloweVersion
-  , roles :: Maybe RolesConfig
-  , threadTokenName :: Maybe Text
-  , contract :: ContractOrSourceId
-  , accounts :: Map Party Assets
-  , minUTxODeposit :: Maybe Integer
-  }
-  deriving (Show, Eq, Generic, ToJSON, FromJSON, ToSchema)
-
-newtype ContractSourceId = ContractSourceId {unContractSourceId :: ByteString}
-  deriving (Eq, Ord, Generic)
-  deriving (Show, ToHttpApiData, ToJSON) via Base16
-
-instance FromHttpApiData ContractSourceId where
-  parseUrlPiece = fmap ContractSourceId . (hasLength 32 . unBase16 <=< parseUrlPiece)
-
-instance FromJSON ContractSourceId where
-  parseJSON =
-    withText "ContractSourceId" $ either (parseFail . T.unpack) pure . parseUrlPiece
-
-instance ToSchema ContractSourceId where
-  declareNamedSchema = pure . NamedSchema (Just "ContractSourceId") . toParamSchema
-
-instance ToParamSchema ContractSourceId where
-  toParamSchema _ =
-    mempty
-      & type_ ?~ OpenApiString
-      & OpenApi.description ?~ "The hex-encoded identifier of a Marlowe contract source"
-      & OpenApi.pattern ?~ "^[a-fA-F0-9]{64}$"
-
-newtype ContractOrSourceId = ContractOrSourceId (Either Semantics.Contract ContractSourceId)
-  deriving (Show, Eq, Ord, Generic)
-
-instance FromJSON ContractOrSourceId where
-  parseJSON =
-    fmap ContractOrSourceId . \case
-      String "close" -> pure $ Left Semantics.Close
-      String s -> Right <$> parseJSON (String s)
-      j -> Left <$> parseJSON j
-
-instance ToJSON ContractOrSourceId where
-  toJSON = \case
-    ContractOrSourceId (Left contract) -> toJSON contract
-    ContractOrSourceId (Right hash) -> toJSON hash
-
-instance ToSchema ContractOrSourceId where
-  declareNamedSchema _ = do
-    contractSchema <- declareSchemaRef $ Proxy @Semantics.Contract
-    contractSourceIdSchema <- declareSchemaRef $ Proxy @ContractSourceId
-    pure $
-      NamedSchema Nothing $
-        mempty
-          & oneOf ?~ [contractSchema, contractSourceIdSchema]
-
-instance HasPagination ContractHeader "contractId" where
-  type RangeType ContractHeader "contractId" = ContractId
-  getFieldValue _ ContractHeader{..} = contractId

@@ -13,10 +13,10 @@ import * as cardanoCli from '../../cardanoCli.js';
 import { unwrapOk } from '../neverthrow.js';
 import { POSIXMilliseconds } from '@konduit/konduit-consumer/time/absolute';
 import { Milliseconds } from '@konduit/konduit-consumer/time/duration';
-import type { Path } from '../../exec.js';
 import { toAsync } from '@konduit/konduit-consumer/neverthrow';
 import type { ResultAsync } from 'neverthrow';
 import { waitPatientlyForResultAsync } from '../../neverthrow.js';
+import type { Wallet } from '../../cardano.js';
 import {
   ApplyInputsResponse,
   ContractId,
@@ -175,11 +175,6 @@ function mkContract(
     })
   });
 }
-
-type Wallet = {
-  addr: AddressBech32;
-  skeyFile: Path;
-};
 
 type WinningChoice = "no-winners" | "party1-wins" | "party2-wins";
 

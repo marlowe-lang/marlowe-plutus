@@ -5,12 +5,17 @@
 -- | Defines a custom Monad for the web server's handler functions to run in.
 module Language.Marlowe.Runtime.Web.Server.Monad (
   ApplyInputs,
+  ContractStore,
+  GetContractSource,
+  ImportBundle,
   InitContract,
   LoadTxError (..),
   ServerDependencies (..),
   ServerM (..),
   applyInputsL,
   burnRoleTokensL,
+  getContractSourceL,
+  importBundleL,
   initContractL,
   loadContractL,
   loadPayoutL,
@@ -26,8 +31,14 @@ module Language.Marlowe.Runtime.Web.Server.Monad (
   runEff3,
   runEff4,
   runServer,
+  runServerMExtract,
 ) where
 
+import qualified Language.Marlowe.Runtime.Web.Contract.API as Web
+import Language.Marlowe.Object.Types (Label, ObjectBundle, ContractHash)
+import Language.Marlowe.Runtime.Contract.Api (ContractWithAdjacency)
+import Language.Marlowe.Runtime.Contract.Store (ContractStore)
+import Marlowe.ContractStore.Protocol.Transfer.Types (ImportError)
 import Language.Marlowe.Runtime.ChainSync.Api (DatumHash, Lovelace, StakeCredential, TokenName, TxId, TxOutRef)
 import Language.Marlowe.Runtime.Transaction.Api
     ( Accounts,
@@ -69,6 +80,8 @@ import Data.Time (UTCTime)
 import Data.Set (Set)
 import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
+import Pipes (Pipe)
+import Data.Map (Map)
 
 -- | Our monad stack is not fully compatible with Servant's `Handler` as we want to avoid
 -- `ExceptT` (which is part of the `Handler`). We avoid `ExceptT` because it doesn't
@@ -97,6 +110,18 @@ newtype ServerM a = ServerM {runServerM :: LogT (ReaderT (ServerDependencies Ser
 runServer :: Logger -> LogLevel -> ServerDependencies ServerM -> ServerM a -> IO a
 runServer logger logLevel deps server =
   flip runReaderT deps $ runLogT "marlowe-runtime-server" logger logLevel $ runServerM do
+    server
+
+-- | Run a `ServerM` action and extract the result. Used to bootstrap
+-- construction of `ServerDependencies ServerM` from inside `IO`. The
+-- `Logger` and `LogLevel` are placeholders; the actual server is started
+-- later via `runServer` with the real logger.
+runServerMExtract
+  :: ServerDependencies ServerM
+  -> ServerM a
+  -> IO a
+runServerMExtract deps server =
+  flip runReaderT deps $ runLogT "marlowe-runtime-server" undefined undefined $ runServerM do
     server
 
 runEff0
@@ -171,6 +196,33 @@ type BurnRoleTokens m =
   -> RoleTokenFilter
   -> m (Either BurnRoleTokensError (BurnRoleTokensTx V1))
 
+-- | The `ImportBundle` is the handler that the Servant router invokes for
+-- `POST /contracts/sources`. It receives the main `Label` and the bundles
+-- pulled out of the `StreamBody` request, links them, merkleizes every
+-- contract, persists them in the store, and returns the
+-- `PostContractSourceResponse` describing the resulting hash table.
+-- type ImportBundle m = Label -> [ObjectBundle] -> m Web.PostContractSourceResponse
+--
+-- data Proxy a' a b' b m r
+-- A Proxy is a monad transformer that receives and sends information on both an upstream and downstream interface.
+-- 
+-- The type variables signify:
+-- 
+-- a' and a - The upstream interface, where (a')s go out and (a)s come in
+-- b' and b - The downstream interface, where (b)s go out and (b')s come in
+-- m - The base monad
+-- r - The return value
+--
+-- type Pipe a b = Proxy () a () b
+-- type Producer b = Proxy X () () b
+type ImportBundle m = Label -> Pipe ObjectBundle (Map Label ContractHash) m (Either ImportError (Map Label ContractHash))
+
+-- | A thin adapter around `ContractStore.getContract` that returns a
+-- `ContractWithAdjacency` with `DatumHash`es instead of `ContractHash`es.
+-- This is the read side of the merkleized contract store, used by the
+-- (not-yet-implemented) `GET /contracts/sources/{id}` endpoints.
+type GetContractSource m = Web.ContractSourceId -> m (Maybe ContractWithAdjacency)
+
 type InitContract m =
   Maybe StakeCredential
   -> WalletContext
@@ -242,6 +294,8 @@ data ServerDependencies m = ServerDependencies
   { applyInputs :: ApplyInputs m
   , burnRoleTokens :: BurnRoleTokens m
   , initContract :: InitContract m
+  , importBundle :: ImportBundle m
+  , getContractSource :: GetContractSource m
   , loadContract :: LoadContract m
   , loadPayout :: LoadPayout m
   , loadPayouts :: LoadPayouts m

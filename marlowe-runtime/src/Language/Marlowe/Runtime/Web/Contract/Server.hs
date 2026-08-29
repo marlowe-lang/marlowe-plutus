@@ -37,6 +37,7 @@ import Servant (
  )
 import Control.Monad.Trans.Class (MonadTrans(lift))
 import qualified Language.Marlowe.Runtime.Web.Contract.Transaction.Server as Transactions
+import qualified Language.Marlowe.Runtime.Web.Contract.Source.Server as Source
 import Language.Marlowe.Runtime.Web.Core.Address (StakeAddress, Address)
 import Language.Marlowe.Runtime.Web.Adapter.CommaList (CommaList (unCommaList))
 import Language.Marlowe.Runtime.Web.Core.Tx as Web
@@ -47,15 +48,16 @@ import Language.Marlowe.Runtime.Core.Api
       SomeMarloweVersion(SomeMarloweVersion), MarloweTransactionMetadata(MarloweTransactionMetadata, marloweMetadata, transactionMetadata) )
 import qualified Cardano.Api as C
 import Language.Marlowe.Runtime.Transaction.Api (ContractInitializedInEra(ContractInitializedInEra, contractId, txBody, safetyErrors), ContractInitialized(ContractInitialized))
-import Language.Marlowe.Runtime.Web.Tx.API (CardanoTx, CreateTxEnvelope (CreateTxEnvelope))
 import Control.Lens (view)
 import Language.Marlowe.Runtime.Transaction.Constraints (WalletContext(WalletContext))
 import Control.Monad.Catch (MonadThrow(throwM))
+import Language.Marlowe.Runtime.Web.Tx.API (CardanoTx, CreateTxEnvelope (CreateTxEnvelope))
 
 server :: ServerT ContractsAPI ServerM
 server =
   contractServer
   :<|> postCreateTxResponse
+  :<|> Source.server
 
 contractServer :: Web.ContractId -> ServerT ContractAPI ServerM
 contractServer contractId =

@@ -8,6 +8,8 @@ import { unwrapOrPanicWith } from '@konduit/konduit-consumer/neverthrow';
 import { PositiveBigInt } from '@konduit/codec/integers/big';
 import path from 'path';
 import { Path } from '../../src/exec.js';
+import * as cardanoCli from '../../src/cardanoCli.js';
+import type { Wallet } from '../../src/cardano.js';
 
 const parseEnv = (): TestEnv => {
   const repoRoot = process.env.ROOT_DIR || process.cwd();
@@ -59,15 +61,41 @@ type TestEnv = {
 type TestContext = {
   env: TestEnv;
   tempDir: string;
+  party1: Wallet;
+  party2: Wallet;
+  oracle: Wallet;
 }
 
 let ctx: TestContext;
+
+const PARTY_FUNDING_AMOUNT_LOVELACE = 10_000_000; // 10 ADA per wallet
 
 beforeAll(async () => {
   const testEnv = parseEnv();
   const tempDir = path.join(testEnv.repoRoot, 'marlowe-integration', 'test-temp')
   if(!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-  ctx = { env: testEnv, tempDir }
+
+  const party1 = cardanoCli.createWallet(testEnv.networkMagicNumber, tempDir);
+  const party2 = cardanoCli.createWallet(testEnv.networkMagicNumber, tempDir);
+  const oracle = cardanoCli.createWallet(testEnv.networkMagicNumber, tempDir);
+
+  const fundingResult = await cardanoCli.transferFunds(
+    testEnv.faucetAddr,
+    testEnv.faucetSkeyFile,
+    [
+      { amount: PARTY_FUNDING_AMOUNT_LOVELACE, address: party1.addr },
+      { amount: PARTY_FUNDING_AMOUNT_LOVELACE, address: party2.addr },
+      { amount: PARTY_FUNDING_AMOUNT_LOVELACE, address: oracle.addr },
+    ],
+    undefined,
+    testEnv.networkMagicNumber,
+  );
+  fundingResult.match(
+    (_txId) => {},
+    (err) => { throw new Error(`Funding wallets from faucet failed: ${String(err)}`); },
+  );
+
+  ctx = { env: testEnv, tempDir, party1, party2, oracle }
 });
 
 afterAll(async () => {
@@ -80,10 +108,18 @@ afterAll(async () => {
 //   await init.run(ctx.env.faucetAddr, ctx.env.faucetSkeyFile);
 // })
 
-test('Deposit lifecycle using marloweRuntimeCli', { tags: ['lifecycle', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
-  await deposit.run(ctx.env.faucetAddr, ctx.env.faucetSkeyFile);
-})
-
-// test('Bet lifecycle using marloweRuntimeCli', { tags: ['lifecycle', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
-//   await bet.run(ctx.env.faucetAddr, ctx.env.faucetSkeyFile);
+// test('Deposit lifecycle using marloweRuntimeCli', { tags: ['lifecycle', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
+//   await deposit.run(ctx.env.faucetAddr, ctx.env.faucetSkeyFile);
 // })
+
+test('Bet lifecycle using marloweRuntimeCli', { tags: ['lifecycle', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
+  const faucet: Wallet = { addr: ctx.env.faucetAddr, skeyFile: ctx.env.faucetSkeyFile };
+  await bet.run({
+    amount: 5_000_000n,
+    party1: ctx.party1,
+    party2: ctx.party2,
+    oracle: ctx.oracle,
+    faucet,
+    winningChoice: 'no-winners',
+  });
+})
