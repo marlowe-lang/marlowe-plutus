@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Language.Marlowe.Runtime.Web.Contract.Source.API (
   ContractSourcesAPI,
   ContractSourceAPI,
@@ -23,7 +25,6 @@ import Pipes (Producer)
 import Servant (
   Description,
   FromHttpApiData,
-  Get,
   JSON,
   NewlineFraming,
   Proxy (..),
@@ -36,7 +37,7 @@ import Servant (
   type (:<|>),
   type (:>)
  )
-import Servant.API (FromHttpApiData (..), UVerb, StdMethod (POST), HasStatus, StatusOf)
+import Servant.API (FromHttpApiData (..), UVerb, StdMethod (POST, GET), HasStatus, StatusOf, Capture)
 
 import Control.Lens ((&), (?~))
 import Control.Monad ((<=<))
@@ -60,7 +61,8 @@ import Language.Marlowe.Runtime.Web.Core.Base16 (Base16 (..))
 -- | /contracts/sources sub-API
 type ContractSourcesAPI =
   PostContractSourcesAPI
-  --  :<|> Capture "contractSourceId" ContractSourceId :> ContractSourceAPI
+    :<|> Capture "contractSourceId" ContractSourceId
+          :> ContractSourceAPI
 
 -- | /contracts/sources/:contractSourceId sub-API
 type ContractSourceAPI =
@@ -91,13 +93,24 @@ type PostContractSourcesAPI =
         '[JSON]
         '[PostContractSourceResponse]
 
+instance HasStatus Contract where
+  type StatusOf Contract = 200
+
 type GetContractSourceAPI =
   Summary "Get contract source by ID"
     :> OperationId "getContractSourceById"
     :> QueryFlag "expand"
-    :> Get '[JSON] Contract
+    :> UVerb
+        'GET
+        '[JSON]
+        '[Contract]
 
-type GetContractSourceIdsAPI = RenameResponseSchema "ContractSourceIds" :> Get '[JSON] (ListObject ContractSourceId)
+type GetContractSourceIdsAPI =
+  RenameResponseSchema "ContractSourceIds"
+    :> UVerb
+        'GET
+        '[JSON]
+        '[ListObject ContractSourceId]
 
 data PostContractSourceResponse = PostContractSourceResponse
   { contractSourceId :: ContractSourceId
@@ -121,6 +134,9 @@ instance FromJSON ContractSourceId where
 
 instance ToSchema ContractSourceId where
   declareNamedSchema = pure . NamedSchema (Just "ContractSourceId") . toParamSchema
+
+instance HasStatus (ListObject ContractSourceId) where
+  type StatusOf (ListObject ContractSourceId) = 200
 
 instance ToParamSchema ContractSourceId where
   toParamSchema _ =

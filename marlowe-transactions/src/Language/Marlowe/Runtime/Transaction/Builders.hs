@@ -168,6 +168,7 @@ execInit
     contractSafetyErrors = checkContract networkId (Just roleTokens) version datum continuations
 
   transactionSafetyErrors <- do
+    -- FIXME: paluh
     -- FIXME: Use here "own policy" when we finally achieve the CIP-69 implementation
     let
       threadTokenAssetId = ThreadTokenAssetId (Chain.AssetId "" threadRole')

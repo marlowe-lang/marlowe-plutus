@@ -1,18 +1,11 @@
 {-# OPTIONS_GHC -Wno-unused-imports #-}
 {-# OPTIONS_GHC -fno-warn-unused-top-binds #-}
 
--- | The web handler for `POST /contracts/sources` and the related
--- `GET /contracts/sources/{id}` family. Adapted from
--- `.external-references/marlowe-cardano/marlowe-runtime-web/src/Language/Marlowe/Runtime/Web/Contract/Source/Server.hs`.
---
--- `POST` accepts a stream of `ObjectBundle`s, links them, merkleizes every
--- contract, persists them in the store, and returns the resulting hash
--- table. `GET /contracts/sources/{id}?expand=true` returns the contract,
--- demerkleized when `expand=true` (i.e. inline all the merkleized
--- continuations).
 module Language.Marlowe.Runtime.Web.Contract.Source.Server
   ( post
   , server
+  , fromSourceId
+  , toSourceId
   ) where
 
 import Data.Aeson ((.=))
@@ -25,6 +18,7 @@ import Data.Map qualified as Map
 import Data.Map (Map)
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Text (Text)
 import Data.Traversable (for)
 import Language.Marlowe.Object.Link (LinkError (UnknownSymbol, DuplicateLabel, TypeMismatch))
 import Language.Marlowe.Object.Types (ContractHash (ContractHash, unContractHash), Label, ObjectBundle)
@@ -35,7 +29,7 @@ import Language.Marlowe.Runtime.Contract.Store qualified as Store
 import Language.Marlowe.Runtime.Contract.TransferServer qualified as TS
 import Language.Marlowe.Runtime.Web.Adapter.Servant qualified as Adapter
 import Language.Marlowe.Runtime.Web.Contract.API qualified as Web
-import Language.Marlowe.Runtime.Web.Server.ApiError (badRequest', badRequest'')
+import Language.Marlowe.Runtime.Web.Server.ApiError (badRequest', badRequest'', notFound')
 import Marlowe.ContractStore.Protocol.Transfer.Types qualified as T
 import Marlowe.Plutus.Merkle (Continuations, deepDemerkleize, demerkleizeContract)
 import Marlowe.Plutus.Semantics.Types qualified as Core
@@ -53,8 +47,7 @@ import Language.Marlowe.Runtime.Contract.TransferServer (MainLabel(MainLabel))
 
 -- | The Servant server for `ContractSourcesAPI`.
 server :: ServerT Web.ContractSourcesAPI ServerM
-server = post
---    :<|> contractSourceServer store
+server = post :<|> contractSourceServer
 
 contractSourceServer
   :: Web.ContractSourceId
@@ -64,26 +57,46 @@ contractSourceServer sourceId = do
     :<|> getAdjacency sourceId
     :<|> getClosure sourceId
 
-getContractSource :: Web.ContractSourceId -> ServerM Api.ContractWithAdjacency
-getContractSource sourceId = do
-  getContractSource' <- view getContractSourceL
-  getContractSource' sourceId >>= \case
-    Nothing -> liftIO $ Ex.throwIO err404
+loadContract
+  :: forall resp
+   . Web.ContractSourceId
+  -> UVerbT
+      resp
+      ServerM
+      Api.ContractWithAdjacency
+loadContract sourceId = do
+  liftIO $ putStrLn $ "Loading contract handler: " <> show sourceId
+  loadContract' <- lift $ view getContractSourceL
+  lift (loadContract' sourceId) >>= \case
+    Nothing -> lift . throwM . notFound' $ "Contract source not found: " <> show sourceId
     Just contractWithAdjacency -> pure contractWithAdjacency
+
+loadContinuations
+  :: forall resp
+   . Set Web.ContractSourceId
+  -> UVerbT resp ServerM Continuations
+loadContinuations hs = do
+  pairs <- for (Set.toList hs) \h -> do
+    Api.ContractWithAdjacency{contract} <- loadContract h
+    pure (toPlutusDatumHash (fromSourceId h), contract)
+  pure $ Map.fromList pairs
 
 -- | GET /contracts/sources/{id}?expand=true. Returns the demerkleized
 -- contract (when `expand=true`) or the raw merkleized form.
 getOne
   :: Web.ContractSourceId
   -> Bool
-  -> ServerM Core.Contract
-getOne sourceId expand = do
-  Api.ContractWithAdjacency{contract, closure} <- getContractSource sourceId
+  -> ServerM (Union '[Core.Contract])
+getOne sourceId expand = runUVerbT do
+  Api.ContractWithAdjacency{contract, closure} <- loadContract sourceId
   if expand
     then do
       continuations <- loadContinuations (Set.fromList $ toSourceId <$> Set.toList closure)
       case demerkleizeContract continuations (deepDemerkleize False contract) of
-        Left err -> fail err
+        Left err -> lift . throwM $ badRequest''
+          "Failed to demerkleize contract."
+          "BadRequest"
+          (err :: Text)
         Right expanded -> pure expanded
     else pure contract
 
@@ -91,9 +104,9 @@ getOne sourceId expand = do
 -- adjacent hashes.
 getAdjacency
   :: Web.ContractSourceId
-  -> ServerM (Adapter.ListObject Web.ContractSourceId)
-getAdjacency sourceId = do
-  Api.ContractWithAdjacency{adjacency} <- getContractSource sourceId
+  -> ServerM (Union '[Adapter.ListObject Web.ContractSourceId])
+getAdjacency sourceId = runUVerbT do
+  Api.ContractWithAdjacency{adjacency} <- loadContract sourceId
   pure $ Adapter.ListObject
     $ fmap toSourceId
     $ Set.toList adjacency
@@ -102,9 +115,9 @@ getAdjacency sourceId = do
 -- closure of all referenced hashes (including the contract itself).
 getClosure
   :: Web.ContractSourceId
-  -> ServerM (Adapter.ListObject Web.ContractSourceId)
-getClosure sourceId = do
-  Api.ContractWithAdjacency{closure} <- getContractSource sourceId
+  -> ServerM (Union '[Adapter.ListObject Web.ContractSourceId])
+getClosure sourceId = runUVerbT do
+  Api.ContractWithAdjacency{closure} <- loadContract sourceId
   pure $ Adapter.ListObject
     $ fmap toSourceId
     $ Set.toList closure
@@ -118,18 +131,6 @@ toSourceId (ContractHash bs) = Web.ContractSourceId bs
 -- | Convert a chain `ContractHash` to the corresponding Plutus `ContractHash`.
 toPlutusDatumHash :: ContractHash -> PV2.DatumHash
 toPlutusDatumHash (ContractHash bs) = PV2.DatumHash (BuiltinByteString bs)
-
--- | Load every continuation in `closure` from the contract store. The
--- returned map is keyed by `PV2.DatumHash` and can be fed directly to
--- `Marlowe.Plutus.Merkle.demerkleizeContract`.
-loadContinuations
-  :: Set Web.ContractSourceId
-  -> ServerM Continuations
-loadContinuations hs = do
-  pairs <- for (Set.toList hs) \h -> do
-    Api.ContractWithAdjacency{contract} <- getContractSource h
-    pure (toPlutusDatumHash (fromSourceId h), contract)
-  pure $ Map.fromList pairs
 
 post
   :: Label

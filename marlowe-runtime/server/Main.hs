@@ -1,6 +1,9 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
+-- We "return" lambdas for clarity in some helpers.
+{- HLINT ignore "Redundant lambda" -}
+
 module Main where
 
 import Cardano.Api qualified as C
@@ -91,6 +94,8 @@ import System.Exit (die)
 import Text.Read qualified as T
 import Language.Marlowe.Runtime.Contract.TransferServer qualified as TransferServer
 import Servant.Pipes ()
+import Language.Marlowe.Runtime.Web.Contract.Source.Server (fromSourceId)
+import qualified Language.Marlowe.Runtime.Contract.Store as Store
 
 newtype Port = Port Int
 
@@ -214,25 +219,6 @@ mkRoleTokensPolicy (UseRoleTokenDevelScript useRoleTokenDevelScript) (MintingSee
       (PV3.TokenName . PV3.toBuiltin $ bs, amount)
   pure . fromPlutusSerialisedScript C.PlutusScriptV3 . mkPolicy roleTokens $ toPlutusTxOutRef txOutRef
 
--- type LoadHelpersContext m =
---   forall v
---    . MarloweVersion v
---   -> Either (Chain.PolicyId, RoleTokensConfig) (Maybe ContractId)
---   -> m (Either LoadHelpersContextError HelpersContext)
---
--- data RoleTokensConfig
---   = RoleTokensNone
---   | UnsafeRoleTokensUsePolicy PolicyId (Map TokenName (Map Destination Chain.Quantity))
---   | UnsafeRoleTokensMint Mint
---
--- data HelpersContext = HelpersContext
---   { currentHelperScripts :: Map HelperScript HelperScriptInfo
---   -- ^ The current version of the helper scripts.
---   , helperPolicyId :: Chain.PolicyId
---   -- ^ The roles currency for the contract.
---   , helperScriptStates :: Map Chain.TokenName HelperScriptState
---   -- ^ Map of which scripts play which role.
---   }
 emptyLoadHelpersContext
   :: forall m v
    . Monad m
@@ -340,42 +326,13 @@ mkApplyInputs (networkId, systemStart, protocolParams) fetchEraHistory getContra
 
 type LedgerInfo = (C.NetworkId, C.SystemStart, L.PParams (C.ShelleyLedgerEra C.ConwayEra))
 
--- | Create the in-memory `ContractStore` (STM-backed) wrapped for
--- `ServerM`. The store is constructed once at startup. Every operation
--- is lifted through `liftIO . atomically` so the store works in
--- `ServerM` even though it's backed by `STM`.
 mkServerMStore :: ServerM (ContractStore.ContractStore ServerM)
 mkServerMStore = do
-  stmStore <- liftIO $ UnliftIO.STM.atomically StoreMemory.createContractStoreInMemory
-
   let liftStage :: forall a. UnliftIO.STM.STM a -> ServerM a
       liftStage = liftIO . UnliftIO.STM.atomically
-      store0 :: ContractStore.ContractStore ServerM
-      store0 =
-        ContractStore.ContractStore
-          { ContractStore.createContractStagingArea =
-              fmap
-                ( \(ContractStore.ContractStagingArea s f c d de) ->
-                    ContractStore.ContractStagingArea
-                      { ContractStore.stageContract = liftStage . s
-                      , ContractStore.flush = liftStage f
-                      , ContractStore.commit = liftStage c
-                      , ContractStore.discard = liftStage d
-                      , ContractStore.doesContractExist = liftStage . de
-                      }
-                )
-                (liftStage $ ContractStore.createContractStagingArea stmStore)
-          , ContractStore.getContract = liftStage . ContractStore.getContract stmStore
-          -- FIXME: paluh
-          , ContractStore.merkleizeInputs = undefined
-          , ContractStore.setGCRoots = \hs -> liftStage $ ContractStore.setGCRoots stmStore hs
-          }
-  pure store0
+  stmStore <- liftIO $ UnliftIO.STM.atomically StoreMemory.createContractStoreInMemory
+  pure $ Store.hoistContractStore liftStage stmStore
 
--- | Wrap the `Source.Server.post` as a list-taking `ImportBundle m`. This
--- matches the `Web.ImportBundle` type alias which takes `[ObjectBundle]`
--- rather than a `Producer` — the `StreamBody` handler in the Servant
--- router is responsible for materializing the producer into a list.
 mkWithBundleImporter
   :: (MonadUnliftIO m, MonadLog m)
   => ContractStore.ContractStore m
@@ -389,14 +346,13 @@ mkWithBundleImporter store handler = do
         importBundle = TransferServer.mkImportBundle stagingArea
       handler importBundle
 
--- | Adapter from `ContractStore.getContract` (which returns
--- `Maybe ContractWithAdjacency`) to the field `getContractSource`
--- expected by `ServerDependencies`. For now this is a direct mapping;
--- the GET endpoints that consume it are not yet implemented.
 mkGetContractSource
-  :: ContractStore.ContractStore m
+  :: MonadIO m
+  => ContractStore.ContractStore m
   -> GetContractSource m
-mkGetContractSource _store _hash = error "GET /contracts/sources/{id} not yet implemented"
+mkGetContractSource store hash = do
+  liftIO $ putStrLn ("Get contract source wrapper" :: String)
+  store.getContract (fromSourceId hash)
 
 queryLedgerInfo :: C.NetworkId -> C.LocalNodeConnectInfo -> IO LedgerInfo
 queryLedgerInfo networkId connectInfo = do
@@ -470,14 +426,14 @@ mkServerDependencies pool ledgerInfo getAllScripts getCurrentScripts = do
       getCurrentSlotNo
 
   -- The in-memory contract store (STM-backed).
-  contractStore0 <- mkServerMStore
+  contractStore <- mkServerMStore
 
   let deps :: ServerDependencies ServerM
       deps =
         ServerDependencies
           { applyInputs
           , burnRoleTokens = undefined
-          , getContractSource = mkGetContractSource contractStore0
+          , getContractSource = mkGetContractSource contractStore
           , initContract
           , loadContract = fmap (fmap Right) . getContractState dbQueries
           , loadPayout = undefined
@@ -486,7 +442,7 @@ mkServerDependencies pool ledgerInfo getAllScripts getCurrentScripts = do
           , loadTransactions = undefined
           , loadWithdrawal = undefined
           , loadWithdrawals = undefined
-          , withBundleImporter = undefined
+          , withBundleImporter = mkWithBundleImporter contractStore
           , withdraw = undefined
           }
   pure deps

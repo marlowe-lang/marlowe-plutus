@@ -545,7 +545,7 @@ export async function transferFunds(
 export const createWallet = (
   networkMagicNumber: NetworkMagicNumber,
   tmpDir: Path | null = null,
-): Wallet => {
+): Result<Wallet, CommandError | JsonError> => {
   const walletTmpDir =
     tmpDir ?? `${nodeOs.tmpdir()}/wallet-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
   nodeFs.mkdirSync(walletTmpDir, { recursive: true });
@@ -554,36 +554,32 @@ export const createWallet = (
   const skeyFile = `${walletTmpDir}/wallet.skey`;
   const addrFile = `${walletTmpDir}/wallet.addr`;
 
-  unwrapOrPanicWith(
-    runCommand(
-      `cardano-cli conway address key-gen ` +
-        `--verification-key-file ${vkeyFile} ` +
-        `--signing-key-file ${skeyFile}`,
-    ),
-    (e) => `Failed to generate wallet keys: ${e}`,
-  );
+  return runCommand(
+    `cardano-cli conway address key-gen ` +
+      `--verification-key-file ${vkeyFile} ` +
+      `--signing-key-file ${skeyFile}`,
+      true,
+  ).andThen(() => {
+    const networkArg =
+      networkMagicNumber === NetworkMagicNumber.MAINNET
+        ? "--mainnet"
+        : `--testnet-magic ${networkMagicNumber}`;
 
-  const networkArg =
-    networkMagicNumber === NetworkMagicNumber.MAINNET
-      ? "--mainnet"
-      : `--testnet-magic ${networkMagicNumber}`;
-
-  unwrapOrPanicWith(
-    runCommand(
+    return runCommand(
       `cardano-cli conway address build ` +
         `--payment-verification-key-file ${vkeyFile} ` +
         `${networkArg} ` +
         `--out-file ${addrFile}`,
-    ),
-    (e) => `Failed to build wallet address: ${e}`,
-  );
+        true,
+    );
+  }).map(() => {
+    const addrStr = nodeFs.readFileSync(addrFile, "utf8").trim();
+    const addr = unwrapOrPanicWith(
+      AddressBech32.fromString(addrStr),
+      (e) => `Failed to parse wallet address ${addrStr}: ${e}`,
+    );
 
-  const addrStr = nodeFs.readFileSync(addrFile, "utf8").trim();
-  const addr = unwrapOrPanicWith(
-    AddressBech32.fromString(addrStr),
-    (e) => `Failed to parse wallet address ${addrStr}: ${e}`,
-  );
-
-  return { addr, skeyFile: skeyFile as TaggedPath };
+    return { addr, skeyFile: skeyFile as TaggedPath };
+  });
 };
 

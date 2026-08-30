@@ -1,16 +1,6 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
 
--- | The `MarloweTransfer` protocol server, adapted from
--- `.external-references/marlowe-cardano/marlowe-runtime/contract/Language/Marlowe/Runtime/Contract/TransferServer.hs`.
--- The merkleization logic (`merkleizeAndStoreContracts`,
--- `merkleizeAndStore`, `merkleizeAndStoreCase`) is copied verbatim. The
--- outer `ServerSource` / `ResourceT` wrapper from the original has been
--- dropped for this first cut: the web handler drives the same algebra
--- directly via `runTransferServer`, so we do not need the typed-protocol
--- `ServerSource` plumbing. The protocol scaffolding
--- (`MarloweTransferServer`, `LinkError` handling, etc.) is provided by
--- `marlowe-contract-store`.
 module Language.Marlowe.Runtime.Contract.TransferServer (
   ImportBundle,
   MainLabel (..),
@@ -36,7 +26,14 @@ import qualified Language.Marlowe.Object.Link as O
 import qualified Language.Marlowe.Object.Types as O
 import Language.Marlowe.Runtime.Contract.Api (ContractWithAdjacency (..))
 import Language.Marlowe.Runtime.Contract.Store (ContractStagingArea (..), ContractStore (..))
-import Language.Marlowe.Object.Types (ContractHash(ContractHash, unContractHash), Label, ObjectBundle, LabelledObject(LabelledObject), ObjectType(ContractType), pattern SomeObjectType)
+import Language.Marlowe.Object.Types
+    ( ContractHash(ContractHash, unContractHash),
+      Label,
+      ObjectBundle,
+      LabelledObject(LabelledObject),
+      ObjectType(ContractType),
+      pattern SomeObjectType,
+      ObjectBundle(ObjectBundle) )
 import Marlowe.ContractStore.Protocol.Transfer.Server (
   ServerStCanDownload (..),
   ServerStCanUpload (..),
@@ -51,8 +48,8 @@ import qualified PlutusLedgerApi.V2 as PV2
 import PlutusTx.Builtins.Internal (BuiltinByteString (..))
 import Pipes (Pipe, await, yield, void)
 import Data.Map (Map)
-import Language.Marlowe.Object.Types (ObjectBundle(ObjectBundle))
 import Language.Marlowe.Object.Link (LinkError(TypeMismatch), linkBundle')
+import Debug.Trace (traceM)
 
 -- | Dependencies of the transfer server.
 newtype TransferServerDependencies m = TransferServerDependencies
@@ -283,11 +280,12 @@ mkImportBundle stage@ContractStagingArea{..} (MainLabel main) =
               yield hashes
               loop objects'
 
-        Just (LabelledObject _ ContractType _) ->
+        Just (LabelledObject _ ContractType _) -> do
           step objects bundle >>= \case
             Left err ->
               pure (Left err)
             Right (hashes, _) -> do
+              traceM "COMMITTING"
               lift $ void commit
               pure (Right hashes)
 

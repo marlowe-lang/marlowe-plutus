@@ -10,6 +10,7 @@ import path from 'path';
 import { Path } from '../../src/exec.js';
 import * as cardanoCli from '../../src/cardanoCli.js';
 import type { Wallet } from '../../src/cardano.js';
+import { Result } from 'neverthrow';
 
 const parseEnv = (): TestEnv => {
   const repoRoot = process.env.ROOT_DIR || process.cwd();
@@ -75,9 +76,14 @@ beforeAll(async () => {
   const tempDir = path.join(testEnv.repoRoot, 'marlowe-integration', 'test-temp')
   if(!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
-  const party1 = cardanoCli.createWallet(testEnv.networkMagicNumber, tempDir);
-  const party2 = cardanoCli.createWallet(testEnv.networkMagicNumber, tempDir);
-  const oracle = cardanoCli.createWallet(testEnv.networkMagicNumber, tempDir);
+  const [party1, party2, oracle] = Result.combine([
+    cardanoCli.createWallet(testEnv.networkMagicNumber, `${tempDir}/party1`),
+    cardanoCli.createWallet(testEnv.networkMagicNumber, `${tempDir}/party2`),
+    cardanoCli.createWallet(testEnv.networkMagicNumber, `${tempDir}/oracle`),
+  ]).match(
+    (wallets) => wallets,
+    (err) => { throw new Error(`Failed to create wallets: ${String(err)}`); },
+  );
 
   const fundingResult = await cardanoCli.transferFunds(
     testEnv.faucetAddr,
@@ -115,7 +121,7 @@ afterAll(async () => {
 test('Bet lifecycle using marloweRuntimeCli', { tags: ['lifecycle', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
   const faucet: Wallet = { addr: ctx.env.faucetAddr, skeyFile: ctx.env.faucetSkeyFile };
   await bet.run({
-    amount: 5_000_000n,
+    amount: 2_000_000n,
     party1: ctx.party1,
     party2: ctx.party2,
     oracle: ctx.oracle,

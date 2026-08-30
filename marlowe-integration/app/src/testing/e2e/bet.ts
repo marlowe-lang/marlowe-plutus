@@ -298,16 +298,16 @@ const makeDeposit = (opts: {
 // skey, and waits for the final contract state.
 const applyChoice = (opts: {
   contractId: ContractId;
-  oracle: Wallet;
+  party: Wallet;
   choiceValue: bigint;
 }): ResultAsync<ContractState, unknown> => {
-  const { contractId, oracle, choiceValue } = opts;
-  const input: NormalInput = mkChoiceInput(oracle.addr, choiceValue);
+  const { contractId, party, choiceValue } = opts;
+  const input: NormalInput = mkChoiceInput(party.addr, choiceValue);
   return toAsync(
-    marloweRuntimeCli.runApplyInputs([input], contractId, oracle.addr, {}, null, true),
+    marloweRuntimeCli.runApplyInputs([input], contractId, party.addr, {}, null, true),
   )
     .andThen((response: ApplyInputsResponse) =>
-      cardanoCli.signTxEnvelope(oracle.skeyFile, response.tx).map(signed => ({
+      cardanoCli.signTxEnvelope(party.skeyFile, response.tx).map(signed => ({
         contractId: response.contractId,
         txEnvelope: signed,
       })),
@@ -318,6 +318,8 @@ const applyChoice = (opts: {
         () => toAsync(marloweRuntimeCli.runGet(contractIdAfter, {}, null, true)),
         (state: ContractState) =>
           state.contractId === contractId &&
+          // FIXME: move this check to the call site so the helper
+          // remains generic.
           state.state === null &&
           state.currentContract === null,
         { timeoutMs: POLL_TIMEOUT_MS, everyMs: POLL_EVERY_MS },
@@ -347,7 +349,7 @@ export const run = async (opts: RunOpts): Promise<void> => {
     .andThen(stateAfterParty2 =>
       applyChoice({
         contractId: stateAfterParty2.contractId,
-        oracle,
+        party: oracle,
         choiceValue: WinningChoice.toChoiceValue(winningChoice),
       }),
     );

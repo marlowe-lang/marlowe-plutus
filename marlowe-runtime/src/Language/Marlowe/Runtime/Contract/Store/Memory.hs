@@ -19,7 +19,8 @@ import UnliftIO.STM (STM, TVar, modifyTVar, newTVar, readTVar, writeTVar)
 import Marlowe.Plutus.Semantics (TransactionInput(..), ReduceResult (ContractQuiescent, RRAmbiguousTimeIntervalError), reduceContractUntilQuiescent, ApplyAction (AppliedAction, NotAppliedAction), applyAction, fixInterval)
 import Control.Monad.Trans.Except (except, throwE, runExceptT)
 import Control.Monad.Trans.Class (lift)
-
+import Control.Monad (void)
+import Debug.Trace (traceM)
 
 -- | An in-memory implementation of ContractStore for use in testing and as a
 -- model implementation.
@@ -42,14 +43,23 @@ createContractStoreInMemory = do
       stagingArea <- newTVar (mempty :: Map ContractHash Contract)
       buffer <- newTVar (mempty :: Map ContractHash Contract)
       open <- newTVar True
+
       let close = writeTVar open False
-          whenOpen :: forall a. STM a -> STM a
-          whenOpen m =
+
+          openedRequired :: forall a. STM a -> STM a
+          openedRequired m =
             readTVar open >>= \case
               False -> throwSTM $ mkUserError "Contract staging area is no longer open"
               True -> m
+
+          whenOpen :: forall a. STM a -> STM (Maybe a)
+          whenOpen m =
+            readTVar open >>= \case
+              False -> pure Nothing
+              True -> Just <$> m
+
           flush :: STM (Set ContractHash)
-          flush = whenOpen do
+          flush = openedRequired do
             buffered <- readTVar buffer
             staged <- readTVar stagingArea
             writeTVar stagingArea $ Map.union staged buffered
@@ -57,24 +67,27 @@ createContractStoreInMemory = do
             pure $ Map.keysSet $ Map.difference staged buffered
       pure
         ContractStagingArea
-          { stageContract = \contract -> whenOpen do
+          { stageContract = \contract -> openedRequired do
               let hash = ContractHash $ PV2.fromBuiltin $ dataHash contract
               modifyTVar buffer $ Map.insert hash contract
               pure hash
           , flush
-          , commit = whenOpen do
+          , commit = openedRequired do
               _ <- flush
               staged <- readTVar stagingArea
               stored <- readTVar store
-              writeTVar store $ Map.union stored staged
+              let
+                updated = seq staged $ Map.union staged stored
+              traceM $ "COMMITTING CONTRACTS: " <> show (Map.keys staged)
+              writeTVar store updated
               writeTVar stagingArea mempty
               close
               pure $ Map.keysSet $ Map.difference stored staged
-          , discard = whenOpen do
+          , discard = void $ whenOpen do
               writeTVar buffer mempty
               writeTVar stagingArea mempty
               close
-          , doesContractExist = \hash -> whenOpen do
+          , doesContractExist = \hash -> openedRequired do
               buffered <- readTVar buffer
               if Map.member hash buffered
                 then pure True
@@ -91,7 +104,10 @@ createContractStoreInMemory = do
     getContract store = runMaybeT . go
       where
         go hash = do
+          traceM $ "FETCHING CONTRACT: " <> show hash
           contract <- MaybeT $ Map.lookup hash <$> readTVar store
+          traceM "FETCHED CONTRACT"
+          traceM $ show contract
           adjacentContracts <- fmap Set.fromList $ traverse go $ Set.toList $ computeAdjacency contract
           pure
             ContractWithAdjacency

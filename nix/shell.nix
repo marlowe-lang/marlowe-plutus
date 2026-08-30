@@ -70,6 +70,7 @@ let
     pkgs.act
     pkgs.bash
     pkgs.bzip2
+    pkgs.b2sum
     pkgs.cacert
     pkgs.coreutils
     pkgs.curl
