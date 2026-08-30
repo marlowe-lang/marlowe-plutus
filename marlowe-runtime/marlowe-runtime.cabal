@@ -278,6 +278,7 @@ executable server
     , log-base-inlined
     , marlowe-binaries
     , marlowe-cli
+    , marlowe-contract-store:api
     , marlowe-object
     , marlowe-plutus ^>=0.2
     , marlowe-runtime

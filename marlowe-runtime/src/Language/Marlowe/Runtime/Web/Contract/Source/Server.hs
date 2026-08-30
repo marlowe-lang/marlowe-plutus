@@ -46,9 +46,10 @@ import PlutusTx.Builtins.Internal (BuiltinByteString (..))
 import Servant (HasServer (ServerT), err404, type (:<|>) ((:<|>)), Union)
 import System.IO.Error (userError)
 import Control.Lens (view)
-import Language.Marlowe.Runtime.Web.Server.Monad (getContractSourceL, importBundleL, ServerM, runEff0)
+import Language.Marlowe.Runtime.Web.Server.Monad (getContractSourceL, withBundleImporterL, ServerM, runEff0, runEff1)
 import Language.Marlowe.Runtime.Web.Adapter.Servant.UVerbT (runUVerbT, UVerbT)
 import Control.Monad.Trans.Class (lift)
+import Language.Marlowe.Runtime.Contract.TransferServer (MainLabel(MainLabel))
 
 -- | The Servant server for `ContractSourcesAPI`.
 server :: ServerT Web.ContractSourcesAPI ServerM
@@ -134,34 +135,35 @@ post
   :: Label
   -> Producer ObjectBundle IO ()
   -> ServerM (Union '[Web.PostContractSourceResponse])
-post main bundles = runUVerbT do
-  importBundle <- lift $ view importBundleL
-  let
-    importBundles :: Producer
-      (Map Label ContractHash)
-      (UVerbT '[Web.PostContractSourceResponse] ServerM)
-      (Either T.ImportError (Map Label ContractHash))
-    importBundles = hoist liftIO (Right mempty <$ bundles) >-> hoist lift (importBundle main)
-  (intermediate, result) <- Pipes.fold' (<>) mempty id importBundles
-  case (intermediate <>) <$> result of
-    Left err -> case err of
-      T.ContinuationNotInStore hash ->
-        lift $ throwM $ badRequest'' "Merkleized continuation not in store." "BadRequest" hash
-      T.LinkError (UnknownSymbol s) ->
-        lift $ throwM $ badRequest'' "Symbol not defined." "BadRequest" s
-      T.LinkError (DuplicateLabel s) ->
-        lift $ throwM $ badRequest'' "Duplicate label." "BadRequest" s
-      T.LinkError (TypeMismatch expected actual) ->
-        lift $ throwM $
-          badRequest'' "Type mismatch." "BadRequest" $
-            A.object
-              [ "expected" .= expected
-              , "actual" .= actual
-              ]
-    Right ids -> case Map.lookup main ids of
-      Nothing -> lift $ throwM $ badRequest' "Main contract not defined."
-      Just mainId -> pure $
-          Web.PostContractSourceResponse
-            { contractSourceId = toSourceId mainId
-            , intermediateIds = toSourceId <$> ids
-            }
+post main bundles = do
+  withBundleImporter <- view withBundleImporterL
+  withBundleImporter \importBundle -> runUVerbT do
+    let
+      importBundles :: Producer
+        (Map Label ContractHash)
+        (UVerbT '[Web.PostContractSourceResponse] ServerM)
+        (Either T.ImportError (Map Label ContractHash))
+      importBundles = hoist liftIO (Right mempty <$ bundles) >-> hoist lift (importBundle $ MainLabel main)
+    (intermediate, result) <- Pipes.fold' (<>) mempty id importBundles
+    case (intermediate <>) <$> result of
+      Left err -> case err of
+        T.ContinuationNotInStore hash ->
+          lift $ throwM $ badRequest'' "Merkleized continuation not in store." "BadRequest" hash
+        T.LinkError (UnknownSymbol s) ->
+          lift $ throwM $ badRequest'' "Symbol not defined." "BadRequest" s
+        T.LinkError (DuplicateLabel s) ->
+          lift $ throwM $ badRequest'' "Duplicate label." "BadRequest" s
+        T.LinkError (TypeMismatch expected actual) ->
+          lift $ throwM $
+            badRequest'' "Type mismatch." "BadRequest" $
+              A.object
+                [ "expected" .= expected
+                , "actual" .= actual
+                ]
+      Right ids -> case Map.lookup main ids of
+        Nothing -> lift $ throwM $ badRequest' "Main contract not defined."
+        Just mainId -> pure $
+            Web.PostContractSourceResponse
+              { contractSourceId = toSourceId mainId
+              , intermediateIds = toSourceId <$> ids
+              }

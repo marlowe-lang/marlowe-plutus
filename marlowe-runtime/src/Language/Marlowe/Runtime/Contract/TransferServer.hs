@@ -12,9 +12,12 @@
 -- (`MarloweTransferServer`, `LinkError` handling, etc.) is provided by
 -- `marlowe-contract-store`.
 module Language.Marlowe.Runtime.Contract.TransferServer (
+  ImportBundle,
+  MainLabel (..),
   TransferServerDependencies (..),
   runTransferServer,
   runImport,
+  mkImportBundle,
   merkleizeAndStoreContracts,
 ) where
 
@@ -27,13 +30,13 @@ import qualified Data.DList as DList
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Text as T
-import Data.Foldable (traverse_)
+import Data.Foldable (traverse_, find)
 import Data.Maybe (mapMaybe)
 import qualified Language.Marlowe.Object.Link as O
 import qualified Language.Marlowe.Object.Types as O
 import Language.Marlowe.Runtime.Contract.Api (ContractWithAdjacency (..))
 import Language.Marlowe.Runtime.Contract.Store (ContractStagingArea (..), ContractStore (..))
-import Language.Marlowe.Object.Types (ContractHash(ContractHash, unContractHash))
+import Language.Marlowe.Object.Types (ContractHash(ContractHash, unContractHash), Label, ObjectBundle, LabelledObject(LabelledObject), ObjectType(ContractType), pattern SomeObjectType)
 import Marlowe.ContractStore.Protocol.Transfer.Server (
   ServerStCanDownload (..),
   ServerStCanUpload (..),
@@ -46,6 +49,10 @@ import Marlowe.ContractStore.Protocol.Transfer.Types (ImportError (..))
 import Marlowe.Plutus.Semantics.Types qualified as Core
 import qualified PlutusLedgerApi.V2 as PV2
 import PlutusTx.Builtins.Internal (BuiltinByteString (..))
+import Pipes (Pipe, await, yield, void)
+import Data.Map (Map)
+import Language.Marlowe.Object.Types (ObjectBundle(ObjectBundle))
+import Language.Marlowe.Object.Link (LinkError(TypeMismatch), linkBundle')
 
 -- | Dependencies of the transfer server.
 newtype TransferServerDependencies m = TransferServerDependencies
@@ -214,3 +221,85 @@ runImport TransferServerDependencies{contractStore} bundle = do
       _ <- flush stage
       _ <- commit stage
       pure $ Right $ Map.fromList $ mapMaybe sequence linked
+
+-- watchForMain :: (Monad m) => Label -> Pipe ObjectBundle BundlePart m (Either ImportError (Map Label DatumHash))
+-- watchForMain main = do
+--   ObjectBundle bundle <- await
+--   case find ((main ==) . _label) bundle of
+--     Nothing -> do
+--       yield $ IntermediatePart $ ObjectBundle bundle
+--       watchForMain main
+--     Just (LabelledObject _ ContractType _) -> do
+--       yield $ FinalPart $ ObjectBundle bundle
+--       pure $ Right mempty
+--     Just (LabelledObject _ t _) ->
+--       pure $
+--         Left $
+--           LinkError $
+--             TypeMismatch
+--               (UnsafeSomeObjectType $ unsafeCoerce ContractType)
+--               (UnsafeSomeObjectType $ unsafeCoerce t)
+-- 
+-- data BundlePart
+--   = Intermediate
+--   | Final
+--   | MainTypeMismatch O.SomeObjectType O.SomeObjectType
+--   deriving (Show, Eq)
+--
+newtype MainLabel = MainLabel {label :: Label}
+  deriving (Show, Eq, Ord)
+
+
+-- data Proxy a' a b' b m r
+-- A Proxy is a monad transformer that receives and sends information on both an upstream and downstream interface.
+-- 
+-- The type variables signify:
+-- 
+-- a' and a - The upstream interface, where (a')s go out and (a)s come in
+-- b' and b - The downstream interface, where (b)s go out and (b')s come in
+-- m - The base monad
+-- r - The return value
+--
+-- type Pipe a b = Proxy () a () b
+-- type Producer b = Proxy X () () b
+--
+type ImportBundle m = MainLabel -> Pipe ObjectBundle (Map Label ContractHash) m (Either ImportError (Map Label ContractHash))
+
+mkImportBundle
+  :: Monad m
+  => ContractStagingArea m
+  -> ImportBundle m
+mkImportBundle stage@ContractStagingArea{..} (MainLabel main) =
+  loop mempty
+  where
+    loop objects = do
+      bundle@(ObjectBundle bundleObjects) <- await
+      case find (\LabelledObject { _label } -> _label == main) bundleObjects of
+        Nothing ->
+          step objects bundle >>= \case
+            Left err ->
+              pure (Left err)
+            Right (hashes, objects') -> do
+              yield hashes
+              loop objects'
+
+        Just (LabelledObject _ ContractType _) ->
+          step objects bundle >>= \case
+            Left err ->
+              pure (Left err)
+            Right (hashes, _) -> do
+              lift $ void commit
+              pure (Right hashes)
+
+        Just (LabelledObject _ actual _) ->
+          pure $ Left $ LinkError $ TypeMismatch (SomeObjectType ContractType) (SomeObjectType actual)
+
+    step objects bundle = lift $ runExceptT $ do
+      linked <- linkBundle' bundle (merkleizeAndStoreContracts stage) objects
+      case linked of
+        Left linkError ->
+          throwE $ LinkError linkError
+        Right (hashPairs, objects') -> do
+          lift $ void flush
+          pure (Map.fromList (mapMaybe sequence hashPairs), objects')
+
