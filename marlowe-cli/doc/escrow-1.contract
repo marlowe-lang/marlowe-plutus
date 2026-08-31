@@ -1,0 +1,169 @@
+{
+    "timeout": 1655664900000,
+    "timeout_continuation": "close",
+    "when": [
+        {
+            "case": {
+                "deposits": 256000000,
+                "into_account": {
+                    "role_token": "FB"
+                },
+                "of_token": {
+                    "currency_symbol": "",
+                    "token_name": ""
+                },
+                "party": {
+                    "role_token": "TM"
+                }
+            },
+            "then": {
+                "timeout": 1655751300000,
+                "timeout_continuation": "close",
+                "when": [
+                    {
+                        "case": {
+                            "choose_between": [
+                                {
+                                    "from": 0,
+                                    "to": 0
+                                }
+                            ],
+                            "for_choice": {
+                                "choice_name": "Everything is alright",
+                                "choice_owner": {
+                                    "role_token": "TM"
+                                }
+                            }
+                        },
+                        "then": "close"
+                    },
+                    {
+                        "case": {
+                            "choose_between": [
+                                {
+                                    "from": 1,
+                                    "to": 1
+                                }
+                            ],
+                            "for_choice": {
+                                "choice_name": "Report problem",
+                                "choice_owner": {
+                                    "role_token": "TM"
+                                }
+                            }
+                        },
+                        "then": {
+                            "from_account": {
+                                "role_token": "FB"
+                            },
+                            "pay": 256000000,
+                            "then": {
+                                "timeout": 1655837700000,
+                                "timeout_continuation": "close",
+                                "when": [
+                                    {
+                                        "case": {
+                                            "choose_between": [
+                                                {
+                                                    "from": 1,
+                                                    "to": 1
+                                                }
+                                            ],
+                                            "for_choice": {
+                                                "choice_name": "Confirm problem",
+                                                "choice_owner": {
+                                                    "role_token": "FB"
+                                                }
+                                            }
+                                        },
+                                        "then": "close"
+                                    },
+                                    {
+                                        "case": {
+                                            "choose_between": [
+                                                {
+                                                    "from": 0,
+                                                    "to": 0
+                                                }
+                                            ],
+                                            "for_choice": {
+                                                "choice_name": "Dispute problem",
+                                                "choice_owner": {
+                                                    "role_token": "FB"
+                                                }
+                                            }
+                                        },
+                                        "then": {
+                                            "timeout": 1655924100000,
+                                            "timeout_continuation": "close",
+                                            "when": [
+                                                {
+                                                    "case": {
+                                                        "choose_between": [
+                                                            {
+                                                                "from": 0,
+                                                                "to": 0
+                                                            }
+                                                        ],
+                                                        "for_choice": {
+                                                            "choice_name": "Dismiss claim",
+                                                            "choice_owner": {
+                                                                "role_token": "CM"
+                                                            }
+                                                        }
+                                                    },
+                                                    "then": {
+                                                        "from_account": {
+                                                            "role_token": "TM"
+                                                        },
+                                                        "pay": 256000000,
+                                                        "then": "close",
+                                                        "to": {
+                                                            "account": {
+                                                                "role_token": "FB"
+                                                            }
+                                                        },
+                                                        "token": {
+                                                            "currency_symbol": "",
+                                                            "token_name": ""
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "case": {
+                                                        "choose_between": [
+                                                            {
+                                                                "from": 1,
+                                                                "to": 1
+                                                            }
+                                                        ],
+                                                        "for_choice": {
+                                                            "choice_name": "Confirm claim",
+                                                            "choice_owner": {
+                                                                "role_token": "CM"
+                                                            }
+                                                        }
+                                                    },
+                                                    "then": "close"
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            "to": {
+                                "account": {
+                                    "role_token": "TM"
+                                }
+                            },
+                            "token": {
+                                "currency_symbol": "",
+                                "token_name": ""
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+}

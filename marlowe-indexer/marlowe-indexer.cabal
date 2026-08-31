@@ -1,0 +1,212 @@
+cabal-version: 3.4
+name:          marlowe-indexer
+version:       0.1.0.0
+license:       Apache-2.0
+build-type:    Simple
+maintainer:    marlowe@marlowe-lang.org
+stability:     experimental
+author:        Marlowe Team
+synopsis:      Marlowe Runtime Indexer Database Layer
+category:      Language
+
+common lang
+  default-language:   Haskell2010
+  default-extensions:
+    BangPatterns
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DoAndIfThenElse
+    DuplicateRecordFields
+    ExplicitForAll
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NumericUnderscores
+    OverloadedStrings
+    OverloadedRecordDot
+    PatternSynonyms
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    ViewPatterns
+
+  ghc-options:
+    -Wall -Wnoncanonical-monad-instances
+    -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Wredundant-constraints -Widentities -Werror
+    -threaded
+
+library db
+  import:          lang
+  hs-source-dirs:  db
+  build-depends:
+    , aeson
+    , base >=4.9 && <5
+    , base16-aeson
+    , binary
+    , bytestring
+    , cardano-api
+    , containers
+    , errors
+    , hasql
+    , hasql-pool
+    , hasql-th >=0.5
+    , hasql-transaction
+    , log-base
+    , marlowe-plutus
+    , marlowe-transactions
+    , mtl
+    , plutus-ledger-api
+    , plutus-tx
+    , profunctors
+    , text
+    , time
+    , transformers
+    , unliftio
+    , witherable
+    , vector
+
+  exposed-modules:
+    Language.Marlowe.Runtime.Indexer.Database
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitBlocks
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitEraHistory
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitIndexerTip
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitNodeTip
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.CommitRollback
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetIntersectionPoints
+    Language.Marlowe.Runtime.Indexer.Database.PostgreSQL.GetMarloweUTxO
+    Language.Marlowe.Runtime.Indexer.MarloweBlock
+    Language.Marlowe.Runtime.Indexer.Party
+
+
+library
+  import:          lang
+  hs-source-dirs:  src
+  build-depends:
+    , aeson
+    , aeson-pretty
+    , async-components
+    , base >=4.9 && <5
+    , base16
+    , binary
+    , bytestring
+    , cardano-api
+    , cardano-ledger-alonzo
+    , cardano-ledger-api
+    , cardano-ledger-byron
+    , cardano-ledger-core
+    , cardano-ledger-shelley
+    , cardano-strict-containers
+    , containers
+    , hasql
+    , hasql-th >=0.5
+    , hasql-transaction
+    , log-base
+    , marlowe-indexer:db
+    , marlowe-plutus
+    , marlowe-transactions
+    , mtl
+    , ouroboros-consensus
+    , ouroboros-consensus:{cardano}
+    , ouroboros-network:{api, protocols}
+    , marlowe-plutus
+    , monad-control
+    , nonempty-containers ^>=0.3.5.0
+    , plutus-ledger-api
+    , safe
+    , stm ^>=2.5.1.0
+    , text
+    , time
+    , transformers
+    , typed-protocols
+    , unliftio
+    , unliftio-core
+    , vector
+    , witherable
+
+  exposed-modules:
+    -- Should we rename this to ChainFollower or MarloweFollower and ChainFollower.BlockProcessor or
+    -- ChainFollower.ProcessBlock (similarily to the db naming convention)?
+    Marlowe.Indexer
+    Marlowe.Indexer.MarloweChainFollower
+    Marlowe.Indexer.MarloweChainFollower.Extractor
+    Marlowe.Indexer.NodeFollower
+    -- In here Block cuold also be renamed to `ProcessBlock`.
+    Marlowe.Indexer.NodeFollower.Block
+    Marlowe.Indexer.NodeQuerier
+    Marlowe.Indexer.Store
+
+executable marlowe-indexer
+  import:          lang
+  hs-source-dirs:  app
+  main-is:         Main.hs
+  other-modules:   Paths_marlowe_indexer
+  build-depends:
+    , async-components
+    , base >=4.9 && <5
+    , binary
+    , bytestring
+    , cardano-api
+    , cardano-ledger-core
+    , containers
+    , hasql
+    , hasql-pool
+    , hasql-th >=0.5
+    , hasql-transaction
+    , log-base
+    , log-base-inlined
+    , marlowe-binaries
+    , marlowe-indexer
+    , marlowe-indexer:db
+    , marlowe-transactions
+    , optparse-applicative
+    , plutus-ledger-api
+    , text
+    , time
+    , unliftio
+
+test-suite marlowe-indexer-test
+  import:          lang
+  type:            exitcode-stdio-1.0
+  hs-source-dirs:  test
+  main-is:         Main.hs
+  other-modules:   Test
+  build-depends:
+    , base >=4.9 && <5
+    , binary
+    , bytestring
+    , containers
+    , hasql
+    , hasql-th >=0.5
+    , hasql-transaction
+    , HUnit
+    , text
+    , time
+    , marlowe-indexer:db
+    , marlowe-transactions
+    , temporary
+    , transformers
+

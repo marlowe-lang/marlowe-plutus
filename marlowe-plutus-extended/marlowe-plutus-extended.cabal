@@ -1,0 +1,54 @@
+cabal-version: 3.4
+name:          marlowe-plutus-extended
+version:       0.1.0.0
+license:       Apache-2.0
+build-type:    Simple
+maintainer:    marlowe@marlowe-lang.org
+author:        marlowe team
+stability:     experimental
+synopsis:      Extended Marlowe with templating functionality
+category:      Language
+homepage:      https://github.com/marlowe-lang/marlowe-plutus
+description:   Extended Marlowe adds templating functionality to Marlowe language.
+               It is not executable, it is translated to core Marlowe before
+               execution, deployment, or analysis.
+
+source-repository head
+  type:     git
+  location: https://github.com/marlowe-lang/marlowe-plutus
+
+common lang
+  default-language:   Haskell2010
+  default-extensions:
+    BangPatterns
+    BlockArguments
+    DeriveAnyClass
+    DeriveGeneric
+    DerivingStrategies
+    FlexibleInstances
+    MultiParamTypeClasses
+    OverloadedStrings
+
+  ghc-options:
+    -Wall -Werror
+
+library
+  import:          lang
+  hs-source-dirs:  src
+  build-depends:
+    , base
+    , aeson
+    , bytestring
+    , containers
+    , ordered-containers
+    , pretty
+    , wl-pprint
+    , scientific
+    , text
+    , plutus-tx
+    , plutus-ledger-api
+    , marlowe-plutus
+
+  exposed-modules:
+    Marlowe.Plutus.Extended
+    Marlowe.Plutus.Extended.Metadata.Types

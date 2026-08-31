@@ -1,0 +1,127 @@
+-----------------------------------------------------------------------------
+--
+-- Module      :  $Headers
+-- License     :  Apache 2.0
+--
+-- Stability   :  Experimental
+-- Portability :  Portable
+--
+-----------------------------------------------------------------------------
+{-# LANGUAGE RankNTypes #-}
+
+-- | Missing lenses.
+module Marlowe.Plutus.Testing.Contrib.PlutusTx.Lens (
+  -- * Operators
+  (<>%~),
+  (<><~),
+
+  -- * Lenses
+  scriptContextInfoLens,
+  scriptContextTxInfoLens,
+  scriptContextRedeemerLens,
+  scriptInfoDatumGetter,
+  txInfoDataLens,
+  txInfoFeeLens,
+  txInfoIdLens,
+  txInfoInputsLens,
+  txInfoMintLens,
+  txInfoOutputsLens,
+  txInfoRedeemersLens,
+  txInfoReferenceInputsLens,
+  txInfoSignatoriesLens,
+  txInfoValidRangeLens,
+  txInfoWdrlLens,
+) where
+
+import Control.Lens (Lens', lens, use, (<>=), Getter)
+import Control.Monad.State (MonadState)
+import PlutusLedgerApi.V2 (
+  Lovelace, Credential,
+ )
+import PlutusLedgerApi.V3 (
+  Datum,
+  DatumHash,
+  Map,
+  POSIXTimeRange,
+  PubKeyHash,
+  Redeemer,
+  ScriptContext (scriptContextScriptInfo, scriptContextTxInfo, scriptContextRedeemer),
+  ScriptPurpose,
+  TxId,
+  TxInInfo,
+  TxInfo (
+    txInfoData,
+    txInfoFee,
+    txInfoId,
+    txInfoInputs,
+    txInfoMint,
+    txInfoOutputs,
+    txInfoRedeemers,
+    txInfoReferenceInputs,
+    txInfoSignatories,
+    txInfoValidRange,
+    txInfoWdrl
+  ),
+  TxOut,
+  ScriptInfo (SpendingScript), MintValue,
+ )
+import qualified Control.Lens as Lens
+
+-- | Append a monadic value to a field.
+(<><~) :: (MonadState s m, Semigroup a) => Lens' s a -> m a -> m ()
+field <><~ x = (field <>=) =<< x
+
+-- | Update a field with a monadic function.
+(<>%~) :: (MonadState s m, Semigroup a) => Lens' s a -> (a -> m a) -> m ()
+field <>%~ f =
+  do
+    value <- use field
+    extra <- f value
+    field <>= value <> extra
+
+scriptInfoDatumGetter :: Getter ScriptInfo (Maybe Datum)
+scriptInfoDatumGetter = Lens.to $ \case
+  SpendingScript _ datum -> datum
+  _ -> Nothing
+
+scriptContextTxInfoLens :: Lens' ScriptContext TxInfo
+scriptContextTxInfoLens = lens scriptContextTxInfo $ \s x -> s{scriptContextTxInfo = x}
+
+scriptContextRedeemerLens :: Lens' ScriptContext Redeemer
+scriptContextRedeemerLens = lens scriptContextRedeemer $ \s x -> s{scriptContextRedeemer = x}
+
+scriptContextInfoLens :: Lens' ScriptContext ScriptInfo
+scriptContextInfoLens = lens scriptContextScriptInfo $ \s x -> s{scriptContextScriptInfo = x}
+
+txInfoInputsLens :: Lens' TxInfo [TxInInfo]
+txInfoInputsLens = lens txInfoInputs $ \s x -> s{txInfoInputs = x}
+
+txInfoReferenceInputsLens :: Lens' TxInfo [TxInInfo]
+txInfoReferenceInputsLens = lens txInfoReferenceInputs $ \s x -> s{txInfoReferenceInputs = x}
+
+txInfoOutputsLens :: Lens' TxInfo [TxOut]
+txInfoOutputsLens = lens txInfoOutputs $ \s x -> s{txInfoOutputs = x}
+
+txInfoFeeLens :: Lens' TxInfo Lovelace
+txInfoFeeLens = lens txInfoFee $ \s x -> s{txInfoFee = x}
+
+txInfoMintLens :: Lens' TxInfo MintValue
+txInfoMintLens = lens txInfoMint $ \s x -> s{txInfoMint = x}
+
+txInfoWdrlLens :: Lens' TxInfo (Map Credential Lovelace)
+txInfoWdrlLens = lens txInfoWdrl $ \s x -> s{txInfoWdrl = x}
+
+txInfoValidRangeLens :: Lens' TxInfo POSIXTimeRange
+txInfoValidRangeLens = lens txInfoValidRange $ \s x -> s{txInfoValidRange = x}
+
+txInfoSignatoriesLens :: Lens' TxInfo [PubKeyHash]
+txInfoSignatoriesLens = lens txInfoSignatories $ \s x -> s{txInfoSignatories = x}
+
+txInfoRedeemersLens :: Lens' TxInfo (Map ScriptPurpose Redeemer)
+txInfoRedeemersLens = lens txInfoRedeemers $ \s x -> s{txInfoRedeemers = x}
+
+txInfoDataLens :: Lens' TxInfo (Map DatumHash Datum)
+txInfoDataLens = lens txInfoData $ \s x -> s{txInfoData = x}
+
+txInfoIdLens :: Lens' TxInfo TxId
+txInfoIdLens = lens txInfoId $ \s x -> s{txInfoId = x}

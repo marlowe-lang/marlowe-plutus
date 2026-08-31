@@ -1,12 +1,12 @@
 cabal-version: 3.4
 name:          marlowe-plutus
-version:       0.1.2.0
+version:       0.2.0.0
 license:       Apache-2.0
 build-type:    Simple
-maintainer:    brian.bush@iohk.io
+maintainer:    tomasz.rybarczyk@marlowe-lang.org
 stability:     experimental
-author:        Alexander Nemish
-synopsis:      Marlowe plutus validators
+author:        Alexander Nemish, Brian Bush, Tomasz Rybarczyk, Pablo Lamela
+synopsis:      Current reference implementation of Marlowe in Plinth
 category:      Language
 license-files:
   LICENSE
@@ -15,8 +15,16 @@ license-files:
 data-files:
   benchmarks/rolepayout/*.benchmark
   benchmarks/semantics/*.benchmark
-  reference/data/*.contract
-  reference/data/*.paths
+
+  marlowe-testing/reference/data/*.contract
+  marlowe-testing/reference/data/*.paths
+  marlowe-testing/data/mainnet-protocol-params.json
+
+  test/contract.json
+  test/input.json
+  test/Spec/Marlowe/Serialization/golden/swap-contract.json
+  test/Spec/Marlowe/Serialization/golden/swap-module.json
+  test/state.json
 
 source-repository head
   type:     git
@@ -29,49 +37,9 @@ flag defer-plugin-errors
   default:     False
   manual:      True
 
-flag trace-plutus
-  description: Enable Plutus trace log for Marlowe validators.
-  default:     False
-  manual:      True
-
 flag profile-plutus
   description: Enable Plutus profiling for Marlowe validators.
   default:     False
-  manual:      True
-
-flag check-preconditions
-  description:
-    Validator checks whether preconditions are satisfied for the Marlowe state.
-
-  default:     True
-  manual:      True
-
-flag check-positive-balances
-  description:
-    Validator checks whether any account balances are non-positive in the Marlowe state.
-
-  default:     True
-  manual:      True
-
-flag check-duplicate-accounts
-  description:
-    Validator checks whether any accounts are duplicated in the Marlowe state.
-
-  default:     True
-  manual:      True
-
-flag check-duplicate-choices
-  description:
-    Validator checks whether any choices are duplicated in the Marlowe state.
-
-  default:     True
-  manual:      True
-
-flag check-duplicate-bindings
-  description:
-    Validator checks whether any bound values are duplicated in the Marlowe state.
-
-  default:     True
   manual:      True
 
 flag asdata-case
@@ -82,209 +50,282 @@ flag asdata-case
 common lang
   default-language:   Haskell2010
   default-extensions:
+    BangPatterns
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
     DeriveFoldable
     DeriveFunctor
     DeriveGeneric
     DeriveLift
     DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DoAndIfThenElse
+    DuplicateRecordFields
     ExplicitForAll
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NumericUnderscores
+    OverloadedStrings
+    OverloadedRecordDot
+    PatternSynonyms
+    RankNTypes
+    RecordWildCards
     ScopedTypeVariables
     StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    ViewPatterns
 
   ghc-options:
-    -fforce-recomp -Wall -Wnoncanonical-monad-instances
+    -Wall -Wnoncanonical-monad-instances
     -Wincomplete-uni-patterns -Wincomplete-record-updates
     -Wredundant-constraints -Widentities -Werror
 
-  if (flag(profile-plutus) || flag(trace-plutus))
+  if flag(profile-plutus)
     ghc-options: -fplugin-opt PlutusTx.Plugin:conservative-optimisation
 
   if flag(profile-plutus)
     ghc-options: -fplugin-opt PlutusTx.Plugin:profile-all
 
-  if flag(trace-plutus)
-    cpp-options: -DTRACE_PLUTUS
-
-  if flag(check-preconditions)
-    cpp-options: -DCHECK_PRECONDITIONS
-
-  if flag(check-positive-balances)
-    cpp-options: -DCHECK_POSITIVE_BALANCES
-
-  if flag(check-duplicate-accounts)
-    cpp-options: -DCHECK_DUPLICATE_ACCOUNTS
-
-  if flag(check-duplicate-choices)
-    cpp-options: -DCHECK_DUPLICATE_CHOICES
-
-  if flag(check-duplicate-bindings)
-    cpp-options: -DCHECK_DUPLICATE_BINDINGS
-
 library
   import:          lang
   hs-source-dirs:  src
   build-depends:
-    , base ^>=4.16.4.0 && <5
-    , bytestring >=0.11.4.0 && <0.12
+    , aeson
+    , base >=4.9 && <5
+    , bech32 >=1.1 && <2
+    , base16-aeson ==0.1.0.0
+    , base16-bytestring
+    , bytestring
+    -- FIXME: We should drop this dependency by:
+    -- * Providing our own implementation of plutus data serialization (even if it is a copy)
+    -- * Moving this dependency to the test suite only
+    -- * Testing that our implementation is compatible with cardano-api's one
+    , cardano-api
     , cardano-crypto-class
+    , containers
+    , deepseq
+    , deriving-aeson
     , flat
+    , ilist ==0.4.0.1
     , lens
+    , mtl ^>=2.3.1
+    , multiplate ==0.0.3
     , newtype-generics
-    , plutus-core ==1.15.0.0
-    , plutus-ledger-api ==1.15.0.0
-    , plutus-tx ==1.15.0.0
-    , plutus-tx-plugin ==1.15.0.0
-    , serialise ^>=0.2.6
+    , plutus-core
+    , plutus-ledger-api
+    , plutus-tx
+    , profunctors >=5.6.3
+    , range ==0.3.0.2
+    , scientific
+    , serialise
+    , sbv
+    , template-haskell
+    , text
+    , time ^>= 1.12.2
+    , transformers ^>=0.6.1
+    , wl-pprint >=1.2 && <2
+    , either ^>=5.0.3
 
   exposed-modules:
-    Language.Marlowe.Plutus
-    Language.Marlowe.Plutus.OpenRoles
-    Language.Marlowe.Plutus.RolePayout
-    Language.Marlowe.Plutus.RoleTokens
-    Language.Marlowe.Plutus.RoleTokens.Types
-    Language.Marlowe.Plutus.Script
-    Language.Marlowe.Plutus.Script.Types
-    Language.Marlowe.Plutus.Semantics
-    Language.Marlowe.Plutus.Semantics.Types
-    Language.Marlowe.Plutus.Semantics.Types.Address
+    Paths_marlowe_plutus
+
+    Marlowe.Plutus.Analysis.FSSemantics
+    Marlowe.Plutus.Analysis.Safety.Ledger
+    Marlowe.Plutus.Analysis.Safety.Ledger.Validators
+    Marlowe.Plutus.Analysis.Safety.Transaction
+    Marlowe.Plutus.Analysis.Safety.Types
+    Marlowe.Plutus.Analysis.Safety.Types.Validator
+    -- Marlowe.Plutus.AssocMap
+    Marlowe.Plutus.Contrib.Data.Foldable
+    Marlowe.Plutus.Contrib.PlutusTx.Debugging.Trace
+    Marlowe.Plutus.Contrib.PlutusTx.Dict
+    Marlowe.Plutus.Contrib.PlutusTx.KeyHashedDict
+    Marlowe.Plutus.FindInputs
+    Marlowe.Plutus.Foldings
+    Marlowe.Plutus.Merkle
+    Marlowe.Plutus.Next
+    Marlowe.Plutus.Next.Applicables
+    Marlowe.Plutus.Next.Applicables.Bound
+    Marlowe.Plutus.Next.Applicables.CanChoose
+    Marlowe.Plutus.Next.Applicables.CanDeposit
+    Marlowe.Plutus.Next.Applicables.CanNotify
+    Marlowe.Plutus.Next.CanReduce
+    Marlowe.Plutus.Next.Indexed
+    Marlowe.Plutus.Next.IsMerkleizedContinuation
+    Marlowe.Plutus.OpenRoles
+    Marlowe.Plutus.Plate
+    Marlowe.Plutus.Pretty
+    Marlowe.Plutus.RolePayout
+    Marlowe.Plutus.RoleTokens
+    Marlowe.Plutus.RoleTokens.Types
+    Marlowe.Plutus.Scripts
+    Marlowe.Plutus.Scripts.Types
+    Marlowe.Plutus.Semantics
+    Marlowe.Plutus.Semantics.Types
+    Marlowe.Plutus.Semantics.Types.Address
 
   if flag(asdata-case)
     cpp-options: -DASDATA_CASE
 
-executable marlowe-validators
-  import:         lang
-  hs-source-dirs: app
-  main-is:        Main.hs
+-- Golden tests, fixtures, generators
+library marlowe-testing
+  import:             lang
+  hs-source-dirs:     marlowe-testing
+  visibility:        public
   other-modules:
-    Benchmark.Marlowe
-    Benchmark.Marlowe.RolePayout
-    Benchmark.Marlowe.Semantics
-    Benchmark.Marlowe.Semantics.Pretty
-    Benchmark.Marlowe.Types
-    Benchmark.Marlowe.Util
     Paths_marlowe_plutus
+  exposed-modules:
+    Marlowe.Plutus.Testing.Common
+    Marlowe.Plutus.Testing.Contrib.Data.Functor
+    Marlowe.Plutus.Testing.Contrib.Integer.Arbitrary
+    Marlowe.Plutus.Testing.Contrib.PlutusTx.Arbitrary
+    Marlowe.Plutus.Testing.Contrib.PlutusTx.Debugging.Aeson
+    Marlowe.Plutus.Testing.Contrib.PlutusTx.Lens
+    Marlowe.Plutus.Testing.Contrib.PlutusTx.PlutusTransaction
+    Marlowe.Plutus.Testing.Data.Jsonable
+    Marlowe.Plutus.Testing.ProtocolParams
+    Marlowe.Plutus.Testing.Reference
+    Marlowe.Plutus.Testing.Scripts
+    Marlowe.Plutus.Testing.Semantics.Arbitrary
+    Marlowe.Plutus.Testing.Semantics.AssocMap
+    Marlowe.Plutus.Testing.Semantics.Golden
+    Marlowe.Plutus.Testing.Semantics.Golden.Escrow
+    Marlowe.Plutus.Testing.Semantics.Golden.Negative
+    Marlowe.Plutus.Testing.Semantics.Golden.Pangram
+    Marlowe.Plutus.Testing.Semantics.Golden.Swap
+    Marlowe.Plutus.Testing.Semantics.Golden.Trivial
+    Marlowe.Plutus.Testing.Semantics.Golden.ZeroCouponBond
+    Marlowe.Plutus.Testing.Semantics.Next.Arbitrary
+    Marlowe.Plutus.Testing.Semantics.Path
+    Marlowe.Plutus.Testing.Semantics.Util
+    Marlowe.Plutus.Testing.Service
+    Marlowe.Plutus.Testing.Service.Random
+    Marlowe.Plutus.Testing.Service.Serialization
+    Marlowe.Plutus.Testing.Service.Types
+    Marlowe.Plutus.Testing.Transactions
 
   build-depends:
     , aeson
-    , base
+    , aeson-pretty
+    , base >=4.9 && <5
+    , base16-aeson ==0.1.0.0
     , base16-bytestring
-    , bytestring
-    , cardano-binary
-    , containers
-    , directory
-    , filepath
-    , marlowe-cardano ==0.2.1.0
-    , marlowe-plutus
-    , mtl
-    , plutus-core:{plutus-core, plutus-core-execlib}
-    , plutus-ledger-api
-    , plutus-tx
-    , serialise
-    , text
-    , yaml
-
-  ghc-options:    -threaded
-
-executable marlowe-minting-validator
-  import:         lang
-  hs-source-dirs: mint
-  main-is:        Main.hs
-  build-depends:
-    , aeson
-    , base
-    , base16
-    , bytestring
-    , containers
-    , marlowe-plutus
-    , plutus-ledger-api
-    , plutus-tx
-    , text
-
-  ghc-options:    -threaded
-
-test-suite marlowe-plutus
-  import:             lang
-  hs-source-dirs:     test
-  type:               exitcode-stdio-1.0
-  main-is:            Spec.hs
-  other-modules:
-    Language.Marlowe.PlutusSpec
-    Paths_marlowe_plutus
-
-  build-depends:
-    , aeson
-    , base
-    , bytestring
-    , cardano-api
-    , containers
-    , data-default
-    , directory
-    , filepath
-    , hspec
-    , lens
-    , marlowe-cardano ==0.2.1.0
-    , marlowe-plutus
-    , marlowe-test ==0.2.1.0
-    , plutus-core
-    , plutus-ledger-api
-    , plutus-tx
-    , QuickCheck
-    , serialise
-    , transformers
-
-  build-tool-depends: hspec-discover:hspec-discover
-  ghc-options:        -threaded
-
-executable marlowe-plutus-tester
-  import:             lang
-  hs-source-dirs:     test
-  main-is:            Main.hs
-  other-modules:
-    Language.Marlowe.PlutusSpec
-    Paths_marlowe_plutus
-
-  build-depends:
-    , aeson
-    , base
     , bytestring
     , cardano-api
     , cardano-crypto-class
-    , containers
+    , containers ^>=0.6.5
     , data-default
-    , directory
-    , filepath
+    , directory ^>=1.3
+    , filepath ^>=1.4
     , hspec
     , hspec-core
     , lens
-    , marlowe-cardano ==0.2.1.0
-    , marlowe-plutus
-    , marlowe-test ==0.2.1.0
+    , marlowe-plutus:{marlowe-plutus}
+    , mtl >=2.2 && <3
+    , QuickCheck >=2.14 && <3
+    , quickcheck-instances
     , plutus-core
     , plutus-ledger-api
     , plutus-tx
-    , QuickCheck
     , serialise
+    , tasty-quickcheck ^>=0.11
+    , text
     , transformers
+    , vector
+    , yaml
 
   build-tool-depends: hspec-discover:hspec-discover
   ghc-options:        -threaded
 
-executable marlowe-charli3
+executable marlowe-testing-reference
   import:         lang
-  hs-source-dirs: charli3
+  hs-source-dirs: marlowe-testing/reference
   main-is:        Main.hs
-  other-modules:  Language.Marlowe.Plutus.Charli3
   build-depends:
-    , base
-    , base16-bytestring
+    , base >=4.9 && <5
+    , directory
+    , filepath
+    , marlowe-plutus:{marlowe-testing}
+    , mtl >=2.2 && <3
+
+-- The core spec for the interpreter
+test-suite marlowe-plutus-test
+  import:         lang
+  hs-source-dirs: test
+  main-is:        Spec.hs
+  type:               exitcode-stdio-1.0
+  other-modules:
+    Paths_marlowe_plutus
+    Spec.PlutusTx
+    Spec.PlutusTx.AssocMap
+    Spec.PlutusTx.MList
+    Spec.PlutusTx.Prelude
+    Spec.PlutusTx.ScriptContext
+    Spec.PlutusTx.Specification
+    Spec.PlutusTx.Value
+    Spec.Marlowe.Marlowe
+    Spec.Marlowe.Merkle
+    Spec.Marlowe.Plate
+    Spec.Marlowe.Semantics
+    Spec.Marlowe.Semantics.Compute
+    Spec.Marlowe.Semantics.Entropy
+    Spec.Marlowe.Semantics.Functions
+    Spec.Marlowe.Semantics.Golden.Tests
+    Spec.Marlowe.Semantics.Next
+    Spec.Marlowe.Semantics.Next.Common.Isomorphism
+    Spec.Marlowe.Semantics.Next.Common.QuickCheck
+    Spec.Marlowe.Semantics.Next.Common.Tuple
+    Spec.Marlowe.Semantics.Next.Contract
+    Spec.Marlowe.Semantics.Next.Contract.Generator
+    Spec.Marlowe.Semantics.Next.Contract.When
+    Spec.Marlowe.Semantics.Next.Contract.When.Choice
+    Spec.Marlowe.Semantics.Next.Contract.When.Deposit
+    Spec.Marlowe.Semantics.Next.Contract.When.Notify
+    Spec.Marlowe.Semantics.Path.Tests
+    Spec.Marlowe.Serialization
+    Spec.Marlowe.Service.Isabelle
+    Spec.Marlowe.StaticAnalysis
+    Spec.Marlowe.StaticAnalysis.Regression
+
+  build-depends:
+    , aeson
+    , base >=4.9 && <5
     , bytestring
-    , cardano-binary
-    , marlowe-plutus
-    , optparse-applicative
-    , oracle-feed
-    , plutus-core
+    , cardano-api
+    , containers ^>=0.6.5
+    , data-default
+    , filepath ^>=1.4
+    , hint ^>=0.9
+    , hspec
+    , ilist ==0.4.0.1
+    , lens >=5.2 && <6
+    , marlowe-plutus:{marlowe-plutus, marlowe-testing}
+    , marlowe-spec-test ==0.1.0.3
+    , mtl >=2.2 && <3
     , plutus-ledger-api
     , plutus-tx
-    , plutus-tx-plugin
+    , QuickCheck >=2.14 && <3
+    , quickcheck-instances ^>=0.3.29
+    , sbv
+    , tasty ^>=1.5
+    , tasty-hspec
+    , tasty-hunit ^>=0.10
+    , tasty-quickcheck ^>=0.11
+    , text
+    , type-iso ==1.0.1.0
 
-  ghc-options:    -threaded

@@ -1,7 +1,0 @@
-out/
-*.tsv
-.RData
-*.Rout
-*.dot
-*.svg
-*.png

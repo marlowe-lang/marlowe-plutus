@@ -1,5 +1,5 @@
 repository cardano-haskell-packages
-  url: https://input-output-hk.github.io/cardano-haskell-packages
+  url: https://chap.intersectmbo.org/
   secure: True
   root-keys:
     3e0cce471cf09815f930210f7827266fd09045445d65923e6d0238a6cd15126f
@@ -11,16 +11,31 @@ repository cardano-haskell-packages
 
 -- run `nix flake lock --update-input hackage` after updating the hackage index-state.
 -- run `nix flake lock --update-input CHaP` after updating the cardano-haskell-packages index-state.
--- We duplicate the hackage index-state first for haskell.nix, even though cabal ignores it.
--- This must always match the hackage index-state on the next line.
--- See https://github.com/input-output-hk/haskell.nix/issues/1869#issuecomment-1449272480
-index-state: 2023-11-14T00:00:00Z
 index-state:
-  , hackage.haskell.org      2023-11-14T00:00:00Z
-  , cardano-haskell-packages 2023-11-14T00:00:00Z
+  , hackage.haskell.org 2026-05-26T07:00:45Z
+  , cardano-haskell-packages 2026-05-25T13:25:40Z
 
 packages:
+  marlowe-binaries
+  marlowe-cli
+  marlowe-contract-store
+  marlowe-indexer
+  marlowe-object
   marlowe-plutus
+  marlowe-plutus-extended
+  marlowe-runtime
+  marlowe-transactions
+
+  libs/async-components
+  libs/base16-aeson
+  libs/cardano-debug
+  libs/log-base-inlined
+  libs/hasql-dynamic-syntax
+  libs/multiplate
+  libs/plutus-ledger-ada
+  libs/plutus-ledger-slot
+  libs/variations
+  -- libs/sqlite-simple
 
 tests: True
 
@@ -32,33 +47,55 @@ package marlowe-plutus
   tests: True
   ghc-options: -Werror
 
+package postgresql-libpq
+  flags: +use-pkg-config
 
---Plutus 1.15.0 fork of https://github.com/Charli3-Official/oracle-datum-lib
-source-repository-package
-  type: git
-  location: https://github.com/bwbush/oracle-datum-lib
-  tag: 6a714c1319ddcd0443e108fc55988a781b940ea5
-  --sha256: 13rvagplrar30vzkhkixxf8bwkrkndcgj6cmm02wr54ab8rnvaz1
-
--- Required for the Plutus 1.15.0.0 packages.
 constraints:
-  nothunks ==0.1.4
+    cardano-api ^>=11.0
+  , cardano-crypto-class ^>=2.3
+  , plutus-core ^>=1.63
+  , plutus-ledger-api ^>=1.63
+  , validation <1.2
 
--- Required until PLT-8148 is merged to the main branch.
+source-repository-package
+   type: git
+   location: https://github.com/marlowe-lang/marlowe.git
+   tag: 7b5b1e900ec53a8eb18747992bec73470704dfcb
+   --sha256: sha256-ndrqu+9lwYBxqPq8QrIV63VVUANR9pSMbufkIut1Kik=
+   subdir: marlowe-spec-test
+           haskell
+           isabelle
+
+-- Currently this is the simplest way to get compilation working
 source-repository-package
   type: git
-  location: https://github.com/input-output-hk/marlowe
-  tag: 2ecc4c79a23275ae083b40c6bf28f5127d2e5390
-  --sha256: 0q6zasi052m2yxndpxx8lnb52wfqbf5ypi6nali1zjjgihz1nrqd
-  subdir: isabelle
-          haskell
-          marlowe-spec-test
+  location: https://github.com/palas/haskell-lmdb-mock.git
+  tag: c8d61e6eee03ee271e7768c0576110da885aec48
+  --sha256: sha256-+gB1MmM6qRApz1p7tFsdvKoAWDrYB4a+bJ9Djm6ieYI=
+
+-- hasql-th 0.5 with ByteString -> Text fix (issue #36)
 source-repository-package
   type: git
-  location: https://github.com/input-output-hk/marlowe-cardano
-  tag: 5bec67bbecefc109ea7b47d0504f3bb7b9fba3aa
-  --sha256: 1cdwmi4c7x9fh2w4b6bxryy3h8fjfsyjhbk2vh4bfarq4yij4cyc
-  subdir:
-    marlowe
-    marlowe-test
-    libs/base16-aeson
+  location: https://github.com/nikita-volkov/hasql-th
+  tag: 8dad116eb3ba13ba5c9d0c6e5d12d231a1cc4c83
+  --sha256: 00lv3k45p83ivkk4n1ps6cw1g53qjfrv1qirx1c4n04xnmgggsxj
+
+-- https://github.com/biocad/openapi3/commit/88489a463a0512bf8ad55641d49ca0b4fed47518
+
+-- sc-tools (includes convex-mockchain with EraHistory)
+-- source-repository-package
+--   type: git
+--   location: https://github.com/input-output-hk/sc-tools
+--   tag: 4546122230491db4839a4a42fc2bc601f7900909
+--   subdir:
+--     src/base
+--     src/blockfrost
+--     src/coin-selection
+--     src/devnet
+--     src/mockchain
+--     src/node-client
+--     src/optics
+--     src/tx-mod
+--     src/wallet
+--   --sha256: sha256-LzJwZCOyMXlCvYByZ5ZrnbN+vA0fw6BRRCUaJcWX9fs=
+-- 

@@ -1,0 +1,30 @@
+{
+  "name": "marlowe-lang",
+  "packageManager": "yarn-berry",
+  "workspaces": [
+    "packages/*",
+    "app"
+  ],
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "@vtsls/language-server": "^0.2.9",
+    "rollup": "^4.62.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vite-plugin-dts": "^4.5.4",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.5.0",
+    "vitest": "^4.1.8",
+    "vue-tsc": "^3.3.4"
+  },
+  "resolutions": {
+    "@konduit/bln@workspace:^": "portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/bln",
+    "@konduit/cardano-keys@workspace:^": "portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/cardano-keys",
+    "@konduit/codec@workspace:^": "portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/codec",
+    "@konduit/konduit-consumer@workspace:^": "portal:/home/paluh/projects/cl/konduit-js/paluh/migrate-the-app/packages/konduit-consumer"
+  }
+}

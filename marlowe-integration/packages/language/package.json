@@ -1,0 +1,30 @@
+{
+  "dependencies": {
+    "decimal.js": "^10.6.0",
+    "neverthrow": "^8.2.0",
+    "type-fest": "^5.7.0"
+  },
+  "exports": {
+    "./v1": {
+      "types": "./dist/v1/index.d.ts",
+      "default": "./dist/v1/index.js"
+    },
+    "./version": {
+      "types": "./dist/version.d.ts",
+      "default": "./dist/version.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "dist/index.js",
+  "module": "dist/index.es.js",
+  "name": "@marlowe-lang/language",
+  "private": true,
+  "scripts": {
+    "build": "tsc --build",
+    "test": "vitest"
+  },
+  "type": "module",
+  "version": "0.0.1"
+}

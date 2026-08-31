@@ -1,0 +1,105 @@
+-- | Minimal stub
+module Language.Marlowe.Runtime.Plutus.V2.Api where
+
+import Cardano.Chain.Common (addrToBase58)
+import Language.Marlowe.Runtime.ChainSync.Api (Address(..), ScriptHash(..), Assets (..), AssetId (..), PolicyId (..), TokenName (..), Lovelace(..), Tokens (..), Quantity (..), toCardanoAddressAny, TxOutRef (TxOutRef), TxId (TxId), TxIx (TxIx))
+import qualified PlutusLedgerApi.V2 as PV2
+import qualified PlutusTx.Monoid as PTx
+import qualified Cardano.Api as C
+import Control.Monad ((>=>), (<=<))
+import qualified PlutusTx.AssocMap as AM
+import Data.Bifunctor (bimap)
+import qualified Data.Map as Map
+import Data.Maybe (fromMaybe)
+
+toPlutusTxOutRef :: TxOutRef -> PV2.TxOutRef
+toPlutusTxOutRef (TxOutRef (TxId txId) (TxIx txIx)) =
+  PV2.TxOutRef (PV2.TxId . PV2.toBuiltin $ txId) (PV2.toBuiltin . toInteger $ txIx)
+
+toPlutusAddress :: Address -> Maybe PV2.Address
+toPlutusAddress =
+  toCardanoAddressAny >=> \case
+    C.AddressByron address -> fromCardanoAddress address
+    C.AddressShelley address -> fromCardanoAddress address
+  where
+    fromCardanoAddress :: forall addrtype. C.Address addrtype -> Maybe PV2.Address
+    fromCardanoAddress (C.ByronAddress address) =
+      Just $ PV2.Address plutusCredential Nothing
+      where
+        plutusCredential :: PV2.Credential
+        plutusCredential =
+          PV2.PubKeyCredential
+            . PV2.PubKeyHash
+            . PV2.toBuiltin
+            . addrToBase58
+            $ address
+    fromCardanoAddress (C.ShelleyAddress _ paymentCredential stakeAddressReference) =
+      PV2.Address
+        (fromCardanoPaymentCredential (C.fromShelleyPaymentCredential paymentCredential))
+        <$> fromCardanoStakeAddressReference (C.fromShelleyStakeReference stakeAddressReference)
+
+    fromCardanoPaymentCredential :: C.PaymentCredential -> PV2.Credential
+    fromCardanoPaymentCredential (C.PaymentCredentialByKey paymentKeyHash) = PV2.PubKeyCredential (fromCardanoKeyHash paymentKeyHash)
+    fromCardanoPaymentCredential (C.PaymentCredentialByScript scriptHash) = PV2.ScriptCredential (fromCardanoScriptHash scriptHash)
+
+    fromCardanoStakeAddressReference :: C.StakeAddressReference -> Maybe (Maybe PV2.StakingCredential)
+    fromCardanoStakeAddressReference C.NoStakeAddress = pure Nothing
+    fromCardanoStakeAddressReference (C.StakeAddressByValue stakeCredential) =
+      pure $ Just (PV2.StakingHash $ fromCardanoStakeCredential stakeCredential)
+    fromCardanoStakeAddressReference C.StakeAddressByPointer{} = pure Nothing
+
+    fromCardanoStakeCredential :: C.StakeCredential -> PV2.Credential
+    fromCardanoStakeCredential (C.StakeCredentialByKey stakeKeyHash) = PV2.PubKeyCredential (fromCardanoKeyHash stakeKeyHash)
+    fromCardanoStakeCredential (C.StakeCredentialByScript scriptHash) = PV2.ScriptCredential (fromCardanoScriptHash scriptHash)
+
+    fromCardanoKeyHash :: (C.SerialiseAsRawBytes (C.Hash keyRole)) => C.Hash keyRole -> PV2.PubKeyHash
+    fromCardanoKeyHash keyHash = PV2.PubKeyHash $ PV2.toBuiltin $ C.serialiseToRawBytes keyHash
+
+    fromCardanoScriptHash :: C.ScriptHash -> PV2.ScriptHash
+    fromCardanoScriptHash scriptHash = PV2.ScriptHash $ PV2.toBuiltin $ C.serialiseToRawBytes scriptHash
+
+fromPlutusValidatorHash :: PV2.ScriptHash -> ScriptHash
+fromPlutusValidatorHash (PV2.ScriptHash h) = ScriptHash . PV2.fromBuiltin $ h
+
+fromPlutusValue :: PV2.Value -> Assets
+fromPlutusValue = Assets <$> valueToLovelace <*> valueToTokens
+
+toAssetId :: PV2.CurrencySymbol -> PV2.TokenName -> AssetId
+toAssetId cs role =
+  let policyId = fromPlutusCurrencySymbol cs
+      tokenName = fromPlutusTokenName role
+   in AssetId policyId tokenName
+
+toPlutusCurrencySymbol :: PolicyId -> PV2.CurrencySymbol
+toPlutusCurrencySymbol (PolicyId bs) = PV2.CurrencySymbol . PV2.toBuiltin $ bs
+
+toPlutusTokenName :: TokenName -> PV2.TokenName
+toPlutusTokenName (TokenName bs) = PV2.TokenName . PV2.toBuiltin $ bs
+
+fromPlutusCurrencySymbol :: PV2.CurrencySymbol -> PolicyId
+fromPlutusCurrencySymbol (PV2.CurrencySymbol bs) = PolicyId . PV2.fromBuiltin $ bs
+
+fromPlutusTokenName :: PV2.TokenName -> TokenName
+fromPlutusTokenName (PV2.TokenName bs) = TokenName . PV2.fromBuiltin $ bs
+
+valueToLovelace :: PV2.Value -> Lovelace
+valueToLovelace =
+  Lovelace
+  . fromMaybe 0
+  . (AM.lookup (PV2.TokenName PTx.mempty) <=< AM.lookup (PV2.CurrencySymbol PTx.mempty))
+  . PV2.getValue
+
+valueToTokens :: PV2.Value -> Tokens
+valueToTokens =
+  Tokens
+    . Map.fromList
+    . fmap
+      ( bimap (uncurry toAssetId) Quantity
+          . assocLeft
+      )
+    . (traverse AM.toList <=< AM.toList)
+    . AM.delete (PV2.CurrencySymbol PTx.mempty)
+    . PV2.getValue
+  where
+    assocLeft (a, (b, c)) = ((a, b), c)
+

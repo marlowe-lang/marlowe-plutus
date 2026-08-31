@@ -1,0 +1,146 @@
+cabal-version: 3.4
+name:          marlowe-object
+version:       1.0.0
+synopsis:      Object format for Marlowe contracts.
+bug-reports:   https://github.com/marlowe-lang/marlowe-runtime-ng/issues
+license:       Apache-2.0
+author:        Jamie Bertram, Tomasz Rybarczyk
+maintainer:    tomasz.rybarczyk@marlowe-lang.org
+stability:     experimental
+category:      Language
+license-files:
+  LICENSE
+  NOTICE
+
+source-repository head
+  type:     git
+  location: https://github.com/marlowe-lang/marlowe-runtime-ng.git
+  subdir:   marlowe-object
+
+common lang
+  default-language:   Haskell2010
+  default-extensions:
+    BangPatterns
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    DerivingVia
+    DoAndIfThenElse
+    DuplicateRecordFields
+    EmptyCase
+    ExplicitForAll
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    ImportQualifiedPost
+    LambdaCase
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    NumericUnderscores
+    OverloadedRecordDot
+    OverloadedStrings
+    QuantifiedConstraints
+    PatternSynonyms
+    PolyKinds
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeFamilyDependencies
+    TypeOperators
+    ViewPatterns
+
+  ghc-options:
+    -Wall -Wnoncanonical-monad-instances -Wunused-packages
+    -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Wredundant-constraints -Widentities
+
+library
+  import:          lang
+  hs-source-dirs:  src
+  exposed-modules:
+    Language.Marlowe.Object.Archive
+    Language.Marlowe.Object.Bundler
+    Language.Marlowe.Object.Link
+    Language.Marlowe.Object.Types
+
+  build-depends:
+    , aeson ^>=2.2
+    , aeson-record ==0.1.0.0
+    , base >=4.9 && <5
+    , base16-aeson ^>=0.1.0
+    , base16 ^>=1.0
+    , binary ^>=0.8.8
+    , bytestring >=0.10.12 && <0.12
+    , cardano-api
+    , cardano-ledger-core
+    , dlist ^>=1.0
+    , filepath ^>=1.4
+    , hashable >=1.3 && <2
+    , lens >=5.2 && <6
+    , marlowe-plutus ^>=0.2.0
+    , mtl >=2.2 && <3
+    , pipes ^>=4.3.16
+    , plutus-ledger-api
+    , text
+    , time >=1.9 && <2
+    , transformers
+    , unliftio ^>=0.2.1
+    , unordered-containers ^>=0.2.19
+    , variations
+    , zip
+
+library gen
+  import:          lang
+  hs-source-dirs:  gen
+  exposed-modules: Language.Marlowe.Object.Gen
+  build-depends:
+    , base
+    , bytestring
+    , cardano-api-gen
+    , hedgehog-quickcheck
+    , lens
+    , marlowe-object
+    , marlowe-plutus:marlowe-testing
+    , QuickCheck
+    , quickcheck-instances
+  visibility:      public
+
+-- test-suite marlowe-object-test
+--   import:             lang
+--   hs-source-dirs:     test
+--   type:               exitcode-stdio-1.0
+--   main-is:            Spec.hs
+--   other-modules:
+--     Language.Marlowe.Object.BundlerSpec
+--     Language.Marlowe.Object.LinkSpec
+--     Language.Marlowe.Object.TypesSpec
+-- 
+--   build-depends:
+--     , aeson ^>=2.2
+--     , base >=4.9 && <5
+--     , binary ^>=0.8.8
+--     , hspec
+--     , marlowe-object
+--     , marlowe-object:gen
+--     , marlowe-test
+--     , QuickCheck >=2.14 && <3
+--     , quickcheck-classes
+--     , unordered-containers ^>=0.2.19
+-- 
+--   build-tool-depends: hspec-discover:hspec-discover
+--   ghc-options:        -threaded

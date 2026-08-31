@@ -1,0 +1,79 @@
+{
+    "timeout": 1655621700000,
+    "timeout_continuation": "close",
+    "when": [
+        {
+            "case": {
+                "deposits": 100000000,
+                "into_account": {
+                    "role_token": "JF"
+                },
+                "of_token": {
+                    "currency_symbol": "",
+                    "token_name": ""
+                },
+                "party": {
+                    "role_token": "JF"
+                }
+            },
+            "then": {
+                "from_account": {
+                    "role_token": "JF"
+                },
+                "pay": 100000000,
+                "then": {
+                    "timeout": 1655664900000,
+                    "timeout_continuation": "close",
+                    "when": [
+                        {
+                            "case": {
+                                "deposits": {
+                                    "add": 100000000,
+                                    "and": 5000000
+                                },
+                                "into_account": {
+                                    "role_token": "TM"
+                                },
+                                "of_token": {
+                                    "currency_symbol": "",
+                                    "token_name": ""
+                                },
+                                "party": {
+                                    "role_token": "TM"
+                                }
+                            },
+                            "then": {
+                                "from_account": {
+                                    "role_token": "TM"
+                                },
+                                "pay": {
+                                    "add": 100000000,
+                                    "and": 5000000
+                                },
+                                "then": "close",
+                                "to": {
+                                    "party": {
+                                        "role_token": "JF"
+                                    }
+                                },
+                                "token": {
+                                    "currency_symbol": "",
+                                    "token_name": ""
+                                }
+                            }
+                        }
+                    ]
+                },
+                "to": {
+                    "party": {
+                        "role_token": "TM"
+                    }
+                },
+                "token": {
+                    "currency_symbol": "",
+                    "token_name": ""
+                }
+            }
+        }
+    ]
+}

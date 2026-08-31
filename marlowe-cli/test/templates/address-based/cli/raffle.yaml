@@ -1,0 +1,234 @@
+testName: Raffle contract with a few participants
+
+operations:
+
+- Publish:
+    publishPermanently: true
+
+- CreateWallet: Sponsor
+
+- CreateWallet: Party0
+
+- CreateWallet: Party1
+
+- CreateWallet: Party2
+
+- CreateWallet: Party3
+
+- CreateWallet: Party4
+
+- CreateWallet: Party5
+
+- CreateWallet: Party6
+
+- CreateWallet: Party7
+
+- CreateWallet: Oracle
+
+- Mint:
+    nickname: WinnerTokensCurrency
+    minLovelace: 2000000
+    tokenDistribution:
+      - [Sponsor, FirstPrice, 1]
+      - [Sponsor, SecondPrice, 1]
+      - [Sponsor, ThirdPrice, 1]
+
+- Fund:
+    utxos: [10000000, 10000000]
+    wallets: [Oracle, Sponsor]
+
+- Initialize:
+    minLovelace: 3000000
+    merkleize: true
+    template:
+      UseRaffle:
+        sponsor:
+          address: Sponsor
+        oracle:
+          address: Oracle
+        chunkSize: 2
+        parties:
+          - address: Party1
+          - address: Party2
+          - address: Party3
+          - address: Party4
+          - address: Party5
+          - address: Party6
+          - address: Party7
+        prizeNFTPerRound:
+          - [WinnerTokensCurrency, FirstPrice]
+          - [WinnerTokensCurrency, SecondPrice]
+          - [WinnerTokensCurrency, ThirdPrice]
+        depositDeadline:
+          relative: +1000
+        selectDeadline:
+          relative: +1000
+        payoutDeadline:
+          relative: +1000
+
+- AutoRun
+
+- Prepare:
+    inputs:
+      - input_from_party:
+          address: Sponsor
+        that_deposits: 1
+        of_token:
+          currency_symbol: WinnerTokensCurrency
+          token_name: FirstPrice
+        into_account:
+          address: Sponsor
+    minimumTime:
+      relative: -15
+    maximumTime:
+      relative: 120
+
+- AutoRun
+
+- Prepare:
+    inputs:
+      - input_from_party:
+          address: Sponsor
+        that_deposits: 1
+        of_token:
+          currency_symbol: WinnerTokensCurrency
+          token_name: SecondPrice
+        into_account:
+          address: Sponsor
+    minimumTime:
+      relative: -15
+    maximumTime:
+      relative: 120
+
+- AutoRun
+
+- Prepare:
+    inputs:
+      - input_from_party:
+          address: Sponsor
+        that_deposits: 1
+        of_token:
+          currency_symbol: WinnerTokensCurrency
+          token_name: ThirdPrice
+        into_account:
+          address: Sponsor
+    minimumTime:
+      relative: -15
+    maximumTime:
+      relative: 120
+
+- AutoRun
+
+- Prepare:
+    inputs:
+      - for_choice_id:
+          choice_name: RANDOM
+          choice_owner:
+            address: Oracle
+        input_that_chooses_num: 3
+    minimumTime:
+      relative: -100
+    maximumTime:
+      relative: 240
+
+- AutoRun
+
+- Prepare:
+    inputs:
+      - "input_notify"
+      - "input_notify"
+    minimumTime:
+      relative: -15
+    maximumTime:
+      relative: 120
+
+- AutoRun
+
+- Prepare:
+    inputs:
+      - "input_notify"
+    minimumTime:
+      relative: -15
+    maximumTime:
+      relative: 120
+
+- AutoRun
+
+- CheckBalance:
+    wallet: Party4
+    balance:
+      - [WinnerTokensCurrency, FirstPrice, 1]
+      - [ADA, [0,2]]
+
+- Prepare:
+    inputs:
+      - for_choice_id:
+          choice_name: RANDOM
+          choice_owner:
+            address: Oracle
+        input_that_chooses_num: 3
+    minimumTime:
+      relative: -100
+    maximumTime:
+      relative: 240
+
+- AutoRun
+
+- Prepare:
+    inputs:
+      - "input_notify"
+      - "input_notify"
+    minimumTime:
+      relative: -15
+    maximumTime:
+      relative: 120
+
+- AutoRun
+
+- Prepare:
+    inputs:
+      - "input_notify"
+    minimumTime:
+      relative: -15
+    maximumTime:
+      relative: 120
+
+- AutoRun
+
+- CheckBalance:
+    wallet: Party5
+    balance:
+      - [WinnerTokensCurrency, SecondPrice, 1]
+      - [ADA, [0,2]]
+
+- Prepare:
+    inputs:
+      - for_choice_id:
+          choice_name: RANDOM
+          choice_owner:
+            address: Oracle
+        input_that_chooses_num: 3
+    minimumTime:
+      relative: -100
+    maximumTime:
+      relative: 240
+
+- AutoRun
+
+- Prepare:
+    inputs:
+      - "input_notify"
+      - "input_notify"
+    minimumTime:
+      relative: -15
+    maximumTime:
+      relative: 120
+
+- AutoRun
+
+- CheckBalance:
+    wallet: Party6
+    balance:
+      - [WinnerTokensCurrency, ThirdPrice, 1]
+      - [ADA, [0,2]]
+

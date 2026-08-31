@@ -1,37 +1,34 @@
-{ repoRoot, inputs, pkgs, lib, system }:
+{ inputs, pkgs, lib }:
 
 let
+  cabalProject = pkgs.haskell-nix.cabalProject' (
 
-  cabalProject = pkgs.haskell-nix.cabalProject' ({ config, pkgs, ... }: {
-    name = "marlowe-plutus";
-    src = ../.;
-    compiler-nix-name = "ghc928";
-    shell.withHoogle = false;
-    inputMap = {
-      "https://input-output-hk.github.io/cardano-haskell-packages" = inputs.iogx.inputs.CHaP;
-    };
-    modules = [{
-      packages = {
-        marlowe-plutus.ghcOptions = [ "-Werror" ];
+    { config, pkgs, ... }:
+
+    {
+      name = "marlowe-runtime-ng";
+
+      compiler-nix-name = lib.mkDefault "ghc966";
+
+      src = lib.cleanSource ../.;
+
+      flake.variants = {
+        ghc984 = {}; # Alias for the default variant
+        # ghc984.compiler-nix-name = "ghc984";
+        # ghc9102.compiler-nix-name = "ghc9102";
+        # ghc9122.compiler-nix-name = "ghc9122";
       };
-    }];
-    flake.variants.traced = {
-      modules = [{
-        packages = {
-          marlowe-plutus = {
-            ghcOptions = [ "-Werror" ];
-            configureFlags = [ "--flag=+trace-plutus" ];
-          };
-        };
-      }];
-    };
-  });
 
-  project = lib.iogx.mkHaskellProject {
-    inherit cabalProject;
-    shellArgs = repoRoot.nix.shell;
-  };
+      inputMap = { "https://chap.intersectmbo.org/" = inputs.CHaP; };
+
+      doHaddoc = false;
+
+      modules = [{
+        packages = {};
+      }];
+    }
+  );
 
 in
 
-project
+cabalProject

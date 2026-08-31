@@ -1,0 +1,57 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
+
+module Spec.Marlowe.Semantics.Next.Contract.When.Deposit (
+  EvaluatedDeposit (..),
+  evaluateDeposits,
+  hasIdenticalEvaluatedDeposits,
+  hasNoIdenticalEvaluatedDeposits,
+) where
+
+import Data.List (nubBy)
+import Data.Types.Isomorphic (Injective (..), Iso)
+import Marlowe.Plutus.Next.Applicables.CanDeposit (CanDeposit (..))
+import Marlowe.Plutus.Next.Indexed (Indexed (..))
+import Marlowe.Plutus.Next.IsMerkleizedContinuation (IsMerkleizedContinuation)
+import Marlowe.Plutus.Semantics (evalValue)
+import Marlowe.Plutus.Semantics.Types (
+  AccountId,
+  Action (Deposit),
+  Case,
+  Contract,
+  Environment,
+  Party,
+  State,
+  Token,
+ )
+import Marlowe.Plutus.Testing.Semantics.Arbitrary ()
+import Spec.Marlowe.Semantics.Next.Contract.When (indexedCaseActions)
+
+data EvaluatedDeposit
+  = EvaluatedDeposit AccountId Party Token Integer IsMerkleizedContinuation
+  deriving (Show, Eq, Ord)
+
+instance Injective EvaluatedDeposit CanDeposit where
+  to (EvaluatedDeposit a b c d e) = CanDeposit a b c d e
+instance Injective CanDeposit EvaluatedDeposit where
+  to (CanDeposit a b c d e) = EvaluatedDeposit a b c d e
+
+instance Iso EvaluatedDeposit CanDeposit
+
+hasIdenticalEvaluatedDeposits :: Environment -> State -> [Case Contract] -> Bool
+hasIdenticalEvaluatedDeposits e s = not . hasNoIdenticalEvaluatedDeposits e s
+
+hasNoIdenticalEvaluatedDeposits :: Environment -> State -> [Case Contract] -> Bool
+hasNoIdenticalEvaluatedDeposits e s c =
+  let xs = evaluateDeposits e s c
+   in nubBy (\(Indexed _ a) (Indexed _ b) -> a == b) xs == xs
+
+evaluateDeposits :: Environment -> State -> [Case Contract] -> [Indexed EvaluatedDeposit]
+evaluateDeposits e s = evaluateDepositsQuantities e s . indexedCaseActions
+
+evaluateDepositsQuantities
+  :: Environment -> State -> [Indexed (IsMerkleizedContinuation, Action)] -> [Indexed EvaluatedDeposit]
+evaluateDepositsQuantities _ _ [] = []
+evaluateDepositsQuantities e s ((Indexed caseIndex (isMerkleizedContinuation, Deposit a b c quantityObs)) : xs) =
+  Indexed caseIndex (EvaluatedDeposit a b c (evalValue e s quantityObs) isMerkleizedContinuation)
+    : evaluateDepositsQuantities e s xs
+evaluateDepositsQuantities e s (_ : xs) = evaluateDepositsQuantities e s xs
