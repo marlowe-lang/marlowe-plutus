@@ -1,6 +1,7 @@
 module Commands.Next where
 
 import Data.Time (UTCTime)
+import Data.Time.Format.ISO8601 (iso8601ParseM)
 import qualified Data.Text as T
 import Data.Aeson (Value)
 import Options.Applicative (ParserInfo, progDesc, info, option, long, metavar, help, eitherReader, ReadM, many)
@@ -24,9 +25,9 @@ data NextCommand = NextCommand
 
 utctimeReader :: ReadM UTCTime
 utctimeReader = eitherReader $ \s ->
-  case reads s of
-    [(t, "")] -> Right t
-    _ -> Left $ "Invalid ISO-8601 timestamp: " <> s
+  case iso8601ParseM s of
+    Nothing -> Left $ "Invalid ISO-8601 timestamp: " <> s
+    Just t -> Right t
 
 partyReader :: ReadM Party
 partyReader = eitherReader $ \s ->

@@ -17,12 +17,12 @@ import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Yaml qualified as Yaml
 import Language.Marlowe.Runtime.Web.Client (postContract)
-import Language.Marlowe.Runtime.Web.Contract.API (PostContractsRequest(PostContractsRequest, accounts, contract, metadata, minUTxODeposit, roles, tags, threadTokenName, version), ContractOrSourceId(ContractOrSourceId))
+import Language.Marlowe.Runtime.Web.Contract.API (PostContractsRequest(PostContractsRequest, accounts, contract, metadata, minUTxODeposit, roles, tags, threadTokenName, version), ContractOrSourceId(ContractOrSourceId), ContractSourceId(ContractSourceId))
 import Language.Marlowe.Runtime.Web.Core.Address qualified as Web
 import Language.Marlowe.Runtime.Web.Core.MarloweVersion (MarloweVersion (V1))
 import Language.Marlowe.Runtime.Web.Core.Tx qualified as Web
 import Language.Marlowe.Runtime.Web.Tx.API (CreateTxEnvelope, CardanoTx)
-import Options.Applicative ( Parser, ParserInfo, help, info, long, metavar, progDesc, short, showDefault, strOption, switch, value)
+import Options.Applicative ( Parser, ParserInfo, help, info, long, metavar, optional, progDesc, short, showDefault, strOption, switch, value)
 import Servant.Client (ClientError)
 import System.FilePath ((</>))
 
@@ -34,7 +34,8 @@ fundingAddressParser = Addr.mkAddressParser $ Addr.AddressParserConfig
   }
 
 data InitCommand = InitCommand
-  { contractFile :: FilePath
+  { contractFile :: Maybe FilePath
+  , contractSourceId :: Maybe T.Text
   , develScripts :: Bool
   , fundingAddress :: C.Address C.ShelleyAddr
   , messageFormat :: MessageFormat
@@ -61,10 +62,14 @@ mkInitCommandParser = do
   let
     desc = progDesc "Build initial marlowe transaction"
     cmd = InitCommand
-      <$> strOption do
+      <$> optional (strOption do
         long "contract-file"
           <> metavar "CONTRACT_FILE"
-          <> help "JSON input file for the contract."
+          <> help "JSON input file for the contract.")
+      <*> optional (strOption do
+        long "contract-source-id"
+          <> metavar "CONTRACT_SOURCE_ID"
+          <> help "Hex-encoded identifier of a previously uploaded Marlowe contract source. The runtime will deploy the contract from the store by id, not from an inline file.")
       <*> switch do
         long "devel-scripts"
           <> help "Compile the devel script variants with tracing preserved."
@@ -109,7 +114,13 @@ runInitCommand cmd = do
     _ -> do
       emitError cmd.messageFormat ("Failed to query the cardano-node for necessary information." :: String)
 
-  contract <- decodeFileStrict cmd.messageFormat cmd.contractFile
+  contractRef <- case (cmd.contractFile, cmd.contractSourceId) of
+    (Just _, Just _) -> emitError cmd.messageFormat "Please specify exactly one of --contract-file or --contract-source-id."
+    (Just f, Nothing) -> Right <$> decodeFileStrict cmd.messageFormat f
+    (Nothing, Just sidStr) -> case Yaml.parseJSON (Yaml.String sidStr) of
+      Yaml.Success (sid :: ContractSourceId) -> pure (Right sid)
+      _ -> emitError cmd.messageFormat $ "Invalid contract source id: " <> sidStr
+    (Nothing, Nothing) -> emitError cmd.messageFormat "Please specify either --contract-file or --contract-source-id."
   let
     ServantClientRunner runWebClient = cmd.servantClientRunner
     stakeCredential = Nothing
@@ -119,7 +130,7 @@ runInitCommand cmd = do
       , version = V1
       , roles = Nothing
       , threadTokenName = Nothing
-      , contract = ContractOrSourceId $ Left contract
+      , contract = ContractOrSourceId contractRef
       , accounts = mempty
       , minUTxODeposit = Nothing
       }

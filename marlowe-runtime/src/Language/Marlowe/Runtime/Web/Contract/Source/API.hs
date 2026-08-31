@@ -5,6 +5,7 @@ module Language.Marlowe.Runtime.Web.Contract.Source.API (
   ContractSourceAPI,
   ContractSourceId (..),
   PostContractSourceResponse (..),
+  PreserveActions (..),
   ContractOrSourceId (..),
 ) where
 
@@ -14,35 +15,45 @@ import Data.Aeson (
   Value (String),
   withText,
  )
+import Control.DeepSeq (NFData)
+import qualified Data.ByteString.Lazy as LBS
 import Data.Map (Map)
+import qualified Data.Set as Set
+import Data.Set (Set)
 import GHC.Generics (Generic)
 import Marlowe.Plutus.Semantics.Types (Contract)
 import qualified Marlowe.Plutus.Semantics.Types as Semantics
-import Language.Marlowe.Object.Types (Label, ObjectBundle)
+import Language.Marlowe.Object.Types (Label (Label), ObjectBundle)
 import Language.Marlowe.Runtime.Web.Adapter.Servant (ListObject, OperationId, RenameResponseSchema)
 import Language.Marlowe.Runtime.Web.Contract.Next.Schema ()
 import Pipes (Producer)
 import Servant (
   Description,
   FromHttpApiData,
+  Header',
   JSON,
   NewlineFraming,
+  Optional,
   Proxy (..),
   QueryFlag,
   QueryParam',
   Required,
   StreamBody,
+  Strict,
   Summary,
   ToHttpApiData,
   type (:<|>),
   type (:>)
  )
-import Servant.API (FromHttpApiData (..), UVerb, StdMethod (POST, GET), HasStatus, StatusOf, Capture)
+import Servant.API (FromHttpApiData (..), ToHttpApiData (toHeader, toEncodedUrlPiece, toQueryParam, toUrlPiece), UVerb, StdMethod (POST, GET), HasStatus, StatusOf, Capture)
 
 import Control.Lens ((&), (?~))
 import Control.Monad ((<=<))
+import Data.Aeson qualified as Aeson
 import Data.Aeson.Types (parseFail)
 import Data.ByteString (ByteString)
+import qualified Data.Text as T
+import Data.Text.Encoding qualified as T
 import Data.OpenApi (
   HasOneOf (oneOf),
   HasType (type_),
@@ -53,7 +64,6 @@ import Data.OpenApi (
   declareSchemaRef,
  )
 import qualified Data.OpenApi as OpenApi
-import qualified Data.Text as T
 import Language.Marlowe.Runtime.Web.Adapter.ByteString (hasLength)
 import Language.Marlowe.Runtime.Web.Core.Base16 (Base16 (..))
 
@@ -87,11 +97,63 @@ type PostContractSourcesAPI =
         \framing between request bundles."
     :> OperationId "initContractSources"
     :> QueryParam' '[Required, Description "The label of the top-level contract object in the bundle(s)."] "main" Label
+    :> Header'
+        '[ Optional
+         , Strict
+         , Description
+             "JSON-encoded array of Action values. Any Case whose Action is \
+            \in the array is preserved as a plain Case (its action stays \
+            \readable on-chain) instead of being merkleized. The header \
+            \value is a JSON array of Action objects, e.g. \
+            \[{\"choose_between\":[...],\"for_choice\":{...}}]."
+         ]
+        "X-Preserve-Actions"
+        PreserveActions
     :> StreamBody NewlineFraming JSON (Producer ObjectBundle IO ())
     :> UVerb
         'POST
         '[JSON]
         '[PostContractSourceResponse]
+
+-- | A header value holding a set of action JSON shapes to preserve during
+-- merkleization. The wire format is a JSON-encoded array of objects; each
+-- object is treated as an opaque "action shape" (compared structurally
+-- against the `Action` carried by each `Case`). Storing raw JSON lets us
+-- avoid the runtime's somewhat-quirky `Action` `FromJSON` instance, which
+-- conflates the three `Action` constructors under `Alternative`.
+newtype PreserveActions = PreserveActions {unPreserveActions :: Set Aeson.Value}
+  deriving (Show, Eq, Ord, Generic)
+
+instance NFData PreserveActions
+
+-- | Parse a JSON-encoded array of action shapes. An empty (or
+-- all-whitespace) value is treated as "no preserved actions". An invalid
+-- JSON value causes the whole request to fail.
+instance FromHttpApiData PreserveActions where
+  parseUrlPiece raw =
+    let trimmed = T.strip raw
+     in case T.uncons trimmed of
+          Nothing -> Right $ PreserveActions Set.empty
+          Just _ ->
+            case Aeson.eitherDecodeStrict (T.encodeUtf8 trimmed) of
+              Right shapes -> Right $ PreserveActions $ Set.fromList shapes
+              Left err ->
+                Left $
+                  "Could not decode X-Preserve-Actions JSON value `"
+                    <> trimmed
+                    <> "`: "
+                    <> T.pack err
+
+-- | PreserveActions can only be carried as a header; we deliberately don't
+-- define a `ToUrlPiece` instance so it can't be misused as a query param.
+-- The header is rendered as a comma-separated list of JSON-encoded actions
+-- so that round-tripping via `FromHttpApiData` recovers the original set.
+instance ToHttpApiData PreserveActions where
+  toUrlPiece _ = ""
+  toQueryParam _ = ""
+  toEncodedUrlPiece _ = mempty
+  toHeader (PreserveActions shapes) =
+    LBS.toStrict $ Aeson.encode (toJSON (Set.toList shapes))
 
 instance HasStatus Contract where
   type StatusOf Contract = 200
@@ -116,14 +178,22 @@ data PostContractSourceResponse = PostContractSourceResponse
   { contractSourceId :: ContractSourceId
   , intermediateIds :: Map Label ContractSourceId
   }
-  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON, ToSchema)
+  deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON, ToSchema, NFData)
 
 instance HasStatus PostContractSourceResponse where
   type StatusOf PostContractSourceResponse = 200
 
 newtype ContractSourceId = ContractSourceId {unContractSourceId :: ByteString}
   deriving (Eq, Ord, Generic)
-  deriving (Show, ToHttpApiData, ToJSON) via Base16
+  deriving (Show, ToHttpApiData, ToJSON, NFData) via Base16
+
+deriving newtype instance NFData Label
+
+instance ToParamSchema PreserveActions where
+  toParamSchema _ =
+    mempty
+      & type_ ?~ OpenApiString
+      & OpenApi.description ?~ "Comma-separated JSON-encoded Action values preserved during merkleization"
 
 instance FromHttpApiData ContractSourceId where
   parseUrlPiece = fmap ContractSourceId . (hasLength 32 . unBase16 <=< parseUrlPiece)

@@ -23,6 +23,7 @@ import Control.Monad.Trans.Writer (runWriter)
 import Data.Bifunctor (Bifunctor (..), bimap, second)
 import Data.List (nub)
 import Data.Maybe (maybeToList)
+import qualified Data.Set as Set
 import Data.Traversable (for)
 import Marlowe.Plutus.Merkle
   ( MerkleizedContract (..)
@@ -764,7 +765,7 @@ merkleize = do
   state    <- use inputState
   contract <- use inputContract
   inputs   <- use input
-  let (mcContract, mcContinuations) = runWriter $ deepMerkleize contract
+  let (mcContract, mcContinuations) = runWriter $ deepMerkleize Set.empty contract
       inputs' =
         either error id $
           merkleizeInputs MerkleizedContract{..} state inputs

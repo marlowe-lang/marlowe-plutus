@@ -21,6 +21,7 @@ module Language.Marlowe.Runtime.Web.Contract.API (
   PostContractsRequest (..),
   PostContractsResponse,
   PostContractSourceResponse (..),
+  PreserveActions (..),
   ContractOrSourceId (..),
 ) where
 
@@ -86,7 +87,7 @@ import Language.Marlowe.Runtime.Web.Tx.API (
   PostTxAPI,
  )
 import Language.Marlowe.Runtime.Web.Contract.Transaction.API (TransactionsAPI)
-import Language.Marlowe.Runtime.Web.Contract.Source.API (ContractSourcesAPI, ContractOrSourceId (..), ContractSourceAPI, ContractSourceId (..), PostContractSourceResponse (..))
+import Language.Marlowe.Runtime.Web.Contract.Source.API (ContractSourcesAPI, ContractOrSourceId (..), ContractSourceAPI, ContractSourceId (..), PostContractSourceResponse (..), PreserveActions (..))
 
 type ContractId = TxOutRef
 

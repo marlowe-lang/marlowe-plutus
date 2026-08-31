@@ -30,6 +30,7 @@ import Data.Default (Default (..))
 import Data.Function (on)
 import Data.List (sort)
 import qualified Data.List as List
+import qualified Data.Set as Set
 import Data.Tuple (swap)
 import Marlowe.Plutus.Merkle (MerkleizedContract (MerkleizedContract), deepMerkleize, merkleizeInputs, dataHash)
 import Marlowe.Plutus.Semantics (
@@ -153,7 +154,7 @@ instance SemiArbitrary MarloweContext where
       contract <- semiArbitrary context
       input <- semiArbitrary context
       isMerkleized <- frequency [(9, pure False), (1, pure True)]
-      let (contract', continuations) = runWriter $ deepMerkleize contract
+      let (contract', continuations) = runWriter $ deepMerkleize Set.empty contract
           (mcContract, mcInput) =
             case (isMerkleized, merkleizeInputs @String (MerkleizedContract contract' continuations) mcState input) of
               (True, Right input') -> (contract', input')
@@ -857,7 +858,7 @@ uselessNoInput =
         timeout <- (+ minTimeout) <$> arbitraryNonnegativeInteger
         When cases (POSIXTime timeout) <$> semiArbitrary ctx
       isMerkleized <- frequency [(9, pure False), (1, pure True)]
-      let (contract', continuations) = runWriter $ deepMerkleize contract
+      let (contract', continuations) = runWriter $ deepMerkleize Set.empty contract
           (mcContract, mcInput) =
             case (isMerkleized, merkleizeInputs @String (MerkleizedContract contract' continuations) mcState input) of
               (True, Right input') -> (contract', input')

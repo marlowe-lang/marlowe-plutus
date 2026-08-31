@@ -25,6 +25,7 @@ import Control.Monad.Reader (runReaderT)
 import Control.Monad.Writer (runWriter)
 import Language.Marlowe.CLI.IO (decodeFileStrict, maybeWriteJson)
 import Language.Marlowe.CLI.Types (CliError (..), MarloweTransaction (..), SomeMarloweTransaction (..))
+import qualified Data.Set as Set
 import Marlowe.Plutus.Merkle (deepDemerkleize, deepMerkleize)
 
 -- | Merkleize all of the cases in a contract.
@@ -53,7 +54,7 @@ merkleizeMarlowe
 merkleizeMarlowe marlowe =
   let (contract, continuations) =
         runWriter
-          . deepMerkleize
+          . deepMerkleize Set.empty
           $ mtContract marlowe
    in marlowe
         { mtContract = contract

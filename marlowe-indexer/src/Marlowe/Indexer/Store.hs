@@ -15,14 +15,16 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Semigroup (Last (..))
 import GHC.Generics (Generic)
-import Language.Marlowe.Runtime.ChainSync.Api (ChainPoint, WithGenesis(..), IndexerTip(..), NodeTip, genesisIndexerTip, genesisNodeTip, ChainPoint, TxId, WithGenesis(..), chainTipFromChainPoint )
-import Language.Marlowe.Runtime.Core.Api (ContractId)
-import Language.Marlowe.Runtime.History.Api (ExtractCreationError, ExtractMarloweTransactionError)
+import Language.Marlowe.Runtime.ChainSync.Api (ChainPoint, WithGenesis(..), IndexerTip(..), NodeTip, genesisIndexerTip, genesisNodeTip, ChainPoint, TxId, WithGenesis(..), chainTipFromChainPoint)
+import Language.Marlowe.Runtime.Core.Api (MarloweVersion(MarloweV1), ContractId)
+import Language.Marlowe.Runtime.Core.Api qualified as Core
+import Language.Marlowe.Runtime.History.Api (ExtractCreationError, ExtractMarloweTransactionError, MarloweCreateTransaction(..), MarloweApplyInputsTransaction(..))
 import Language.Marlowe.Runtime.Indexer.Database (DatabaseQueries (..))
 import Language.Marlowe.Runtime.Indexer.MarloweBlock (MarloweBlock (..), MarloweTransaction (..))
 import Log (MonadLog, logInfo)
 import Marlowe.Indexer.MarloweChainFollower (ChainEvent (..))
 import UnliftIO (MonadUnliftIO, atomically)
+import qualified Data.List.NonEmpty as NE
 
 data StoreDependencies m = StoreDependencies
   { databaseQueries :: DatabaseQueries m
@@ -212,6 +214,14 @@ data PersisterDependencies m = PersisterDependencies
   { databaseQueries :: DatabaseQueries m
   , readChanges :: STM Changes
   }
+      
+--       txs = [ txId | MarloweBlock{transactions = xs} <- blocks, mtx <- NE.toList xs, let CreateTransaction (MarloweCreateTransaction {txId}) = mtx ]
+--             ++ [ Core.transactionId mt | MarloweBlock{transactions = xs} <- blocks, mtx <- NE.toList xs, let ApplyInputsTransaction (MarloweApplyInputsTransaction {marloweVersion=MarloweV1, marloweTransaction=mt}) = mtx  ]
+
+grabTxId :: MarloweTransaction -> Maybe (String, TxId)
+grabTxId (CreateTransaction (MarloweCreateTransaction {txId})) = Just ("Create", txId)
+grabTxId (ApplyInputsTransaction (MarloweApplyInputsTransaction {marloweVersion=MarloweV1, marloweTransaction=mt})) = Just ("ApplyInputs", Core.transactionId mt)
+grabTxId _ = Nothing
 
 -- | A component to save batches of changes to the database.
 mkPersister
@@ -241,5 +251,13 @@ mkPersister PersisterDependencies{..} = mkComponent_ "indexer-store-persister" $
   for_ eraHistory $ commitEraHistory databaseQueries
 
   -- If there are blocks to save, save them.
-  unless (null blocks) $ commitBlocks databaseQueries blocks
+  unless (null blocks) $ do
+    let
+      txIds = [ txId | MarloweBlock{transactions = xs} <- blocks, mtx <- NE.toList xs, Just txId <- [grabTxId mtx] ]
+      -- duplicateApplyIds = [ txid | (txid, _) <- txs, txid `elem` [d | (ApplyInputsTransaction _, d) <- txs] ]
+    logInfo "persister.batch" $ A.object
+      [ "allTxIds" .= txIds
+      -- , "duplicateApplyIds" .= duplicateApplyIds
+      ]
+    commitBlocks databaseQueries blocks
 

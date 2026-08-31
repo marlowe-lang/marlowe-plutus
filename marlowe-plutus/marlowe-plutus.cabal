@@ -279,6 +279,7 @@ test-suite marlowe-plutus-test
     Spec.PlutusTx.Specification
     Spec.PlutusTx.Value
     Spec.Marlowe.Marlowe
+    Spec.Marlowe.Merkle
     Spec.Marlowe.Plate
     Spec.Marlowe.Semantics
     Spec.Marlowe.Semantics.Compute

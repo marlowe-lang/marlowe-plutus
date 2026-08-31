@@ -21,6 +21,10 @@ export default defineConfig({
         name: 'marlowe-runtime-cli',
         description: 'Tests that use solely the marlowe-runtime-cli tool for the contract interactions',
       },
+      {
+        name: 'store',
+        description: 'Tests for the contract source store (upload + queries)',
+      },
     ],
   },
 })

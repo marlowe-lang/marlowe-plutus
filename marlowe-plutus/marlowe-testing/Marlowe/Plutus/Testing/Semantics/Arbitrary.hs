@@ -47,6 +47,7 @@ import Control.Monad (replicateM)
 import Data.ByteString (pack)
 import Data.Function (on)
 import Data.List (nub, nubBy)
+import qualified Data.Set as Set
 import Marlowe.Plutus.Analysis.Safety.Types (SafetyError (..), Transaction (..))
 import Marlowe.Plutus.Merkle (MerkleizedContract (..), merkleizeInputs, shallowMerkleize, dataHash)
 import Marlowe.Plutus.Semantics (
@@ -1069,7 +1070,7 @@ arbitraryGoldenTransaction :: Bool -> Gen GoldenTransaction
 arbitraryGoldenTransaction allowMerkleization =
   do
     let perhapsMerkleize gt@(state, contract, input, _) =
-          let (mcContract, mcContinuations) = runWriter $ shallowMerkleize contract
+          let (mcContract, mcContinuations) = runWriter $ shallowMerkleize Set.empty contract
               input' = merkleizeInputs @String MerkleizedContract{..} state input
            in case input' of
                 Left _ -> pure gt

@@ -73,7 +73,7 @@ logLevelParser =
     [ flag' LogTrace $
         fold
           [ long "verbose"
-          , help "Enable trace-level logging"
+          , help "Enable trace-level logging (sets the backend log level to Trace)"
           ]
     , flag' LogAttention $
         fold

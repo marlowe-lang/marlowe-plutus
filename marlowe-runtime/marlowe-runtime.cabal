@@ -90,6 +90,8 @@ library
     , cardano-ledger-api
     , cardano-ledger-binary
     , cardano-ledger-core
+    , filepath
+    , filelock
     , co-log
     , containers
     , deepseq
@@ -144,7 +146,9 @@ library
     , unliftio
     , unliftio-core
     , unordered-containers
+    , uuid
     , wai
+    , zlib
     , witherable
     , variations
     , vector
@@ -338,6 +342,11 @@ executable cli
     Commands.ApplyInputs
     Commands.Init
     Commands.GetContract
+    Commands.Next
+    Commands.UploadContractSource
+    Commands.GetContractSource
+    Commands.GetContractSourceAdjacency
+    Commands.GetContractSourceClosure
     Commands.Options.Address
     Commands.Options.CardanoNode
     Commands.Options.ContractId
@@ -359,6 +368,7 @@ executable cli
     , errors
     , filepath
     , http-client
+    , marlowe-object
     , marlowe-plutus
     , marlowe-runtime
     , marlowe-transactions
@@ -366,10 +376,12 @@ executable cli
     , newtype
     , optparse-applicative
     , parsec
+    , pipes
     , servant
     , servant-client
     , servant-client-core
     , text
+    , time
     , transformers
     , yaml
 

@@ -3,7 +3,6 @@
 
 module Language.Marlowe.Runtime.Web.Client (
   Page (..),
-  -- getContractNext,
   -- getContractSource,
   -- getContractSourceAdjacency,
   -- getContractSourceClosure,
@@ -14,10 +13,14 @@ module Language.Marlowe.Runtime.Web.Client (
   -- getWithdrawals,
   -- healthcheck,
   getContract,
+  getContractNext,
   postContract,
   postTransaction,
   -- postContractCreateTx,
   postContractSource,
+  getContractSource,
+  getContractSourceAdjacency,
+  getContractSourceClosure,
   -- postWithdrawal,
   -- postWithdrawalCreateTx,
   -- putContract,
@@ -27,6 +30,7 @@ module Language.Marlowe.Runtime.Web.Client (
 import Cardano.Api qualified as C
 import Control.Monad.Error.Class (MonadError (catchError))
 import Control.Monad.IO.Class (liftIO)
+import Data.Aeson (Value)
 import Data.Aeson qualified as A
 import Data.Functor (void)
 import Data.Maybe (fromJust)
@@ -34,19 +38,23 @@ import Data.Proxy (Proxy (..))
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Text (Text)
+import qualified Data.Text as T
+import Data.Time (UTCTime)
 import Data.Version (Version)
 import GHC.TypeLits (KnownSymbol, symbolVal)
 import Language.Marlowe.Object.Types (Label, ObjectBundle)
+import Marlowe.Plutus.Next (Next)
 import Language.Marlowe.Runtime.Web.API (RuntimeAPI, runtimeApi)
 import Language.Marlowe.Runtime.Web.Adapter.CommaList ( CommaList (CommaList),)
 import Language.Marlowe.Runtime.Web.Adapter.Links (retractLink)
 import Language.Marlowe.Runtime.Web.Adapter.Servant (ListObject (..))
-import Language.Marlowe.Runtime.Web.Contract.API ( ContractHeader, ContractSourceId, ContractState, GetContractsResponse, PostContractSourceResponse, PostContractsRequest, PostContractsResponse, GetContractResponse, ContractId,)
+import Language.Marlowe.Runtime.Web.Contract.API ( ContractHeader, ContractSourceId, ContractState, GetContractsResponse, PostContractSourceResponse, PostContractsRequest, PostContractsResponse, GetContractResponse, ContractId, PreserveActions (PreserveActions))
 import Language.Marlowe.Runtime.Web.Contract.Transaction.API (PostTransactionsRequest(PostTransactionsRequest), PostTransactionsResponse)
 import Language.Marlowe.Runtime.Web.Core.Address ( Address, StakeAddress,)
 import Language.Marlowe.Runtime.Web.Core.Asset ( AssetId, PolicyId,)
 import Language.Marlowe.Runtime.Web.Core.NetworkId (NetworkId)
 import Language.Marlowe.Runtime.Web.Core.Object.Schema ()
+import Language.Marlowe.Runtime.Web.Core.Party (Party)
 import Language.Marlowe.Runtime.Web.Core.Tip (ChainTip)
 import Language.Marlowe.Runtime.Web.Core.Tx ( TextEnvelope, TxId, TxOutRef,)
 import Language.Marlowe.Runtime.Web.Core.Tx qualified as Web
@@ -154,6 +162,15 @@ getContract contractId = do
     Just (contractState :: GetContractResponse) -> pure (retractLink contractState)
     Nothing -> liftIO $ fail "Unexpected response from getContract"
 
+getContractNext :: ContractId -> UTCTime -> UTCTime -> [Party] -> ClientM Value
+getContractNext contractId validityStart validityEnd parties = do
+  let (contractApiClient :<|> _) :<|> _ = runtimeClient
+  let _ :<|> nextClient :<|> _ = contractApiClient contractId
+  union <- nextClient validityStart validityEnd parties
+  case matchUnion union of
+    Just (nextStep :: Next) -> pure (A.toJSON nextStep)
+    Nothing -> liftIO $ fail "Unexpected response from getContractNext"
+
 postTransaction
   :: Address
   -> [Web.TransactionUnspentOutput C.ConwayEra]
@@ -176,43 +193,57 @@ postTransaction changeAddress availableUTxOs contractId request = do
     Nothing -> liftIO $ fail "Unexpected response from postTransaction"
 
 postContractSource
-  :: Label
+  :: Set Value
+  -> Label
   -> Producer ObjectBundle IO ()
   -> ClientM PostContractSourceResponse
-postContractSource main bundles = do
+postContractSource preserveActions main bundles = do
   let (_ :<|> _ :<|> sourceClient) :<|> _ = runtimeClient
-  let postContractSourceClient = sourceClient
-  union <- postContractSourceClient main bundles
+  let postContractSourceClient :<|> _ = sourceClient
+  union <- postContractSourceClient main (Just (PreserveActions preserveActions)) bundles
   case matchUnion union of
     Just (response :: PostContractSourceResponse) -> pure response
     Nothing -> liftIO $ fail "Unexpected response from postContractSource"
--- 
--- getContractSource :: ContractSourceId -> Bool -> ClientM Contract
--- getContractSource contractSourceId expand = do
---   let contractsClient :<|> _ = runtimeClient
---   let _ :<|> _ :<|> _ :<|> contractSourcesClient = contractsClient
---   let _ :<|> contractSourceClient = contractSourcesClient
---   let getContractSource' :<|> _ = contractSourceClient contractSourceId
---   response <- getContractSource' expand
---   pure (getResponse response)
--- 
--- getContractSourceAdjacency :: ContractSourceId -> ClientM (Set ContractSourceId)
--- getContractSourceAdjacency contractSourceId = do
---   let contractsClient :<|> _ = runtimeClient
---   let _ :<|> _ :<|> _ :<|> contractSourcesClient = contractsClient
---   let _ :<|> contractSourceClient = contractSourcesClient
---   let _ :<|> getContractSourceAdjacency' :<|> _ = contractSourceClient contractSourceId
---   response <- getContractSourceAdjacency'
---   pure . Set.fromList . results $ getResponse response
--- 
--- getContractSourceClosure :: ContractSourceId -> ClientM (Status, Set ContractSourceId)
--- getContractSourceClosure contractSourceId = do
---   let contractsClient :<|> _ = runtimeClient
---   let _ :<|> _ :<|> _ :<|> contractSourcesClient = contractsClient
---   let _ :<|> contractSourceClient = contractSourcesClient
---   let _ :<|> _ :<|> getContractSourceClosure' = contractSourceClient contractSourceId
---   response <- getContractSourceClosure'
---   pure . Set.fromList . results . getResponse $ response
+
+getContractSource
+  :: ContractSourceId
+  -> Bool
+  -> ClientM Contract
+getContractSource contractSourceId expand = do
+  let (_ :<|> _ :<|> sourceClient) :<|> _ = runtimeClient
+  let _ :<|> contractSourceClient = sourceClient
+  let getContractSource' :<|> _ = contractSourceClient contractSourceId
+  union <- getContractSource' expand
+  case matchUnion union of
+    Just (response :: Contract) -> pure response
+    Nothing -> liftIO $ fail "Unexpected response from getContractSource"
+
+getContractSourceAdjacency
+  :: ContractSourceId
+  -> ClientM (Set ContractSourceId)
+getContractSourceAdjacency contractSourceId = do
+  let (_ :<|> _ :<|> sourceClient) :<|> _ = runtimeClient
+  let _ :<|> contractSourceClient = sourceClient
+  let _ :<|> adjacencyClient :<|> _ = contractSourceClient contractSourceId
+  union <- adjacencyClient
+  case matchUnion union of
+    Just (response :: ListObject ContractSourceId) ->
+      pure $ Set.fromList $ results response
+    Nothing -> liftIO $ fail "Unexpected response from getContractSourceAdjacency"
+
+getContractSourceClosure
+  :: ContractSourceId
+  -> ClientM (Set ContractSourceId)
+getContractSourceClosure contractSourceId = do
+  let (_ :<|> _ :<|> sourceClient) :<|> _ = runtimeClient
+  let _ :<|> contractSourceClient = sourceClient
+  let _ :<|> _ :<|> closureClient = contractSourceClient contractSourceId
+  union <- closureClient
+  case matchUnion union of
+    Just (response :: ListObject ContractSourceId) ->
+      pure $ Set.fromList $ results response
+    Nothing -> liftIO $ fail "Unexpected response from getContractSourceClosure"
+
 
 -- getWithdrawals
 --   :: Maybe (Set PolicyId)

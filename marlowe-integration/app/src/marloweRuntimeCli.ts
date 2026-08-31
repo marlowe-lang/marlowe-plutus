@@ -6,7 +6,7 @@ import * as json from '@konduit/codec/json';
 import { err, ok, type Result } from 'neverthrow';
 import { Json } from '@konduit/codec/json';
 import type { Contract } from '@marlowe-lang/language/v1';
-import { ContractId, ContractState, PostCreateContractResponse, ApplyInputsResponse } from '@marlowe-lang/runtime/client';
+import { ContractId, ContractState, PostCreateContractResponse, ApplyInputsResponse, ContractSourceId, PostContractSourceResponse, Next, CanDeposit, CanChoose, CanNotify } from '@marlowe-lang/runtime/client';
 import type { JsonError } from '@konduit/codec/json/codecs';
 import type { NormalInput } from '@marlowe-lang/language/v1';
 import { tmpdir } from 'node:os';
@@ -289,4 +289,312 @@ export function runApplyInputs(
       console.debug(json);
       return ApplyInputsResponse.jsonCodec.deserialise(json);
     });
+}
+
+// Usage: cli contract next --contract-id CONTRACT_ID
+//                      --validity-start ISO_TIMESTAMP
+//                      --validity-end ISO_TIMESTAMP [--party ROLE_OR_ADDRESS]...
+//                      [--message-format text|json|yaml]
+//                      [-h|--server-host HOST] [-p|--server-port PORT]
+export function runNextCLI(
+  contractId: ContractId,
+  validityStart: string,
+  validityEnd: string,
+  parties: AddressBech32[] | undefined,
+  options: {
+    serverHost?: string;
+    serverPort?: PositiveInt;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false,
+): Result<Json, CommandError | string> {
+  const args: CliArgs = [
+    'contract', 'next',
+    ['--contract-id', contractId],
+    ['--validity-start', validityStart],
+    ['--validity-end', validityEnd],
+    ['--message-format', 'json'],
+  ];
+  if (parties && parties.length > 0) {
+    for (const party of parties) {
+      args.push(['--party', party]);
+    }
+  }
+  if (options.serverHost) {
+    args.push(['--server-host', options.serverHost]);
+  }
+  if (options.serverPort) {
+    args.push(['--server-port', options.serverPort]);
+  }
+  return execMarloweRuntimeClient(args, repoRoot, debug).andThen(jsonStr => Json.fromString(jsonStr));
+}
+
+// | Default validity window for `/next` polls: from now to now+10min.
+// | Covers the round-trip to build/sign/submit a tx within a single test step.
+const NEXT_VALIDITY_WINDOW_MS = 10 * 60 * 1000;
+const NEXT_POLL_INTERVAL_MS = 2_000;
+const NEXT_POLL_TIMEOUT_MS = 120_000;
+
+export function runNext(
+  contractId: ContractId,
+  parties: AddressBech32[] | undefined,
+  options: {
+    serverHost?: string;
+    serverPort?: PositiveInt;
+    validityStart?: string;
+    validityEnd?: string;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false,
+): Result<Next, JsonError | CommandError | string> {
+  const now = new Date();
+  const end = new Date(now.getTime() + NEXT_VALIDITY_WINDOW_MS);
+  const validityStart = options.validityStart ?? now.toISOString();
+  const validityEnd = options.validityEnd ?? end.toISOString();
+  return runNextCLI(contractId, validityStart, validityEnd, parties, options, repoRoot, debug)
+    .andThen(json => Next.jsonCodec.deserialise(json));
+}
+
+// Usage: cli store upload --bundle-file BUNDLE_FILE --main LABEL
+//                          [--message-format text|json|yaml]
+//                          [-h|--server-host HOST] [-p|--server-port PORT]
+//
+//   Upload a bundle of marlowe objects as a contract source.
+//
+// Available options:
+//   --bundle-file BUNDLE_FILE
+//                            JSON input file for the object bundle (an array of
+//                            labelled objects).
+//   --main LABEL             The label of the top-level contract object in the
+//                            bundle.
+//   --preserve-actions JSON  JSON-encoded array of Action values to preserve
+//                            during merkleization (omit to merkleize everything).
+//   --message-format text|json|yaml
+//                            Format of command output. (default: text)
+//   -h,--server-host HOST    The host on which the web server is running. Defaults
+//                            to localhost. (default: Host "localhost")
+//   -p,--server-port PORT    The port on which the web server is running. Defaults
+//                            to 8090.
+//   -h,--help                Show this help text
+export function runUploadContractSourceCLI(
+  bundleFile: Path,
+  mainLabel: string,
+  options: {
+    preserveActions?: unknown[];
+    serverHost?: string;
+    serverPort?: PositiveInt;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false
+): Result<Json, CommandError | string> {
+  const args: CliArgs = [
+    'store', 'upload',
+    ['--bundle-file', bundleFile],
+    ['--main', mainLabel],
+    ['--message-format', 'json'],
+  ];
+  if (options.preserveActions !== undefined) {
+    // The server expects a JSON array of Action objects (empty array = no
+    // preserved actions). We always emit the header when the caller asks
+    // for it explicitly, even when empty, so the server can distinguish
+    // "no header sent" from "empty set sent".
+    args.push(['--preserve-actions', json.stringify(options.preserveActions as Json)]);
+  }
+  if (options.serverHost) {
+    args.push(['--server-host', options.serverHost]);
+  }
+  if (options.serverPort) {
+    args.push(['--server-port', options.serverPort]);
+  }
+  return execMarloweRuntimeClient(args, repoRoot, debug).andThen(jsonStr =>
+    Json.fromString(jsonStr),
+  );
+}
+
+export function runUploadContractSource(
+  bundle: unknown[],
+  mainLabel: string,
+  options: {
+    preserveActions?: unknown[];
+    serverHost?: string;
+    serverPort?: PositiveInt;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false
+): Result<PostContractSourceResponse, JsonError | CommandError | string> {
+  const tmpDir = mkTempDir(false);
+  const bundleFile = `${tmpDir}/bundle.json` as Path;
+  fs.writeFileSync(bundleFile, json.stringify(bundle as Json, undefined, 2));
+  return runUploadContractSourceCLI(bundleFile, mainLabel, options, repoRoot, debug)
+    .andThen(json => PostContractSourceResponse.jsonCodec.deserialise(json));
+}
+
+// Usage: cli store get --contract-source-id CONTRACT_SOURCE_ID [--expand]
+//                       [--message-format text|json|yaml]
+//                       [-h|--server-host HOST] [-p|--server-port PORT]
+//
+//   Get a contract source by ID.
+//
+// Available options:
+//   --contract-source-id CONTRACT_SOURCE_ID
+//                            The hex-encoded identifier of the contract source.
+//   --expand                 Demerkleize the contract before returning it.
+//   --message-format text|json|yaml
+//                            Format of command output. (default: text)
+//   -h,--server-host HOST    The host on which the web server is running. Defaults
+//                            to localhost. (default: Host "localhost")
+//   -p,--server-port PORT    The port on which the web server is running. Defaults
+//                            to 8090.
+//   -h,--help                Show this help text
+export function runGetContractSourceCLI(
+  contractSourceId: ContractSourceId,
+  options: {
+    expand?: boolean;
+    serverHost?: string;
+    serverPort?: PositiveInt;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false
+): Result<Json, CommandError | string> {
+  const args: CliArgs = [
+    'store', 'get',
+    ['--contract-source-id', contractSourceId],
+    ['--message-format', 'json'],
+  ];
+  if (options.expand) {
+    args.push('--expand');
+  }
+  if (options.serverHost) {
+    args.push(['--server-host', options.serverHost]);
+  }
+  if (options.serverPort) {
+    args.push(['--server-port', options.serverPort]);
+  }
+  return execMarloweRuntimeClient(args, repoRoot, debug).andThen(jsonStr =>
+    Json.fromString(jsonStr),
+  );
+}
+
+export function runGetContractSource(
+  contractSourceId: ContractSourceId,
+  options: {
+    expand?: boolean;
+    serverHost?: string;
+    serverPort?: PositiveInt;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false
+): Result<Json, JsonError | CommandError | string> {
+  // FIXME: paluh: deserialize into a `Contract` once a JSON codec is exposed
+  // by the runtime client.
+  return runGetContractSourceCLI(contractSourceId, options, repoRoot, debug);
+}
+
+// Usage: cli store adjacency --contract-source-id CONTRACT_SOURCE_ID
+//                              [--message-format text|json|yaml]
+//                              [-h|--server-host HOST] [-p|--server-port PORT]
+//
+//   Get the contract source IDs which are adjacent to the given contract source.
+//
+// Available options: (same as `store get`)
+//   -h,--help                Show this help text
+export function runGetContractSourceAdjacencyCLI(
+  contractSourceId: ContractSourceId,
+  options: {
+    serverHost?: string;
+    serverPort?: PositiveInt;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false
+): Result<Json, CommandError | string> {
+  const args: CliArgs = [
+    'store', 'adjacency',
+    ['--contract-source-id', contractSourceId],
+    ['--message-format', 'json'],
+  ];
+  if (options.serverHost) {
+    args.push(['--server-host', options.serverHost]);
+  }
+  if (options.serverPort) {
+    args.push(['--server-port', options.serverPort]);
+  }
+  return execMarloweRuntimeClient(args, repoRoot, debug).andThen(jsonStr =>
+    Json.fromString(jsonStr),
+  );
+}
+
+export function runGetContractSourceAdjacency(
+  contractSourceId: ContractSourceId,
+  options: {
+    serverHost?: string;
+    serverPort?: PositiveInt;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false
+): Result<ContractSourceId[], JsonError | CommandError | string> {
+  return runGetContractSourceAdjacencyCLI(contractSourceId, options, repoRoot, debug)
+    .andThen(json => deserialiseArrayOfContractSourceIds(json));
+}
+
+// Usage: cli store closure --contract-source-id CONTRACT_SOURCE_ID
+//                            [--message-format text|json|yaml]
+//                            [-h|--server-host HOST] [-p|--server-port PORT]
+//
+//   Get the contract source IDs which appear in the full hierarchy of the
+//   given contract source (including the ID of the source itself).
+export function runGetContractSourceClosureCLI(
+  contractSourceId: ContractSourceId,
+  options: {
+    serverHost?: string;
+    serverPort?: PositiveInt;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false
+): Result<Json, CommandError | string> {
+  const args: CliArgs = [
+    'store', 'closure',
+    ['--contract-source-id', contractSourceId],
+    ['--message-format', 'json'],
+  ];
+  if (options.serverHost) {
+    args.push(['--server-host', options.serverHost]);
+  }
+  if (options.serverPort) {
+    args.push(['--server-port', options.serverPort]);
+  }
+  return execMarloweRuntimeClient(args, repoRoot, debug).andThen(jsonStr =>
+    Json.fromString(jsonStr),
+  );
+}
+
+export function runGetContractSourceClosure(
+  contractSourceId: ContractSourceId,
+  options: {
+    serverHost?: string;
+    serverPort?: PositiveInt;
+  },
+  repoRoot: Path | null = null,
+  debug: boolean = false
+): Result<ContractSourceId[], JsonError | CommandError | string> {
+  return runGetContractSourceClosureCLI(contractSourceId, options, repoRoot, debug)
+    .andThen(json => deserialiseArrayOfContractSourceIds(json));
+}
+
+// FIXME: paluh: this is a stopgap while the runtime client lacks a JSON
+// codec for `ContractSourceId[]`. Once added, replace with the codec.
+function deserialiseArrayOfContractSourceIds(
+  json: Json,
+): Result<ContractSourceId[], JsonError> {
+  if (!Array.isArray(json)) {
+    return err(`Expected a JSON array of contract source ids, got: ${JSON.stringify(json)}` as unknown as JsonError);
+  }
+  const ids: ContractSourceId[] = [];
+  for (const [idx, entry] of json.entries()) {
+    const decoded = ContractSourceId.jsonCodec.deserialise(entry);
+    if (decoded.isErr()) {
+      return err(`Invalid contract source id at index ${idx}: ${JSON.stringify(entry)}` as unknown as JsonError);
+    }
+    ids.push(decoded.value);
+  }
+  return ok(ids);
 }

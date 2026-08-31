@@ -134,9 +134,11 @@ toPlutusDatumHash (ContractHash bs) = PV2.DatumHash (BuiltinByteString bs)
 
 post
   :: Label
+  -> Maybe Web.PreserveActions
   -> Producer ObjectBundle IO ()
   -> ServerM (Union '[Web.PostContractSourceResponse])
-post main bundles = do
+post main mPreserveActions bundles = do
+  let preserveActions = maybe Set.empty Web.unPreserveActions mPreserveActions
   withBundleImporter <- view withBundleImporterL
   withBundleImporter \importBundle -> runUVerbT do
     let
@@ -144,7 +146,9 @@ post main bundles = do
         (Map Label ContractHash)
         (UVerbT '[Web.PostContractSourceResponse] ServerM)
         (Either T.ImportError (Map Label ContractHash))
-      importBundles = hoist liftIO (Right mempty <$ bundles) >-> hoist lift (importBundle $ MainLabel main)
+      importBundles =
+        hoist liftIO (Right mempty <$ bundles)
+          >-> hoist lift (importBundle (MainLabel main) preserveActions)
     (intermediate, result) <- Pipes.fold' (<>) mempty id importBundles
     case (intermediate <>) <$> result of
       Left err -> case err of

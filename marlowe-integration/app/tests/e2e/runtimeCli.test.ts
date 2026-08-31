@@ -2,6 +2,9 @@ import { test, beforeAll, afterAll } from 'vitest'
 import * as deposit from '../../src/testing/e2e/deposit.js';
 import * as bet from '../../src/testing/e2e/bet.js';
 import * as init from '../../src/testing/e2e/init.js';
+import * as storeClose from '../../src/testing/store/close.js';
+import * as storeBet from '../../src/testing/store/bet.js';
+import * as storeSelectiveBet from '../../src/testing/store/selective-bet.js';
 import * as fs from 'node:fs'
 import { AddressBech32, NetworkMagicNumber } from '@konduit/konduit-consumer/cardano';
 import { unwrapOrPanicWith } from '@konduit/konduit-consumer/neverthrow';
@@ -128,4 +131,16 @@ test('Bet lifecycle using marloweRuntimeCli', { tags: ['lifecycle', 'marlowe-run
     faucet,
     winningChoice: 'no-winners',
   });
+})
+
+test('Store: upload + query a Close source', { tags: ['store', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
+  await storeClose.run();
+})
+
+test('Store: upload + query a bet source', { tags: ['store', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
+  await storeBet.run();
+})
+
+test('Store: selective merkleization preserves the oracle Choice', { tags: ['store', 'marlowe-runtime-cli'], timeout: 120000, }, async () => {
+  await storeSelectiveBet.run();
 })

@@ -90,10 +90,22 @@ export function buildCliCommand(
     } else if (typeof value === 'bigint') {
       parts.push(key, value.toString());
     } else {
-      parts.push(key, value);
+      // FIXME: paluh: this should use `execFileSync` with an argument
+      // array instead of going through the shell. For now we shell-quote
+      // strings that contain whitespace so complex JSON values survive
+      // the round-trip.
+      parts.push(key, shellQuote(String(value)));
     }
   }
   return parts.join(' ');
+}
+
+// Wrap @str@ in single quotes for the shell, escaping any embedded
+// single quotes via the standard `'\''` idiom. Numbers and simple values
+// can still be passed through unwrapped because `String(value)` only
+// produces shell-safe output for those, but @shellQuote@ is always safe.
+function shellQuote(str: string): string {
+  return `'${str.replace(/'/g, `'\\''`)}'`;
 }
 
 export function execCli(

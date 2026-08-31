@@ -29,6 +29,8 @@ import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.Fix (fix)
 import Control.Monad.Reader (ReaderT, asks, runReaderT)
 import Control.Monad.Writer (Writer, runWriter, tell)
+import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.String (IsString (..))
 import Marlowe.Plutus.Semantics (
   ApplyAction (..),
@@ -75,46 +77,87 @@ demerkleizeContract
   -> m Contract
 demerkleizeContract = flip runReaderT
 
--- | Merkleize any top-level case statements in a contract.
+-- | Merkleize any top-level case statements in a contract, preserving any
+-- `Case` whose `Action` is in the supplied keep-set. The continuation of a
+-- preserved case is still recursively merkleized; only the outer `Case` is
+-- kept visible so an off-chain party (e.g. an oracle) can read it on-chain.
 shallowMerkleize
-  :: Contract
+  :: Set Action
+  -- ^ Actions to keep as `Case` rather than merkleize.
+  -> Contract
   -- ^ The contract.
   -> Writer Continuations Contract
   -- ^ Action for the merkleized contract.
-shallowMerkleize = merkleize pure
+shallowMerkleize preserveActions = merkleize preserveActions pure
 
--- | Merkleize all case statements in a contract.
+-- | Merkleize all case statements in a contract, preserving any `Case` whose
+-- `Action` is in the supplied keep-set. The continuation of a preserved case
+-- is still recursively merkleized; only the outer `Case` is kept visible.
 deepMerkleize
-  :: Contract
+  :: Set Action
+  -- ^ Actions to keep as `Case` rather than merkleize.
+  -> Contract
   -- ^ The contract.
   -> Writer Continuations Contract
   -- ^ Action for the merkleized contract.
-deepMerkleize = fix merkleize
+deepMerkleize preserveActions = fix (merkleize preserveActions)
 
--- | Merkleize selected case statements in a contract.
+-- | Merkleize selected case statements in a contract. A `Case` whose `Action`
+-- appears in @preserveActions@ is kept as a `Case` (its continuation is
+-- still recursively processed via @f@); every other `Case` is replaced with
+-- a `MerkleizedCase` that points at a hash in the produced `Continuations`
+-- map.
 merkleize
-  :: (Contract -> Writer Continuations Contract)
+  :: Set Action
+  -- ^ Actions to keep as `Case` rather than merkleize.
+  -> (Contract -> Writer Continuations Contract)
   -- ^ Action to continue merkleization.
   -> Contract
   -- ^ The contract.
   -> Writer Continuations Contract
   -- ^ Action for merkleizing the selected case statements.
-merkleize _ Close = pure Close
-merkleize f (Pay accountId payee token value contract) = Pay accountId payee token value <$> merkleize f contract
-merkleize f (If observation thenContract elseContract) = If observation <$> merkleize f thenContract <*> merkleize f elseContract
-merkleize f (Let valueId value contract) = Let valueId value <$> merkleize f contract
-merkleize f (Assert observation contract) = Assert observation <$> merkleize f contract
-merkleize f (When cases timeout contract) = When <$> mapM merkleizeCase cases <*> pure timeout <*> merkleize f contract
-  where
-    merkleizeCase c@(Case _ Close) = pure c
-    merkleizeCase (Case action continuation) =
-      do
-        continuation' <- f continuation
-        let mh =
-              toBuiltin $ serialiseToRawBytes $ hashScriptDataBytes $ unsafeHashableScriptData $ fromPlutusData $ toData continuation'
-        tell $ DatumHash mh `M.singleton` continuation'
-        pure $ MerkleizedCase action mh
-    merkleizeCase mc = pure mc
+merkleize _ _ Close = pure Close
+merkleize preserveActions f (Pay accountId payee token value contract) =
+  Pay accountId payee token value <$> merkleize preserveActions f contract
+merkleize preserveActions f (If observation thenContract elseContract) =
+  If observation <$> merkleize preserveActions f thenContract <*> merkleize preserveActions f elseContract
+merkleize preserveActions f (Let valueId value contract) =
+  Let valueId value <$> merkleize preserveActions f contract
+merkleize preserveActions f (Assert observation contract) =
+  Assert observation <$> merkleize preserveActions f contract
+merkleize preserveActions f (When cases timeout contract) =
+  When <$> mapM (merkleizeCase preserveActions f) cases <*> pure timeout <*> merkleize preserveActions f contract
+
+-- | Merkleize a single case. A `Case _ Close` is always preserved (its
+-- continuation is terminal so there is nothing to hide). A `Case` whose
+-- `Action` is in the preserve-set is also kept as `Case` (with its
+-- continuation still recursively processed); every other `Case` is replaced
+-- with a `MerkleizedCase`.
+merkleizeCase
+  :: Set Action
+  -> (Contract -> Writer Continuations Contract)
+  -> Case Contract
+  -> Writer Continuations (Case Contract)
+merkleizeCase preserveActions f = \case
+  c@Case{} | isCloseCase c -> pure c
+  Case action continuation | action `Set.member` preserveActions ->
+    -- Keep the case visible: recurse into the continuation but preserve
+    -- the `Case` constructor so the action stays readable on-chain.
+    Case action <$> f continuation
+  Case action continuation ->
+    do
+      continuation' <- f continuation
+      let mh =
+            toBuiltin $ serialiseToRawBytes $ hashScriptDataBytes $ unsafeHashableScriptData $ fromPlutusData $ toData continuation'
+      tell $ DatumHash mh `M.singleton` continuation'
+      pure $ MerkleizedCase action mh
+  mc -> pure mc
+
+-- | True when the case is a `Case _ Close` whose continuation is the
+-- terminal `Close` contract. Such cases never need to be merkleized.
+isCloseCase :: Case Contract -> Bool
+isCloseCase (Case _ Close) = True
+isCloseCase _ = False
 
 -- | Demerkleize any top-level case statements in a contract.
 shallowDemerkleize
@@ -242,4 +285,3 @@ merkleizedCase :: Action -> Contract -> Case Contract
 merkleizedCase action continuation =
   let hash = dataHash (P.toBuiltinData continuation)
    in MerkleizedCase action hash
-

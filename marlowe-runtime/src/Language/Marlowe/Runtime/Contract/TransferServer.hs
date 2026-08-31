@@ -16,6 +16,7 @@ import Control.Monad.Trans.Except (ExceptT (..), runExceptT, throwE)
 import Control.Monad.Trans.Maybe (MaybeT (..))
 import Control.Monad.Trans.RWS (RWST, evalRWST)
 import qualified Control.Monad.Trans.RWS as RWS
+import qualified Data.Aeson as Aeson
 import qualified Data.DList as DList
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -68,22 +69,23 @@ runTransferServer
   :: forall m a
    . (MonadFail m)
   => TransferServerDependencies m
+  -> Set.Set Aeson.Value
   -> m (ServerStIdle m a)
-runTransferServer deps@TransferServerDependencies{contractStore} = do
+runTransferServer deps@TransferServerDependencies{contractStore} preserveActions = do
   stage <- createContractStagingArea contractStore
-  pure $ idleServer deps stage
+  pure $ idleServer deps preserveActions stage
 
-idleServer :: forall m a. (MonadFail m) => TransferServerDependencies m -> ContractStagingArea m -> ServerStIdle m a
-idleServer deps stage =
+idleServer :: forall m a. (MonadFail m) => TransferServerDependencies m -> Set.Set Aeson.Value -> ContractStagingArea m -> ServerStIdle m a
+idleServer deps preserveActions stage =
   ServerStIdle
-    { recvMsgStartImport = pure $ uploadServer deps mempty stage
+    { recvMsgStartImport = pure $ uploadServer deps preserveActions mempty stage
     , recvMsgRequestExport = \rootHash -> do
         hashesO <- getClosureInExportOrder (contractStore deps) rootHash
         let toContractHash (ContractHash bs) = ContractHash bs
         pure $
           maybe
-            (SendMsgContractNotFound (idleServer deps stage))
-            (SendMsgStartExport . downloadServer deps stage)
+            (SendMsgContractNotFound (idleServer deps preserveActions stage))
+            (SendMsgStartExport . downloadServer deps preserveActions stage)
             (map toContractHash <$> hashesO)
     , recvMsgDone = error "runTransferServer: recvMsgDone reached; pass the resulting ServerStIdle back to your driver."
     }
@@ -92,50 +94,52 @@ uploadServer
   :: forall m a
    . (MonadFail m)
   => TransferServerDependencies m
+  -> Set.Set Aeson.Value
   -> O.SymbolTable
   -> ContractStagingArea m
   -> ServerStCanUpload m a
-uploadServer deps objects stage =
+uploadServer deps preserveActions objects stage =
   ServerStCanUpload
     { recvMsgImported = do
         _ <- commit stage
-        pure $ idleServer deps stage
+        pure $ idleServer deps preserveActions stage
     , recvMsgUpload = \bundle -> do
         result <-
           runExceptT $
-            O.linkBundle' bundle (merkleizeAndStoreContracts stage) objects
+            O.linkBundle' bundle (merkleizeAndStoreContracts preserveActions stage) objects
         case result of
-          Left err -> pure $ SendMsgUploadFailed err (idleServer deps stage)
-          Right (Left err) -> pure $ SendMsgUploadFailed (LinkError err) (idleServer deps stage)
+          Left err -> pure $ SendMsgUploadFailed err (idleServer deps preserveActions stage)
+          Right (Left err) -> pure $ SendMsgUploadFailed (LinkError err) (idleServer deps preserveActions stage)
           Right (Right (linked, objects')) -> do
             _ <- flush stage
             _ <- commit stage
             pure $
               SendMsgUploaded (Map.fromList $ mapMaybe sequence linked) $
-                uploadServer deps objects' stage
+                uploadServer deps preserveActions objects' stage
     }
 
 downloadServer
   :: forall m a
    . MonadFail m
   => TransferServerDependencies m
+  -> Set.Set Aeson.Value
   -> ContractStagingArea m
   -> [ContractHash]
   -> ServerStCanDownload m a
-downloadServer deps stage hashes =
+downloadServer deps preserveActions stage hashes =
   ServerStCanDownload
-    { recvMsgCancel = pure $ idleServer deps stage
+    { recvMsgCancel = pure $ idleServer deps preserveActions stage
     , recvMsgDownload = \i -> do
         let (batchHashes, hashes') = splitAt (fromIntegral i) hashes
         case batchHashes of
-          [] -> pure $ SendMsgExported (idleServer deps stage)
+          [] -> pure $ SendMsgExported (idleServer deps preserveActions stage)
           _ -> do
             let getHashContract (ContractHash bs) =
                   loadContract (contractStore deps) (ContractHash bs)
             batches <- traverse getHashContract batchHashes
             pure $
               SendMsgDownloaded (O.ObjectBundle batches) $
-                downloadServer deps stage hashes'
+                downloadServer deps preserveActions stage hashes'
     }
 
 getClosureInExportOrder :: forall m. Monad m => ContractStore m -> ContractHash -> m (Maybe [O.ContractHash])
@@ -162,30 +166,69 @@ loadContract store hash = do
   pure $ O.LabelledObject (O.Label $ T.pack $ show hashO) O.ContractType $ O.fromCoreContract contract
 
 merkleizeAndStoreContracts
-  :: (Monad m) => ContractStagingArea m -> O.LinkedObject -> ExceptT ImportError m (O.LinkedObject, Maybe ContractHash)
-merkleizeAndStoreContracts stage = \case
+  :: (Monad m)
+  => Set.Set Aeson.Value
+  -> ContractStagingArea m
+  -> O.LinkedObject
+  -> ExceptT ImportError m (O.LinkedObject, Maybe ContractHash)
+merkleizeAndStoreContracts preserveActions stage = \case
   O.LinkedContract contract -> do
-    merkleizedContract <- merkleizeAndStore stage contract
+    merkleizedContract <- merkleizeAndStore preserveActions stage contract
     hash <- lift $ stageContract stage merkleizedContract
     pure (O.LinkedContract merkleizedContract, Just hash)
   obj -> pure (obj, Nothing)
 
-merkleizeAndStore :: (Monad m) => ContractStagingArea m -> Core.Contract -> ExceptT ImportError m Core.Contract
-merkleizeAndStore stage = \case
+merkleizeAndStore
+  :: (Monad m)
+  => Set.Set Aeson.Value
+  -> ContractStagingArea m
+  -> Core.Contract
+  -> ExceptT ImportError m Core.Contract
+merkleizeAndStore preserveActions stage = \case
   Core.Close -> pure Core.Close
-  Core.Pay account payee token value contract -> Core.Pay account payee token value <$> merkleizeAndStore stage contract
-  Core.If obs c1 c2 -> Core.If obs <$> merkleizeAndStore stage c1 <*> merkleizeAndStore stage c2
+  Core.Pay account payee token value contract ->
+    Core.Pay account payee token value <$> merkleizeAndStore preserveActions stage contract
+  Core.If obs c1 c2 ->
+    Core.If obs <$> merkleizeAndStore preserveActions stage c1 <*> merkleizeAndStore preserveActions stage c2
   Core.When cases timeout contract ->
-    Core.When <$> traverse (merkleizeAndStoreCase stage) cases <*> pure timeout <*> merkleizeAndStore stage contract
-  Core.Let valueId value contract -> Core.Let valueId value <$> merkleizeAndStore stage contract
-  Core.Assert obs contract -> Core.Assert obs <$> merkleizeAndStore stage contract
+    Core.When
+      <$> traverse (merkleizeAndStoreCase preserveActions stage) cases
+      <*> pure timeout
+      <*> merkleizeAndStore preserveActions stage contract
+  Core.Let valueId value contract ->
+    Core.Let valueId value <$> merkleizeAndStore preserveActions stage contract
+  Core.Assert obs contract ->
+    Core.Assert obs <$> merkleizeAndStore preserveActions stage contract
+
+-- | Compare an `Action` against the preserve-set by JSON shape.
+-- FIXME: paluh: a more robust check would canonicalize both sides (e.g.
+-- alphabetically-sort object keys, drop `null`s) so that minor formatting
+-- differences don't defeat the match.
+actionPreserved :: Set.Set Aeson.Value -> Core.Action -> Bool
+actionPreserved preserveActions action =
+  Set.member (jsonShape action) preserveActions
+
+-- | Encode an `Action` to its canonical JSON shape (`Data.Aeson.encode` is
+-- deterministic enough for our purposes; the `Action`'s `ToJSON` instance
+-- emits a single object so we can compare the resulting `Value` directly).
+jsonShape :: Core.Action -> Aeson.Value
+jsonShape action = Aeson.toJSON action
 
 merkleizeAndStoreCase
-  :: (Monad m) => ContractStagingArea m -> Core.Case Core.Contract -> ExceptT ImportError m (Core.Case Core.Contract)
-merkleizeAndStoreCase stage@ContractStagingArea{..} = \case
+  :: (Monad m)
+  => Set.Set Aeson.Value
+  -> ContractStagingArea m
+  -> Core.Case Core.Contract
+  -> ExceptT ImportError m (Core.Case Core.Contract)
+merkleizeAndStoreCase preserveActions stage@ContractStagingArea{..} = \case
+  Core.Case action contract | actionPreserved preserveActions action ->
+    -- Preserve the action: keep the `Case` constructor (the action stays
+    -- readable on-chain) but recursively process the continuation so the
+    -- rest of the contract is still merkleized.
+    Core.Case action <$> merkleizeAndStore preserveActions stage contract
   Core.Case action Core.Close -> pure $ Core.Case action Core.Close
   Core.Case action contract -> do
-    contract' <- merkleizeAndStore stage contract
+    contract' <- merkleizeAndStore preserveActions stage contract
     ContractHash hash <- lift $ stageContract contract'
     pure $ Core.MerkleizedCase action $ BuiltinByteString hash
   Core.MerkleizedCase action hash -> do
@@ -204,13 +247,14 @@ runImport
   :: forall m
    . (Monad m)
   => TransferServerDependencies m
+  -> Set.Set Aeson.Value
   -> O.ObjectBundle
   -> m (Either ImportError (Map.Map O.Label ContractHash))
-runImport TransferServerDependencies{contractStore} bundle = do
+runImport TransferServerDependencies{contractStore} preserveActions bundle = do
   stage <- createContractStagingArea contractStore
   result <-
     runExceptT $
-      O.linkBundle' bundle (merkleizeAndStoreContracts stage) mempty
+      O.linkBundle' bundle (merkleizeAndStoreContracts preserveActions stage) mempty
   case result of
     Left err -> pure (Left err)
     Right (Left err) -> pure (Left (LinkError err))
@@ -249,24 +293,27 @@ newtype MainLabel = MainLabel {label :: Label}
 
 -- data Proxy a' a b' b m r
 -- A Proxy is a monad transformer that receives and sends information on both an upstream and downstream interface.
--- 
+--
 -- The type variables signify:
--- 
+--
 -- a' and a - The upstream interface, where (a')s go out and (a)s come in
--- b' and b - The downstream interface, where (b)s go out and (b')s come in
+-- b' and b - The downstream interface, where (b')s go out and (b')s come in
 -- m - The base monad
 -- r - The return value
 --
 -- type Pipe a b = Proxy () a () b
 -- type Producer b = Proxy X () () b
 --
-type ImportBundle m = MainLabel -> Pipe ObjectBundle (Map Label ContractHash) m (Either ImportError (Map Label ContractHash))
+type ImportBundle m
+  = MainLabel
+  -> Set.Set Aeson.Value
+  -> Pipe ObjectBundle (Map Label ContractHash) m (Either ImportError (Map Label ContractHash))
 
 mkImportBundle
   :: Monad m
   => ContractStagingArea m
   -> ImportBundle m
-mkImportBundle stage@ContractStagingArea{..} (MainLabel main) =
+mkImportBundle stage@ContractStagingArea{..} (MainLabel main) preserveActions =
   loop mempty
   where
     loop objects = do
@@ -293,7 +340,7 @@ mkImportBundle stage@ContractStagingArea{..} (MainLabel main) =
           pure $ Left $ LinkError $ TypeMismatch (SomeObjectType ContractType) (SomeObjectType actual)
 
     step objects bundle = lift $ runExceptT $ do
-      linked <- linkBundle' bundle (merkleizeAndStoreContracts stage) objects
+      linked <- linkBundle' bundle (merkleizeAndStoreContracts preserveActions stage) objects
       case linked of
         Left linkError ->
           throwE $ LinkError linkError

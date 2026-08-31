@@ -20,6 +20,7 @@ import Test.Tasty.Hspec (testSpec)
 import Test.Tasty.QuickCheck
 
 import qualified Spec.Marlowe.Marlowe (prop_noFalsePositives, tests)
+import qualified Spec.Marlowe.Merkle (tests)
 import qualified Spec.Marlowe.Plate (tests)
 import qualified Spec.Marlowe.Semantics (tests)
 import qualified Spec.Marlowe.Serialization (tests)
@@ -102,6 +103,7 @@ mkTests scriptsSpec = do
     "Marlowe"
     [ scriptsSpec
     , Spec.Marlowe.Marlowe.tests
+    , Spec.Marlowe.Merkle.tests
     , Spec.Marlowe.Plate.tests
     , testGroup
         "Static Analysis"
